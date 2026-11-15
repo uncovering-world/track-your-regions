@@ -124,7 +124,7 @@ Local accounts (email/password) must verify their email before logging in. OAuth
 
 ### Anti-Enumeration
 
-Registration no longer returns 409 for existing emails. Both new and existing emails produce the identical "Check your email" response. If an existing unverified account re-registers, the verification email is silently resent. This eliminates credential enumeration (OWASP ASVS V6.5.1).
+Registration no longer returns 409 for existing emails. Both new and existing emails produce the identical "Check your email" response. If an existing unverified account re-registers, the verification email is silently resent. This eliminates credential enumeration (OWASP ASVS V6.3.8).
 
 ### Verification Tokens
 

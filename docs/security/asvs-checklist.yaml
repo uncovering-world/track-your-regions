@@ -8,246 +8,616 @@ meta:
   last_audit: "2026-05-10"
   last_audit_pass: 3  # Two passes 2026-02-10 (Node) + one pass 2026-05-10 (cv-python expansion)
   app: track-your-regions
-  result: "70/70 pass (0 fail, 0 partial). cv-python service brought into scope; report at audit-2026-05-10.md"
-  scope_notes: "v3 audit (2026-05-10) widened scope to include the cv-python FastAPI microservice introduced in rebuild/41-43. New items: V4.1.5_cvpy, V5.1.1_cvpy, V5.1.2_cvpy, V8.1.1_cvpy, V13.4.3_cvpy, V16.1.1_cvpy."
+  result: "269 rows. 74 audited: 70 pass, 3 partial (V14.2.1, V14.3.1, V14.3.3), 1 fail (V6.2.8); 9 of them are project-specific checks outside the ASVS 5.0 ids, and 4 pass rows (V2.2.2, V7.2.1, V7.2.2, V8.3.1) were recorded on 2026-11-15 from what other rows' notes establish. 195 rows not yet checked: the ASVS 5.0 L1/L2 requirements no audit has read the code against, added 2026-11-15 (#2524). Last full report at audit-2026-05-10.md"
+  scope_notes: "v3 audit (2026-05-10) widened scope to include the cv-python FastAPI microservice introduced in rebuild/41-43. New items: V4.1.5_cvpy, V5.1.1_cvpy, V5.1.2_cvpy, V8.1.1_cvpy, V13.4.3_cvpy, V16.1.1_cvpy. The requirement ids follow the ASVS 5.0.0 text since 2026-11-15 (#2524): rows filed under ASVS 4.0 numbers or under an id whose 5.0 requirement checks something else were moved to the id that checks what they record, and the moves are listed in that pull request; the cv-python items named above are V5.2.1_cvpy, V5.2.2_cvpy, V8.1.1_cvpy, V16.5.1_cvpy and V16.1.1_cvpy since then."
 
 chapters:
 
   V1_encoding_sanitization:
+    V1.1.1:
+      desc: "Input is decoded or unescaped into canonical form only once, only where that encoding is expected, and before further processing such as validation"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.1.2:
+      desc: "Output encoding and escaping is a final step before the interpreter it is meant for, or is done by that interpreter"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V1.2.1:
-      desc: "Output encoding for HTTP response relevant to context"
+      desc: "Output encoding for an HTTP response, HTML or XML document is relevant to its context (elements, attributes, comments, CSS, header fields)"
       level: 1
       status: pass
       notes: "React JSX auto-escapes; Helmet sets security headers; no unsafe HTML rendering patterns found"
     V1.2.2:
-      desc: "URL encoding for dynamically built URLs, safe protocols only"
+      desc: "Untrusted data in dynamically built URLs is encoded for its context, and only safe URL protocols are permitted (no javascript: or data:)"
       level: 1
       status: pass
       notes: "External URLs use encodeURIComponent(). Curator URL fields (imageUrl, websiteUrl, wikipediaUrl) are validated server-side: first against a denylist of unsafe schemes (javascript:, data:, vbscript:, blob:), fixed 2026-02-10, and since 2026-08-28 against an allowlist instead. Picture credits from Wikimedia Commons (author, licence, licence URL) are third-party text: the author is reduced to plain text before storage and the licence URL is kept only when it parses as an absolute http(s) URL (imageCredit.ts safeHttpUrl); ImageCreditLine checks again before assigning any href and renders unlinked text otherwise. 2026-08-22. An experience's or treasure's picture makes the guarantee on the rendering path too, where the value reaches the DOM, rather than borrowing it from the write path: extractImageUrl and toThumbnailUrl (frontend/src/utils/imageUrl.ts) keep only an absolute http(s) url on a Wikimedia Commons host (under /wikipedia/commons/ on upload.wikimedia.org) that names a picture file and is not the /wiki/File: page about one, or an /images/ path whose origin survives resolution, so neither a foreign scheme nor a path that names a foreign authority (//host/x, /\\host/x) nor a host whose terms do not license the picture can reach that img src (ADR-0043, 2026-09-01). It is load-bearing rather than a third copy: a sync writes image_url through no request schema at all, and every row already stored predates the write-path rule. That write-path rule is itself an allowlist since #693, declared once in backend/src/types/urlSafety.ts and put to the URL parser rather than matched against the raw string: an absolute http(s) url for a link; for a picture, a Wikimedia Commons picture file — on a Commons host, under /wikipedia/commons/ on the upload host, naming a picture and not its /wiki/File: description page — or an /images/ path on our own origin (isDisplayablePictureUrl, ADR-0043 — a run is held to the narrower isCommonsPictureUrl, which admits no local path, at the sync upsert, the works writer and the picture repairs; the host and file-type lists are one declaration, @tyr/shared/pictures, that the drawing side imports too (ADR-0065)), so a scheme behind a leading space or split across a tab (\"java<tab>script:\") is refused rather than stored, and the two denylist spellings that used to sit in types/index.ts and curationController.ts and disagree about whitespace are gone. urlSafety.test.ts pins both the behaviour and the single declaration. The other stored picture, a region's imported map (region_map_url), is held to the same rule on both sides since #694: on the way in, the import tree's regionMapUrl and mapImageCandidates, the map-image pick and the vision-match url read isStorableHttpUrl from urlSafety.ts (an absolute http(s) url and nothing else — no map is a path on our own origin), where each used to be z.string().url(), which is new URL() in a try/catch and accepts javascript: and data:; where it is drawn, every dialog goes through toThumbnailUrl or extractImageUrl, so the value never reaches a src raw, and urlSafety.test.ts reads every frontend component to hold it there. 2026-08-28. Two stored links are held to the rule on both sides. A region's source page (region_import_state.source_url), since #703: the import tree node, add-child and rename schemas read isStorableHttpUrl where each was z.string().url(), and the five surfaces that offer the page (four hrefs and one window.open, which React does not guard the way it guards an href) go through safeHref (frontend/src/utils/safeHref.ts, lifted out of ImageCreditLine); a refused page is not linked. An experience's website and Wikipedia article (metadata.website, metadata.wikipediaUrl; website_url / wikipedia_url on a review card), since #708: held to the rule when a curator writes them and not at all when a sync does, they are offered through safeHref in Discover's detail panel, the Map mode card and the review card's ObjectContext, and a refused value gets no button or link. A World Heritage part's own article (metadata.wikipediaUrl on its part's row, #1963, ADR-0156) is held to isStorableHttpUrl by the run's writePointContents and by claimPointItem, and offered through safeHref on the part's PointCard and its row (PointArticleLink), 2026-10-25. urlSafety.test.ts reads every frontend module (.ts and .tsx) that carries a stored link — sourceUrl, a credit's licenseUrl / detailsUrl, so ImageCreditLine is read too, and an experience's website / wikipediaUrl / website_url / wikipedia_url — and fails on a dynamic href, a window.open or a .href assignment whose expression is anything but a safeHref call or a url the file spells itself (a literal, or a template opening on https://); safeHref(x) || x counts as raw, a bare name is followed to every binding the file gives it, and an unbound name counts as raw. 2026-08-28; the experience links 2026-10-14. The two reads that fetch a picture from the server rather than draw it — the CV colour-match pipeline's read of a region's map (runSourceMapPipeline) and the admin image proxy (GET /api/admin/image-proxy) — go through fetchPicture (services/pictureFetch.ts) and call the address pictureFetchUrl (urlSafety.ts) builds, never the value they were handed: an origin of ours per host in PICTURE_HOSTS, matched host for host, with the value's path under it segment by segment and its query after a ? of ours, so an import tree node or a query string naming 127.0.0.1, a port or a user@ is refused before any request leaves (#706; the proxy used to take any *.wikimedia.org / *.wikipedia.org by suffix and the pipeline took anything). The rule binds every hop and not only the first: redirects are taken by hand (redirect: manual, at most five), each Location is re-read by the same rule before it is requested, and a chain leaving those hosts ends in null rather than bytes — which matters because the proxy hands the final bytes to its caller. A hop may also land on thumb.wikimedia.org, where Commons serves a picture it has to scale (?width=800, measured 2026-09-19 and re-runnable with the curl recorded in urlSafety.ts; a file narrower than the width asked for comes from upload instead); a value handed in may not start there. urlSafety.test.ts holds the rule and that neither reader calls fetch itself, pictureFetch.test.ts holds the chain and its ceiling. 2026-09-19"
     V1.2.3:
-      desc: "Output encoding for dynamic JavaScript/JSON content"
+      desc: "Output encoding or escaping is used when dynamically building JavaScript content, JSON included"
       level: 1
       status: pass
       notes: "React handles encoding; no unsafe HTML injection patterns detected"
     V1.2.4:
-      desc: "Parameterized queries for all database operations"
+      desc: "Database queries (SQL, HQL, NoSQL, Cypher and the like) use parameterized queries or are otherwise protected from SQL and other database injection"
       level: 1
       status: pass
-      notes: "All 350+ pool.query() calls use $N placeholders. Dynamic columns from hardcoded maps only"
+      notes: "All 350+ pool.query() calls use $N placeholders. Dynamic columns from hardcoded maps only. Merged from the row filed as V1.2.6 until 2026-11-15 (#2524): lat/lng validated: isFinite() + bounds check (-90/90, -180/180) before SPARQL interpolation. Fixed 2026-02-10. The curator's search for whom a place commemorates (GET /api/experiences/commemorates/search, #2144) sends the curator's text to Wikidata's Action API only as a URLSearchParams value of a fixed address, and the ids it reads back are held to ^Q[1-9]\\d*$ before they are sent again as wbgetentities ids. 2026-11-09"
     V1.2.5:
-      desc: "OS command injection protection"
+      desc: "OS command injection is prevented: operating system calls use parameterized queries or contextual command-line encoding"
       level: 1
       status: pass
       notes: "No spawn/subprocess calls with user input on the Node side: the dump builds' bzip2, osmium and osm2pgsql run by absolute path with argument lists and no shell, from fixed names and the worker's own files (docs/security/SECURITY.md, public dump builds). cv-python source verified free of subprocess.* calls (audit 2026-05-10)."
     V1.2.6:
-      desc: "SPARQL/external query injection protection"
+      desc: "LDAP injection is prevented, or specific controls against it are in place"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.2.7:
+      desc: "XPath injection is prevented by query parameterization or precompiled queries"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.2.8:
+      desc: "LaTeX processors are configured securely (no --shell-escape) with an allowlist of commands"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.2.9:
+      desc: "Special characters in regular expressions are escaped so they are not read as metacharacters"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.1:
+      desc: "Untrusted HTML input from WYSIWYG editors or similar is sanitized with a well-known, secure HTML sanitization library or framework feature"
       level: 1
-      status: pass
-      notes: "lat/lng validated: isFinite() + bounds check (-90/90, -180/180) before SPARQL interpolation. Fixed 2026-02-10. The curator's search for whom a place commemorates (GET /api/experiences/commemorates/search, #2144) sends the curator's text to Wikidata's Action API only as a URLSearchParams value of a fixed address, and the ids it reads back are held to ^Q[1-9]\\d*$ before they are sent again as wbgetentities ids. 2026-11-09"
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.2:
+      desc: "eval() and other dynamic code execution are avoided; where unavoidable, user input included is sanitized first"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.3:
+      desc: "Data passed to a potentially dangerous context is sanitized beforehand, such as allowing only safe characters and trimming over-long input"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.4:
+      desc: "User-supplied SVG scriptable content is validated or sanitized to safe tags and attributes only (no scripts, no foreignObject)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.5:
+      desc: "User-supplied scriptable or expression template content (Markdown, CSS or XSL stylesheets, BBCode and the like) is sanitized or disabled"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V1.3.6:
-      desc: "Server-side request forgery protection: an outbound request built from untrusted data is held to an allowlist of protocols, destinations and ports"
+      desc: "Server-side request forgery is prevented: untrusted data is validated against an allowlist of protocols, domains, paths and ports before another service is called"
       level: 2
       status: pass
       notes: "Two outbound requests take their destination from data rather than from code. A picture the server fetches (the CV map pipeline, the admin image proxy) goes through fetchPicture (services/pictureFetch.ts): an allowlist of hosts, every redirect hop re-read by the same rule, at most five (#706). An official website a review card checks (GET /api/experiences/:id/website-checks, #2165) can name any host, so it is held to the address instead (services/websiteCheck/): only http and https on ports 80, 443, 8080 and 8443, no credentials in the URL; every hop's name resolved and refused when any address it resolves to is not public (publicAddress.ts: loopback, private, link-local and so the cloud metadata services, carrier-grade NAT, unique-local, multicast, documentation and reserved ranges, and the IPv6 transition prefixes that embed an IPv4 address), the connection made to the address checked (guardedLookup, so a name cannot resolve differently between the check and the connection), a literal address checked directly, at most five redirects, a ten-second deadline for the chain; the response destroyed once its status and headers arrive, so no body is read; no cookie, Referer or Authorization sent. The endpoint takes the place's id only: the addresses are read from the catalogue's rows, and a query naming one is refused by the route. checkWebsite.test.ts runs the chain against a local server, the refusal of a named, literal and redirected private address included. 2026-10-31. The picture classes of a review card (GET /api/experiences/:id/picture-classes, #2192) take the place's id only too, and their one outbound request goes to Wikimedia Commons' API with the stored files' names as its titles (services/pictureClass/), so no stored address is fetched. 2026-10-31. The search for whom a place commemorates (GET /api/experiences/commemorates/search, #2144) goes to one fixed host, Wikidata's Action API, with the curator's text as a query parameter only, so the destination is the code's; the article a curator saves with a subject is held to https://en.wikipedia.org/wiki/ (isEnglishWikipediaArticleUrl) and is never fetched by the server. 2026-11-09"
+    V1.3.7:
+      desc: "Templates are not built from untrusted input; where unavoidable, untrusted input included is sanitized or strictly validated"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.8:
+      desc: "Untrusted input is sanitized before use in JNDI queries, and JNDI is configured securely"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.9:
+      desc: "Content is sanitized before it is sent to memcache"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.10:
+      desc: "Format strings that might resolve in an unexpected or malicious way are sanitized before processing"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.3.11:
+      desc: "User input is sanitized before it is passed to mail systems (SMTP or IMAP injection)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.4.1:
+      desc: "Memory-safe string handling, safer memory copy and pointer arithmetic prevent stack, buffer or heap overflows"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.4.2:
+      desc: "Sign, range and input validation prevent integer overflows"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.4.3:
+      desc: "Dynamically allocated memory and resources are released, and references to freed memory are cleared (no dangling pointers, no use-after-free)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.5.1:
+      desc: "XML parsers use a restrictive configuration with unsafe features such as external entity resolution disabled (XXE)"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V1.5.2:
+      desc: "Deserialization of untrusted data is safe (an allowlist of object types or no client-defined types), and mechanisms known to be insecure are not used with untrusted input"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
 
   V2_validation_business_logic:
+    V2.1.1:
+      desc: "Documentation defines input validation rules for checking data items against an expected structure"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.1.2:
+      desc: "Documentation defines how to validate the logical and contextual consistency of combined data items"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.1.3:
+      desc: "Business logic limits and validations are documented, per user and globally"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V2.2.1:
-      desc: "Anti-automation controls for sensitive endpoints"
-      level: 1
-      status: pass
-      notes: "express-rate-limit on login (10/15min), register (5/hour), refresh (30/min). Fixed 2026-02-10"
-    V2.3.1:
-      desc: "Business logic flow enforced server-side"
-      level: 1
-      status: pass
-      notes: "Sync operations, curation, region management all server-side"
-    V2.4.1:
-      desc: "Input validation on all endpoints"
+      desc: "Input is validated against business or functional expectations, by positive validation against an allowlist or against an expected structure and logical limits (L2: all input)"
       level: 1
       status: pass
       notes: "Node side: Zod schemas on all route files; string bounds for the world view, region, experience, account and admin AI request surfaces — eight tables — read their column widths from backend/src/db/schema.generated.ts, generated from the schema and held to it by the db:types gate (ADR-0064; a bound tighter than its column, such as a registration email at RFC 5321's 254, carries its reason as a literal), and a value that still overruns its column (22001) is answered 400 — quoting the width when the driver message carries one, generic otherwise — rather than falling through as a masked 500 (2026-07-28). cv-python uses FastAPI's `UploadFile`/`Form` declarations + `decode_image()` validation (raises InvalidImageBytes on null/empty/non-image bytes, returned as 400 by exception handler). The `params: str = Form(...)` + json.loads pattern is documented as a follow-up to migrate to Pydantic models — current behaviour: malformed JSON triggers a generic 500, no info leak (audit 2026-05-10)."
+    V2.2.2:
+      desc: "Input validation is enforced at a trusted service layer; client-side validation is not relied on as a security control"
+      level: 1
+      status: pass
+      notes: "Established by V2.2.1's notes: every route's input is parsed by its Zod schemas on the backend, and cv-python's by FastAPI's declarations and decode_image(), so no check rests on the web client's own validation. Recorded from those notes on 2026-11-15 (#2524), not re-audited against the code."
+    V2.2.3:
+      desc: "Combinations of related data items are checked to be reasonable under predefined rules"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.3.1:
+      desc: "A user's business logic flows are processed only in the expected sequential step order, without skipping steps"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.3.2:
+      desc: "Business logic limits are implemented as the application's documentation defines"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.3.3:
+      desc: "Business logic operations run in transactions: they succeed entirely or roll back to the previous correct state"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.3.4:
+      desc: "Business logic locking prevents limited-quantity resources from being double-booked"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V2.4.1:
+      desc: "Anti-automation controls protect against excessive calls to application functions (data exfiltration, garbage data, quota exhaustion, rate-limit breaches, denial of service, overuse of costly resources)"
+      level: 2
+      status: pass
+      notes: "express-rate-limit on login (10/15min), register (5/hour), refresh (30/min). Fixed 2026-02-10. Merged from the row filed as V4.1.2 until 2026-11-15 (#2524): express-rate-limit on auth (login, register, refresh), geocode search (30/min, curator-only), and experience search (30/min). Fixed 2026-02-10. Admin routes are otherwise unlimited by design — bulk workflows (batch match acceptance, geometry compute) legitimately issue many requests a minute — with the named exceptions below (no count: this note has twice been left one short by a route being added to it). (1) POST /wv-import/matches/:id/rematch carries expensiveAdminLimiter (5/min), because it deletes every region_members row for a world view and then spends 20-130s re-resolving them, so a repeat request costs more than the request and each run destroys the previous one output. The 409 guard stops concurrent runs but not rapid succession. Added 2026-07-30 (#456). (2) POST /experiences/:id/publish carries authenticatedLimiter (60/min) — the first route limited under requireCurator rather than requireAdmin, and deliberately a different limiter. It qualifies on the same criterion: where a publication releases a deferred withdrawal (ADR-0025) it re-places the object into every world view with geometry after committing, which is expensive regardless of who sends it. 60/min rather than 5/min because that branch fires only for a point that moved, an ordinary publish is one transaction, and a curator answers a queue in batches — the first gated round is about 18 arrivals, so 5/min would 429 mid-work to bound a branch most publishes never reach. (3) POST /experiences/:id/admission carries the same authenticatedLimiter (60/min), because it reaches the same post-commit placement rather than a similar one: overriding a refusal on a gated arrival publishes its contents through the shared publishContents, so it can release a deferred withdrawal, and setExperienceAdmission then calls placeAfterAdmissionRelease -> placeAfterRelease after releasing its client. The criterion decides per branch, not per endpoint. The curator routes that remain exempt (/:id/state, /:id/decline-source, /:id/works/:treasureId/edit, /review/queue) are verified rather than assumed: each ends at res.json with nothing after its client.release(). /:id/accept-source was among them until it grew post-commit placement — see (7) — which is the second route to leave this list that way, so the list is re-read against the handlers rather than carried forward. /:id/decline-source (2026-08-14) is the plainest — it writes one row per refused field and does not touch the experience, since the value it refuses had already won every run — and CodeQL flags it like the rest, dismissed against this note. PATCH /:id/works/:treasureId/edit (2026-08-31, #720, ADR-0040) joined it on the same check and is the one worth reading against its own sibling: PATCH /locations/:locationId/edit is limited under (6) because a corrected coordinate always re-places the object, and a work has no coordinate at all - one locked object, one locked row, one audit row, nothing after the commit. Resemblance to a limited route is not the criterion; reaching placeAfterRelease is. Its CodeQL alert is dismissed against this note like the rest. /:id/decline-held left that list on 2026-10-04 (ADR-0083, #1233) and carries authenticatedLimiter (60/min): refusing an object's held coordinate turns down the unread point that is the same move, and a refused point is re-placed through placeAfterRelease after the client is released, whenever movedPointRefused is set. Its two CodeQL alerts are dismissed against this note. (4) POST /api/experiences/sources/:sourceId/publish-waiting carries authenticatedLimiter (60/min) as well, and is the clearest case of the criterion: it runs the publish transaction once per waiting object and can reach the post-commit region placement on any of them, so its cost scales with the source's backlog rather than with the request. (5) POST /api/experiences/locations/:locationId/state carries authenticatedLimiter (60/min) on the same criterion, decided per branch as always: an answer that leaves the point where it was is one locked row and one update, but an answer that changes what a reader sees re-places the point in either direction — a withdrawn point holds no auto region rows, because the run that marked it re-placed the experience and placement takes offered points only (measured: 0 rows against the offered point's 3), so revealing one must place it and hiding one must stop it counting toward a region. Either way it calls placeAfterRelease after committing, the same post-commit placement /:id/publish is limited for. Added 2026-08-15 (ADR-0026, #541). (6) PATCH /api/experiences/locations/:locationId/edit carries authenticatedLimiter (60/min) on the same criterion and without a branch to decide: a correction to a coordinate always calls placeAfterRelease after committing, since a point in a new place may fall in a different region, so unlike its sibling /:id/state there is no answer here that costs one locked row. A rename is the one shape that places nothing and it is not worth a second limiter. Added 2026-08-20 (ADR-0029). (7) POST /api/experiences/:id/accept-source carries authenticatedLimiter (60/min) as of 2026-08-21, having been on the verified-exempt list until then: accepting the object's coordinate now releases the claim on the point that carried it and puts that point back on the coordinate the run offered, so a place moves and placeAfterRelease runs after the client is released, exactly as it does for (6). Decided per branch as always - the five writable fields place nothing - and the limiter sits on the route because a route is what a limiter attaches to (ADR-0029). CodeQL js/missing-rate-limiting fires on every route this section exempts, on either router - the curator ones in experienceRoutes.ts and the admin gate switch PUT /api/admin/sync/sources/:sourceId/curation-gate in adminDeclaredRoutes.ts, which stays exempt because it updates one row of the source table and changes only what future runs do - and each such alert is dismissed against this note. Its sibling PUT /api/admin/sync/sources/:sourceId/line (2026-09-08, ADR-0052, #753) joined it on the same check: the body is Zod-bounded (four integers 1..1000, the finds pair optional and taken both-or-neither, each stay line refused above its enter line - #581) before it reaches a query, the write is one read to decide 404 from 409 followed by one UPDATE of the same row, and nothing follows the commit - a source's fame line, like the gate beside it, changes only what a future run does. (8) GET /api/admin/data-assertions carries expensiveAdminLimiter (5/min) and POST /api/admin/data-assertions/accept carries authenticatedLimiter (60/min), and the split is the criterion applied twice rather than a compromise: the report runs a statement per assertion over the whole catalogue (~11s as of 2026-08-27; no count of them is written here for the same reason as above), which is expensive regardless of who sends it, while an acceptance re-runs one of those statements and inserts one row. Since #685 one of those statements takes eight seconds on its own - the rung rule reads a full-resolution geometry column - so the order the two buckets were in has inverted: 60 acceptances a minute is up to eight minutes of database work per minute from one address, against five scans of about eleven seconds. What carries the split was never the ratio but what each is a ceiling on - the report is a whole scan any caller can repeat at will, an acceptance is a person answering for one rule and runs out of rules to answer for, a second press of the same one recording the same number. The bucket matters because the state that screen exists for is a database where nobody has answered for anything - a press per invariant - and every limiter here is keyed by IP, so five a minute is five for the whole address an admin works from and would refuse them halfway through their first pass. Added 2026-08-24 (ADR-0032). (9) POST /api/admin/sync/sources/:sourceId/fix-images carries expensiveAdminLimiter (5/min): a picture repair is a run over every row of a source - Wikidata, then Commons, then a write per row - and since #557 the route reads the source and the run table before it starts, which is the database access CodeQL's js/missing-rate-limiting fired on; a press while a run is in flight is answered 409 before anything starts. Added 2026-09-02 (ADR-0043). No count is written here because a count above a list is what goes stale when a route joins it. (10) PUT and DELETE /api/experiences/review/set-aside/:syncLogId carry authenticatedLimiter (60/min) as of 2026-09-07 (ADR-0051 decision 4, #805). Neither reaches the post-commit placement this criterion turns on: setting a run's batch aside is one insert with ON CONFLICT DO NOTHING, bringing it back is one delete of the caller's own row, and nothing follows the commit in either. They carry the limiter as ordinary authenticated curator actions - a chip a curator can toggle, one small write per press - which is what puts them in the 60-a-minute bucket rather than expensiveAdminLimiter's five. GET /api/experiences/review/queue stays on the verified-exempt list under its new shape, re-read against the handler rather than carried forward: since #805 it is one keys statement over the union of the seven kinds, one hydrating statement per kind the page actually holds, and the three answered lists (keptOut, answeredWithdrawals and, since #859, refusedParts) that sit outside the union and run on every request, measured on the development catalogue of 2026-09-07 at 123 ms for the keys statement and 296 ms cold end to end, against about 590 ms for the nine statements it replaced - cheaper than what it was exempt as, and still ending at res.json with nothing after it. GET /api/experiences/review/queue/map (#2477, 2026-11-13) joins it on the same check: one statement over the same union under the same chips, unpaged, writing nothing, with nothing after the read; the union it reads held 15,709 open questions on the development catalogue of 2026-11-13 and was read in 1.0 s, the same union the queue's facets count on every request. The third list costs 0.5 ms on a catalogue holding no refused part, because its objects are named by a MATERIALIZED gate before its laterals run; ungated it was ~100 ms, which is the shape this enumeration exists to keep honest. Added 2026-08-12 (ADR-0025). (11) POST /api/experiences/review/answer carries authenticatedLimiter (60/min) as of 2026-09-09 (#852, ADR-0053), on the criterion with publish-waiting's force: it answers up to a page of review rows (the queue's own maximum of 100, Zod-bounded) each through the writer its single-row card calls, one transaction and one audit row per object, and five of those writers reach the post-commit placement - a publish or an overriding admission verdict can release a deferred withdrawal, an accepted source coordinate moves a pin, a verdict on a withdrawn row re-places the object once per point, and a rejected row holding an unread point re-places the object, since a turned-down point counts toward no region any more. Scope is resolved per object, so a region-scoped curator's batch reports what it left alone rather than touching it. The two single-row refusals beside it (ADR-0053) part on the same check. POST /:id/refuse-arrival joins the verified-exempt list: one membership row inside one transaction, touching nothing a reader sees (the row was hidden already), ending at res.json with nothing after its client.release(); its CodeQL alerts are dismissed against this note like the rest. POST /:id/refuse-contents carries authenticatedLimiter (60/min) for the branch /:id/publish is limited for: a refused point counts toward no region any more (placement's insert carries refused_at IS NULL, ADR-0053) - so the object is re-placed into every world view with geometry after the commit, through the same placeAfterRelease. (12) POST /api/experiences/:id/unrefuse-contents carries authenticatedLimiter (60/min) as of 2026-09-10 (#859), on the same branch read backwards: asking again about a turned-down point clears the mark placement's insert filters on, so the point counts toward its regions once more and the object is re-placed after the commit through the same placeAfterRelease. It writes nothing else - one locked object, one UPDATE per kind, one audit row - and its body is the refusal's own Zod schema, bounded at 2000 ids per kind. (13) POST /api/admin/sync/sources/:sourceId/find-component-items carries expensiveAdminLimiter (5/min) as of 2026-10-09 (#1272), on the same criterion as (9): it takes no body, only an optional Zod-bounded ?experienceId= naming one site (#1429), and like the picture repair it reads the source and the run table before it starts (and, for one site, that site's experiences and source_records rows, a 404 for an id no site of the source has), then runs a search over every World Heritage component that no Wikidata item records, or over one site's: statements over the local Wikidata subset, one of them a read of every coordinate it holds (#1435), and requests to Wikidata's API for the candidates' labels, paced by the shared client (#1307), far fewer for one site. It writes only proposals for a curator. A press while a run is in flight gets 409 before anything starts. (14) POST /wv-import/matches/:id/rematch/cancel carries the re-match's expensiveAdminLimiter (5/min) as of 2026-10-18 (#1613), as the issue asked: it takes no body, only the Zod-bounded world view id, and sets the running re-match's in-memory cancel flag. One limiter instance is one bucket, so the stop shares its five a minute with the re-match, the dump builds and the other routes on it; a refused stop is shown on the review panel rather than swallowed. (15) GET /api/geocode/reverse and GET /api/geocode/article-point/:id carry authenticatedLimiter (60/min) as of 2026-11-02 (#2206), curator-only like the search: a point dialog asks the first once per pin, which the search's 30/min would refuse within a few dialogs, while Nominatim's one request a second is held by the queue in services/nominatim.ts that both reverse lookups and searches wait in; the second reads one row and asks the place's own Wikipedia article for its coordinate, with no URL from the request. See docs/tech/rate-limiting.md section 5 for the named-exception table. The world map's hover-card picture read (GET /experiences/:id/picture, public) carries pictureHoverLimiter (120/min per IP), a budget of its own so resting the pointer on pins cannot spend the publicReadLimiter reads the region lists share (#927)."
+    business_logic_server_side:
+      desc: "Business logic flows (sync, curation, region management) run server-side (project-specific check, not an ASVS 5.0 requirement id)"
+      level: 1
+      status: pass
+      notes: "Sync operations, curation, region management all server-side. Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V2.3.1, whose ASVS 5.0 requirement asks that a user's business logic flows run only in the expected step order without skipping steps, which this entry does not check; V2.3.1 has its own row."
 
   V3_web_frontend_security:
     V3.2.1:
-      desc: "Content rendering controls prevent incorrect context execution"
+      desc: "Controls prevent browsers from rendering content or functionality of an HTTP response in an incorrect context (Sec-Fetch-* checks, CSP sandbox, attachment disposition)"
       level: 1
       status: pass
       notes: "Helmet sets Content-Type, X-Content-Type-Options; images served with correct MIME types; trusted image domain allowlist"
     V3.2.2:
-      desc: "Text content rendered safely, not as HTML"
+      desc: "Content meant to be shown as text is rendered with safe functions (createTextNode, textContent), not as HTML"
       level: 1
       status: pass
       notes: "React JSX auto-escapes all interpolated values; no raw HTML rendering detected"
+    V3.3.1:
+      desc: "Cookies have the 'Secure' attribute, and the '__Secure-' prefix where the '__Host-' prefix is not used"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V3.3.2:
+      desc: "Each cookie's 'SameSite' attribute is set according to the cookie's purpose"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V3.3.3:
+      desc: "Cookies have the '__Host-' prefix unless they are explicitly designed to be shared with other hosts"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V3.3.4:
+      desc: "A cookie not meant for client-side scripts (such as a session token) has the 'HttpOnly' attribute, and its value reaches the client only through Set-Cookie"
+      level: 2
+      status: pass
+      notes: "Server: SHA256 hash in DB. Client: httpOnly, Secure, SameSite=Strict cookie (path=/api/auth). Fixed 2026-02-10"
     V3.4.1:
-      desc: "HSTS header included on all responses"
+      desc: "A Strict-Transport-Security header is on all responses with a max-age of at least one year (L2: covering subdomains too)"
       level: 1
       status: pass
       notes: "Helmet HSTS configured with max-age=31536000 (1 year), includeSubDomains, preload. Fixed 2026-02-10"
     V3.4.2:
-      desc: "CORS Access-Control-Allow-Origin is fixed value, not wildcard"
+      desc: "CORS Access-Control-Allow-Origin is a fixed value or validated against an allowlist of trusted origins; a '*' response carries no sensitive information"
       level: 1
       status: pass
-      notes: "Set to FRONTEND_URL env var (single origin), credentials:true"
+      notes: "Set to FRONTEND_URL env var (single origin), credentials:true. Merged from the row filed as V4.1.1 until 2026-11-15 (#2524): Restricted to FRONTEND_URL origin with credentials; no wildcard"
+    V3.4.3:
+      desc: "A Content-Security-Policy header is set with at least object-src 'none', base-uri 'none' and an allowlist, nonces or hashes"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V3.4.4:
-      desc: "X-Content-Type-Options: nosniff header set"
+      desc: "All responses carry 'X-Content-Type-Options: nosniff'"
       level: 2
       status: pass
       notes: "Helmet sets this by default"
     V3.4.5:
-      desc: "Referrer-Policy header set"
+      desc: "A referrer policy keeps technically sensitive data from leaking to third parties through the Referer header"
       level: 2
       status: pass
       notes: "Helmet sets Referrer-Policy by default"
     V3.4.6:
-      desc: "frame-ancestors CSP directive set"
+      desc: "The CSP frame-ancestors directive is set on every response, so the application cannot be embedded by default (X-Frame-Options may not be relied on)"
       level: 2
       status: pass
       notes: "Helmet sets X-Frame-Options and CSP frame-ancestors by default"
     V3.5.1:
-      desc: "CSRF protection beyond CORS preflight"
+      desc: "Where CORS preflight is not relied on, cross-origin requests to sensitive functionality are validated as coming from the application itself (anti-forgery tokens or a non-safelisted header)"
       level: 1
       status: pass
       notes: "Three layers: (1) Origin header verified on POST/PUT/DELETE, (2) SameSite=Strict on refresh cookie, (3) access token in Authorization header (not cookie). Fixed 2026-02-10"
+    V3.5.2:
+      desc: "Where CORS preflight is relied on, sensitive functionality cannot be called with a request that triggers no preflight"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V3.5.3:
-      desc: "Sensitive endpoints use appropriate HTTP methods"
+      desc: "Requests to sensitive functionality use appropriate methods (POST, PUT, PATCH, DELETE), not safe methods such as GET, or strict Sec-Fetch-* validation"
       level: 1
       status: pass
       notes: "State-changing operations use POST/PUT/DELETE, reads use GET"
+    V3.5.4:
+      desc: "Separate applications are hosted on different hostnames to use the same-origin policy's restrictions"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V3.5.5:
+      desc: "postMessage messages from an untrusted origin or with invalid syntax are discarded"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V3.7.1:
+      desc: "Only client-side technologies that are still supported and considered secure are used (no Flash, ActiveX, Java applets and the like)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V3.7.2:
+      desc: "Automatic redirects to a hostname or domain outside the application's control go only to destinations on an allowlist"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
 
   V4_api_web_service:
     V4.1.1:
-      desc: "CORS properly configured"
+      desc: "Every response with a body has a Content-Type header matching its content, with a safe charset parameter"
       level: 1
-      status: pass
-      notes: "Restricted to FRONTEND_URL origin with credentials; no wildcard"
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V4.1.2:
-      desc: "Rate limiting on API endpoints"
-      level: 1
-      status: pass
-      notes: "express-rate-limit on auth (login, register, refresh), geocode search (30/min, curator-only), and experience search (30/min). Fixed 2026-02-10. Admin routes are otherwise unlimited by design — bulk workflows (batch match acceptance, geometry compute) legitimately issue many requests a minute — with the named exceptions below (no count: this note has twice been left one short by a route being added to it). (1) POST /wv-import/matches/:id/rematch carries expensiveAdminLimiter (5/min), because it deletes every region_members row for a world view and then spends 20-130s re-resolving them, so a repeat request costs more than the request and each run destroys the previous one output. The 409 guard stops concurrent runs but not rapid succession. Added 2026-07-30 (#456). (2) POST /experiences/:id/publish carries authenticatedLimiter (60/min) — the first route limited under requireCurator rather than requireAdmin, and deliberately a different limiter. It qualifies on the same criterion: where a publication releases a deferred withdrawal (ADR-0025) it re-places the object into every world view with geometry after committing, which is expensive regardless of who sends it. 60/min rather than 5/min because that branch fires only for a point that moved, an ordinary publish is one transaction, and a curator answers a queue in batches — the first gated round is about 18 arrivals, so 5/min would 429 mid-work to bound a branch most publishes never reach. (3) POST /experiences/:id/admission carries the same authenticatedLimiter (60/min), because it reaches the same post-commit placement rather than a similar one: overriding a refusal on a gated arrival publishes its contents through the shared publishContents, so it can release a deferred withdrawal, and setExperienceAdmission then calls placeAfterAdmissionRelease -> placeAfterRelease after releasing its client. The criterion decides per branch, not per endpoint. The curator routes that remain exempt (/:id/state, /:id/decline-source, /:id/works/:treasureId/edit, /review/queue) are verified rather than assumed: each ends at res.json with nothing after its client.release(). /:id/accept-source was among them until it grew post-commit placement — see (7) — which is the second route to leave this list that way, so the list is re-read against the handlers rather than carried forward. /:id/decline-source (2026-08-14) is the plainest — it writes one row per refused field and does not touch the experience, since the value it refuses had already won every run — and CodeQL flags it like the rest, dismissed against this note. PATCH /:id/works/:treasureId/edit (2026-08-31, #720, ADR-0040) joined it on the same check and is the one worth reading against its own sibling: PATCH /locations/:locationId/edit is limited under (6) because a corrected coordinate always re-places the object, and a work has no coordinate at all - one locked object, one locked row, one audit row, nothing after the commit. Resemblance to a limited route is not the criterion; reaching placeAfterRelease is. Its CodeQL alert is dismissed against this note like the rest. /:id/decline-held left that list on 2026-10-04 (ADR-0083, #1233) and carries authenticatedLimiter (60/min): refusing an object's held coordinate turns down the unread point that is the same move, and a refused point is re-placed through placeAfterRelease after the client is released, whenever movedPointRefused is set. Its two CodeQL alerts are dismissed against this note. (4) POST /api/experiences/sources/:sourceId/publish-waiting carries authenticatedLimiter (60/min) as well, and is the clearest case of the criterion: it runs the publish transaction once per waiting object and can reach the post-commit region placement on any of them, so its cost scales with the source's backlog rather than with the request. (5) POST /api/experiences/locations/:locationId/state carries authenticatedLimiter (60/min) on the same criterion, decided per branch as always: an answer that leaves the point where it was is one locked row and one update, but an answer that changes what a reader sees re-places the point in either direction — a withdrawn point holds no auto region rows, because the run that marked it re-placed the experience and placement takes offered points only (measured: 0 rows against the offered point's 3), so revealing one must place it and hiding one must stop it counting toward a region. Either way it calls placeAfterRelease after committing, the same post-commit placement /:id/publish is limited for. Added 2026-08-15 (ADR-0026, #541). (6) PATCH /api/experiences/locations/:locationId/edit carries authenticatedLimiter (60/min) on the same criterion and without a branch to decide: a correction to a coordinate always calls placeAfterRelease after committing, since a point in a new place may fall in a different region, so unlike its sibling /:id/state there is no answer here that costs one locked row. A rename is the one shape that places nothing and it is not worth a second limiter. Added 2026-08-20 (ADR-0029). (7) POST /api/experiences/:id/accept-source carries authenticatedLimiter (60/min) as of 2026-08-21, having been on the verified-exempt list until then: accepting the object's coordinate now releases the claim on the point that carried it and puts that point back on the coordinate the run offered, so a place moves and placeAfterRelease runs after the client is released, exactly as it does for (6). Decided per branch as always - the five writable fields place nothing - and the limiter sits on the route because a route is what a limiter attaches to (ADR-0029). CodeQL js/missing-rate-limiting fires on every route this section exempts, on either router - the curator ones in experienceRoutes.ts and the admin gate switch PUT /api/admin/sync/sources/:sourceId/curation-gate in adminDeclaredRoutes.ts, which stays exempt because it updates one row of the source table and changes only what future runs do - and each such alert is dismissed against this note. Its sibling PUT /api/admin/sync/sources/:sourceId/line (2026-09-08, ADR-0052, #753) joined it on the same check: the body is Zod-bounded (four integers 1..1000, the finds pair optional and taken both-or-neither, each stay line refused above its enter line - #581) before it reaches a query, the write is one read to decide 404 from 409 followed by one UPDATE of the same row, and nothing follows the commit - a source's fame line, like the gate beside it, changes only what a future run does. (8) GET /api/admin/data-assertions carries expensiveAdminLimiter (5/min) and POST /api/admin/data-assertions/accept carries authenticatedLimiter (60/min), and the split is the criterion applied twice rather than a compromise: the report runs a statement per assertion over the whole catalogue (~11s as of 2026-08-27; no count of them is written here for the same reason as above), which is expensive regardless of who sends it, while an acceptance re-runs one of those statements and inserts one row. Since #685 one of those statements takes eight seconds on its own - the rung rule reads a full-resolution geometry column - so the order the two buckets were in has inverted: 60 acceptances a minute is up to eight minutes of database work per minute from one address, against five scans of about eleven seconds. What carries the split was never the ratio but what each is a ceiling on - the report is a whole scan any caller can repeat at will, an acceptance is a person answering for one rule and runs out of rules to answer for, a second press of the same one recording the same number. The bucket matters because the state that screen exists for is a database where nobody has answered for anything - a press per invariant - and every limiter here is keyed by IP, so five a minute is five for the whole address an admin works from and would refuse them halfway through their first pass. Added 2026-08-24 (ADR-0032). (9) POST /api/admin/sync/sources/:sourceId/fix-images carries expensiveAdminLimiter (5/min): a picture repair is a run over every row of a source - Wikidata, then Commons, then a write per row - and since #557 the route reads the source and the run table before it starts, which is the database access CodeQL's js/missing-rate-limiting fired on; a press while a run is in flight is answered 409 before anything starts. Added 2026-09-02 (ADR-0043). No count is written here because a count above a list is what goes stale when a route joins it. (10) PUT and DELETE /api/experiences/review/set-aside/:syncLogId carry authenticatedLimiter (60/min) as of 2026-09-07 (ADR-0051 decision 4, #805). Neither reaches the post-commit placement this criterion turns on: setting a run's batch aside is one insert with ON CONFLICT DO NOTHING, bringing it back is one delete of the caller's own row, and nothing follows the commit in either. They carry the limiter as ordinary authenticated curator actions - a chip a curator can toggle, one small write per press - which is what puts them in the 60-a-minute bucket rather than expensiveAdminLimiter's five. GET /api/experiences/review/queue stays on the verified-exempt list under its new shape, re-read against the handler rather than carried forward: since #805 it is one keys statement over the union of the seven kinds, one hydrating statement per kind the page actually holds, and the three answered lists (keptOut, answeredWithdrawals and, since #859, refusedParts) that sit outside the union and run on every request, measured on the development catalogue of 2026-09-07 at 123 ms for the keys statement and 296 ms cold end to end, against about 590 ms for the nine statements it replaced - cheaper than what it was exempt as, and still ending at res.json with nothing after it. GET /api/experiences/review/queue/map (#2477, 2026-11-13) joins it on the same check: one statement over the same union under the same chips, unpaged, writing nothing, with nothing after the read; the union it reads held 15,709 open questions on the development catalogue of 2026-11-13 and was read in 1.0 s, the same union the queue's facets count on every request. The third list costs 0.5 ms on a catalogue holding no refused part, because its objects are named by a MATERIALIZED gate before its laterals run; ungated it was ~100 ms, which is the shape this enumeration exists to keep honest. Added 2026-08-12 (ADR-0025). (11) POST /api/experiences/review/answer carries authenticatedLimiter (60/min) as of 2026-09-09 (#852, ADR-0053), on the criterion with publish-waiting's force: it answers up to a page of review rows (the queue's own maximum of 100, Zod-bounded) each through the writer its single-row card calls, one transaction and one audit row per object, and five of those writers reach the post-commit placement - a publish or an overriding admission verdict can release a deferred withdrawal, an accepted source coordinate moves a pin, a verdict on a withdrawn row re-places the object once per point, and a rejected row holding an unread point re-places the object, since a turned-down point counts toward no region any more. Scope is resolved per object, so a region-scoped curator's batch reports what it left alone rather than touching it. The two single-row refusals beside it (ADR-0053) part on the same check. POST /:id/refuse-arrival joins the verified-exempt list: one membership row inside one transaction, touching nothing a reader sees (the row was hidden already), ending at res.json with nothing after its client.release(); its CodeQL alerts are dismissed against this note like the rest. POST /:id/refuse-contents carries authenticatedLimiter (60/min) for the branch /:id/publish is limited for: a refused point counts toward no region any more (placement's insert carries refused_at IS NULL, ADR-0053) - so the object is re-placed into every world view with geometry after the commit, through the same placeAfterRelease. (12) POST /api/experiences/:id/unrefuse-contents carries authenticatedLimiter (60/min) as of 2026-09-10 (#859), on the same branch read backwards: asking again about a turned-down point clears the mark placement's insert filters on, so the point counts toward its regions once more and the object is re-placed after the commit through the same placeAfterRelease. It writes nothing else - one locked object, one UPDATE per kind, one audit row - and its body is the refusal's own Zod schema, bounded at 2000 ids per kind. (13) POST /api/admin/sync/sources/:sourceId/find-component-items carries expensiveAdminLimiter (5/min) as of 2026-10-09 (#1272), on the same criterion as (9): it takes no body, only an optional Zod-bounded ?experienceId= naming one site (#1429), and like the picture repair it reads the source and the run table before it starts (and, for one site, that site's experiences and source_records rows, a 404 for an id no site of the source has), then runs a search over every World Heritage component that no Wikidata item records, or over one site's: statements over the local Wikidata subset, one of them a read of every coordinate it holds (#1435), and requests to Wikidata's API for the candidates' labels, paced by the shared client (#1307), far fewer for one site. It writes only proposals for a curator. A press while a run is in flight gets 409 before anything starts. (14) POST /wv-import/matches/:id/rematch/cancel carries the re-match's expensiveAdminLimiter (5/min) as of 2026-10-18 (#1613), as the issue asked: it takes no body, only the Zod-bounded world view id, and sets the running re-match's in-memory cancel flag. One limiter instance is one bucket, so the stop shares its five a minute with the re-match, the dump builds and the other routes on it; a refused stop is shown on the review panel rather than swallowed. (15) GET /api/geocode/reverse and GET /api/geocode/article-point/:id carry authenticatedLimiter (60/min) as of 2026-11-02 (#2206), curator-only like the search: a point dialog asks the first once per pin, which the search's 30/min would refuse within a few dialogs, while Nominatim's one request a second is held by the queue in services/nominatim.ts that both reverse lookups and searches wait in; the second reads one row and asks the place's own Wikipedia article for its coordinate, with no URL from the request. See docs/tech/rate-limiting.md section 5 for the named-exception table. The world map's hover-card picture read (GET /experiences/:id/picture, public) carries pictureHoverLimiter (120/min per IP), a budget of its own so resting the pointer on pins cannot spend the publicReadLimiter reads the region lists share (#927)."
-    V4.1.3:
-      desc: "API responses don't leak sensitive data"
-      level: 1
-      status: pass
-      notes: "500 errors return generic 'Internal server error' in production (err.message masked). Stack traces never sent. Fixed 2026-02-10"
-    V4.1.4:
-      desc: "Request body size limits"
-      level: 1
-      status: pass
-      notes: "express.json({ limit: '10mb' }) configured; urlencoded defaults to 100KB"
-    V4.1.5_cvpy:
-      desc: "Resource consumption limits on cv-python (concurrency + body size)"
+      desc: "Only user-facing endpoints redirect HTTP to HTTPS automatically; other endpoints do not redirect transparently"
       level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.1.3:
+      desc: "Header fields set by an intermediary (X-Real-IP, X-Forwarded-*, X-User-ID and the like) cannot be overridden by the end user"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.2.1:
+      desc: "All components determine HTTP message boundaries by the mechanism right for the HTTP version, to prevent request smuggling"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.3.1:
+      desc: "GraphQL or data-layer expression denial of service is prevented by a query allowlist, depth or amount limiting, or query cost analysis"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.3.2:
+      desc: "GraphQL introspection is disabled in production unless the API is meant for other parties"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.4.1:
+      desc: "WebSocket over TLS (WSS) is used for all WebSocket connections"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.4.2:
+      desc: "The Origin header is checked against an allowlist during the WebSocket handshake"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.4.3:
+      desc: "Where the standard session management cannot be used for WebSockets, dedicated tokens meeting the session management requirements are used"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V4.4.4:
+      desc: "Dedicated WebSocket session tokens are obtained or validated through the already authenticated HTTPS session"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    request_body_size_limits:
+      desc: "Request bodies are capped in size (project-specific check, not an ASVS 5.0 requirement id)"
+      level: 1
       status: pass
-      notes: "Body cap enforced via BodySizeLimitMiddleware (default 100 MB, override CV_MAX_BODY_BYTES). uvicorn invoked with --limit-concurrency 8 in Dockerfile so excess in-flight requests get 503 instead of stacking unbounded threads. Worker daemons still spawned per-request but bounded by uvicorn's gate. Fixed 2026-05-10."
+      notes: "express.json({ limit: '10mb' }) configured; urlencoded defaults to 100KB. Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V4.1.4, which ASVS 5.0 gives to blocking unused HTTP methods (L3). ASVS 5.0 has no requirement for a request body cap: the nearest are V5.2.1 (the size of accepted files) and V15.2.2 (defenses for resource-demanding functionality), neither of which names one."
 
   V5_file_handling:
+    V5.1.1:
+      desc: "Documentation defines the permitted file types, extensions and maximum size (unpacked included) for each upload feature, and how files are made safe"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V5.2.1:
-      desc: "File size limits enforced on downloads"
+      desc: "Only files of a size the application can process without loss of performance or denial of service are accepted"
       level: 1
       status: pass
       notes: "Content-Length pre-check + 20MB Transform stream limit on Node-side downloads. Oversized downloads rejected or aborted mid-stream. Fixed 2026-02-10"
+    V5.2.1_cvpy:
+      desc: "cv-python service: only files of a size the application can process without loss of performance or denial of service are accepted"
+      level: 1
+      status: pass
+      notes: "BodySizeLimitMiddleware rejects requests with Content-Length > CV_MAX_BODY_BYTES (default 100 MB) before they're buffered, returning 413. Streaming uploads without Content-Length flow through but are gated by uvicorn's --limit-concurrency. Fixed 2026-05-10. Merged from the row filed as V4.1.5_cvpy until 2026-11-15 (#2524): Body cap enforced via BodySizeLimitMiddleware (default 100 MB, override CV_MAX_BODY_BYTES). uvicorn invoked with --limit-concurrency 8 in Dockerfile so excess in-flight requests get 503 instead of stacking unbounded threads. Worker daemons still spawned per-request but bounded by uvicorn's gate. Fixed 2026-05-10."
     V5.2.2:
-      desc: "File extension + content-type validation"
+      desc: "An accepted file's extension matches an expected one and its content matches the type the extension represents (magic bytes, image rewriting, content validation; L2: all files)"
       level: 1
       status: pass
       notes: "imageService checks content-type starts with image/"
+    V5.2.2_cvpy:
+      desc: "cv-python service: an accepted file's extension matches an expected one and its content matches the type the extension represents (magic bytes, image rewriting, content validation; L2: all files)"
+      level: 1
+      status: pass
+      notes: "decode_image() in cv-python/app/utils/image.py raises InvalidImageBytes on empty bytes or when cv2.imdecode returns None (i.e. not a recognised image). Routed via FastAPI exception handler to a 400 with a generic detail string. Fixed 2026-05-10."
     V5.2.2_overlay:
-      desc: "Content validation of an uploaded reference map (#595)"
-      level: 2
+      desc: "Uploaded reference map (#595): an accepted file's extension matches an expected one and its content matches the type the extension represents (magic bytes, image rewriting, content validation; L2: all files)"
+      level: 1
       status: pass
       notes: "PUT /api/world-views/regions/:regionId/image-overlay (admin only) takes the image as a data URL of PNG, JPEG or WebP; decodeOverlayImage (controllers/worldView/regionImageOverlay.ts) checks the bytes against the declared type's signature and caps them at 10 MB, and the table's CHECKs hold the same types and cap. SVG, which can carry script, is refused; the dialog rasterizes it to PNG first. Stored as bytea in region_image_overlays (ADR-0113), never on disk, and read back by admins only. The body's sourceUrl, the region map the image was loaded from (#2087), is held to an absolute http(s) address by isStorableHttpUrl and by the region_image_overlays.source_url CHECK, and is never fetched. Added 2026-10-16."
+    V5.2.3:
+      desc: "Compressed files are checked against a maximum uncompressed size and file count before they are uncompressed"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V5.3.1:
-      desc: "Downloaded files not executable server-side"
+      desc: "Files uploaded or generated from untrusted input and stored in a public folder are not executed as server-side code"
       level: 1
       status: pass
       notes: "Images stored in /data/images/, not in executable paths"
     V5.3.2:
-      desc: "No user-controlled file paths"
+      desc: "File paths are built from internally generated or trusted data, or user-supplied names and metadata are strictly validated and sanitized (path traversal, LFI, RFI, SSRF)"
       level: 1
       status: pass
       notes: "Both sourceName and externalId sanitized with replace(/[^a-zA-Z0-9_-]/g, '-'). Path traversal prevented. Fixed 2026-02-10"
-    V5.1.1_cvpy:
-      desc: "cv-python multipart upload size enforcement"
-      level: 1
-      status: pass
-      notes: "BodySizeLimitMiddleware rejects requests with Content-Length > CV_MAX_BODY_BYTES (default 100 MB) before they're buffered, returning 413. Streaming uploads without Content-Length flow through but are gated by uvicorn's --limit-concurrency. Fixed 2026-05-10."
-    V5.1.2_cvpy:
-      desc: "cv-python file-format validation"
-      level: 1
-      status: pass
-      notes: "decode_image() in cv-python/app/utils/image.py raises InvalidImageBytes on empty bytes or when cv2.imdecode returns None (i.e. not a recognised image). Routed via FastAPI exception handler to a 400 with a generic detail string. Fixed 2026-05-10."
+    V5.4.1:
+      desc: "User-submitted filenames are validated or ignored, and the response names a filename in Content-Disposition"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V5.4.2:
+      desc: "File names served (in header fields or email attachments) are encoded or sanitized, for example per RFC 6266"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V5.4.3:
+      desc: "Files from untrusted sources are scanned by antivirus software so that known malicious content is not served"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
 
   V5_cvpy_out_of_scope:
     V5.user_uploads_status:
-      desc: "User file uploads (operator/curator-supplied map images via cv-python)"
+      desc: "User file uploads (operator/curator-supplied map images via cv-python) (project-specific check, not an ASVS 5.0 requirement id)"
       level: 1
       status: pass
-      notes: "Was previously listed as out-of-scope; brought into scope 2026-05-10 with the cv-python service. See V5.1.1_cvpy and V5.1.2_cvpy above."
+      notes: "Was previously listed as out-of-scope; brought into scope 2026-05-10 with the cv-python service. See V5.2.1_cvpy and V5.2.2_cvpy above."
 
   V6_authentication:
     V6.1.1:
-      desc: "Rate limiting and anti-brute-force on auth"
+      desc: "Documentation defines how rate limiting, anti-automation and adaptive response defend against credential stuffing and password brute force, and how malicious account lockout is prevented"
       level: 1
-      status: pass
-      notes: "express-rate-limit on login (10/15min), register (5/hour), refresh (30/min). No account lockout yet. Fixed 2026-02-10"
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.1.2:
+      desc: "A list of context-specific words (organization, product and system names and the like) is documented to keep them out of passwords"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.1.3:
+      desc: "Where there are several authentication pathways, all are documented with the controls and authentication strength enforced across them"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V6.2.1:
-      desc: "Passwords >= 8 chars"
+      desc: "User-set passwords are at least 8 characters long (15 strongly recommended)"
       level: 1
       status: pass
       notes: "Zod schema enforces min 8, max 128 chars"
     V6.2.2:
-      desc: "Users can change password"
+      desc: "Users can change their password"
       level: 1
       status: pass
       notes: "POST /api/auth/change-password — validates current password, checks HIBP, revokes every refresh token the account holds and issues a replacement pair for the calling session, so other devices end at their next refresh. Fixed 2026-02-10. Reachable by a user since 2026-08-24: the account page at /account, linked from the user menu (#326) — before that the endpoint existed with no UI, so the requirement passed on the API alone"
     V6.2.3:
-      desc: "Password change requires current password"
+      desc: "Password change requires the user's current and new password"
       level: 1
       status: pass
       notes: "bcrypt.compare() verifies current password before allowing change. Fixed 2026-02-10"
     V6.2.4:
-      desc: "Passwords checked against common password list"
+      desc: "Passwords at registration or change are checked against at least the top 3000 passwords that match the password policy"
       level: 1
       status: pass
       notes: "HIBP k-Anonymity API checked on registration and password change. Fails open if HIBP unavailable. Fixed 2026-02-10"
     V6.2.5:
-      desc: "No composition rules restricting character types"
+      desc: "Passwords of any composition are allowed, with no character-type rules"
       level: 1
       status: pass
       notes: "Only min/max length enforced, no character class requirements"
     V6.2.6:
-      desc: "Password fields use type=password"
+      desc: "Password fields use type=password; temporarily viewing the masked entry is allowed"
       level: 1
       status: pass
       notes: "Every password field (sign-in, registration, the change-password form on /account) is the shared PasswordField: masked by default and again on its form's submit, with a show / hide button that reveals only its own field on the person's request, as V6.2.6 allows (#1062). Sign-in sets autocomplete=current-password, registration new-password"
     V6.2.7:
-      desc: "Paste and password managers allowed"
+      desc: "Paste, browser password helpers and external password managers are permitted"
       level: 1
       status: pass
       notes: "No paste prevention detected; standard MUI TextField. The change-password form also carries autocomplete=current-password/new-password so a manager can fill and store it; ChangePasswordForm.test.tsx pins both"
     V6.2.8:
-      desc: "Password verified as-is, no truncation or case changes"
+      desc: "The password is verified exactly as received, without truncation or case transformation"
       level: 1
-      status: pass
-      notes: "bcrypt.compare() uses raw input"
+      status: fail
+      notes: "Fail since 2026-11-15 (#2524, #2553): bcrypt.compare() takes the raw input with no case transformation, but bcrypt (bcryptjs, hashPassword and verifyPassword in authService.ts) reads only the first 72 bytes, while registerSchema and changePasswordSchema (types/auth.ts) accept up to 128 characters, so two passwords that share their first 72 bytes both sign in."
     V6.2.9:
-      desc: "Passwords up to 64+ chars permitted"
+      desc: "Passwords of at least 64 characters are permitted"
       level: 2
       status: pass
       notes: "Max 128 chars allowed"
+    V6.2.10:
+      desc: "A password stays valid until it is found compromised or the user rotates it; no periodic rotation is required"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.2.11:
+      desc: "The documented list of context-specific words is used to prevent easy-to-guess passwords"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V6.2.12:
-      desc: "Passwords checked against breached password sets"
+      desc: "Passwords at registration or change are checked against a set of breached passwords"
       level: 2
       status: pass
       notes: "HIBP k-Anonymity API (only first 5 SHA-1 chars sent — privacy-preserving). Applied on register + password change. Fixed 2026-02-10"
     V6.3.1:
-      desc: "Password hashing with approved algorithm"
+      desc: "Controls against credential stuffing and password brute force are implemented as the application's security documentation defines"
       level: 1
       status: pass
-      notes: "bcryptjs with 12 salt rounds"
+      notes: "express-rate-limit on login (10/15min), register (5/hour), refresh (30/min). No account lockout yet. Fixed 2026-02-10"
+    V6.3.2:
+      desc: "Default user accounts (root, admin, sa) are absent or disabled"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.3.3:
+      desc: "Multi-factor authentication, or a combination of single-factor mechanisms, is required to access the application"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.3.4:
+      desc: "Where there are several authentication pathways, none is undocumented, and controls and authentication strength are enforced consistently"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.3.8:
+      desc: "Valid users cannot be deduced from failed authentication (error messages, status codes, response times), registration and forgotten-password functionality included"
+      level: 3
+      status: pass
+      notes: "Register always returns identical response regardless of email existence (no 409). Resend-verification also returns uniform response. Login returns generic 'Invalid email or password'. Fixed 2026-02-10"
     V6.4.1:
-      desc: "Email verification flow"
+      desc: "System-generated initial passwords or activation codes are securely random, follow the password policy, expire soon or after first use, and cannot become the long-term password"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.4.2:
+      desc: "Password hints and knowledge-based authentication ('secret questions') are not present"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.4.3:
+      desc: "A secure forgotten-password reset process exists and does not bypass enabled multi-factor authentication"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.4.4:
+      desc: "Recovering a lost multi-factor authentication factor requires identity proofing at the level of enrollment"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.5.1:
+      desc: "Lookup secrets, out-of-band codes and TOTPs can be used successfully only once"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.5.2:
+      desc: "Stored lookup secrets with under 112 bits of entropy are hashed with an approved password hashing algorithm and a 32-bit random salt"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.5.3:
+      desc: "Lookup secrets, out-of-band codes and TOTP seeds are generated with a CSPRNG"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.5.4:
+      desc: "Lookup secrets and out-of-band codes have at least 20 bits of entropy"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.5.5:
+      desc: "Out-of-band requests, codes or tokens and TOTPs have a defined lifetime (out-of-band at most 10 minutes, TOTP 30 seconds)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.6.1:
+      desc: "Phone or SMS one-time passwords are offered only for a validated number, beside stronger methods, with their risks explained to users"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.6.2:
+      desc: "Out-of-band requests, codes or tokens are bound to the authentication request they were generated for"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.6.3:
+      desc: "Code-based out-of-band authentication is rate limited against brute force"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.8.1:
+      desc: "With several identity providers, a user's identity cannot be spoofed through another provider (users identified by IdP id plus user id)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.8.2:
+      desc: "Digital signatures on authentication assertions (JWTs, SAML) are always required and validated; unsigned or invalid assertions are rejected"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.8.3:
+      desc: "SAML assertions are processed only once within their validity period"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V6.8.4:
+      desc: "Where a separate IdP is expected to give a specific authentication strength, method or recentness, the application verifies it from the IdP's information (acr, amr, auth_time) or has a documented fallback"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    email_verification_flow:
+      desc: "An account signs in only once its email is verified, and only a verified account is promoted to admin (project-specific check, not an ASVS 5.0 requirement id)"
       level: 1
       status: pass
       notes: "Full email verification: register sends token, verify-email
@@ -256,127 +626,484 @@ chapters:
         creates a pre-verified account directly — no email step needed.
         Automatic admin promotion (maybePromoteToAdmin) is verified-only:
         unverified accounts are never promoted. Race-safe via advisory xact
-        lock. Fixed 2026-02-10; verified-only promotion hardened 2026-05-30."
-    V6.5.1:
-      desc: "Credential enumeration resistance"
-      level: 1
-      status: pass
-      notes: "Register always returns identical response regardless of email existence (no 409). Resend-verification also returns uniform response. Login returns generic 'Invalid email or password'. Fixed 2026-02-10"
+        lock. Fixed 2026-02-10; verified-only promotion hardened 2026-05-30.
+        Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V6.4.1, which ASVS 5.0 gives to system-generated initial passwords and activation codes (securely random, expiring soon or after first use, never the long-term password). This entry checks the verification flow, not how its token is generated or whether it is used only once, so V6.4.1 has its own row."
 
   V7_session_management:
-    V7.2.1:
-      desc: "Session tokens cryptographically random, >= 128 bits entropy"
-      level: 1
-      status: pass
-      notes: "Refresh tokens are 32 random bytes (256 bits entropy). JWT signed with HMAC-SHA256"
-    V7.3.1:
-      desc: "Session timeout configured"
-      level: 1
-      status: pass
-      notes: "Access token: 15min. Refresh token: 7 days. Both enforced"
-    V7.3.2:
-      desc: "Refresh token rotation implemented"
+    V7.1.1:
+      desc: "The session inactivity timeout and absolute maximum lifetime are documented, appropriate with other controls, and deviations from NIST SP 800-63B re-authentication are justified"
       level: 2
-      status: pass
-      notes: "Old refresh token revoked when new one issued via rotateRefreshToken()"
-    V7.3.3:
-      desc: "Refresh tokens stored securely"
-      level: 2
-      status: pass
-      notes: "Server: SHA256 hash in DB. Client: httpOnly, Secure, SameSite=Strict cookie (path=/api/auth). Fixed 2026-02-10"
-    V7.3.4:
-      desc: "Refresh token reuse detection"
-      level: 2
-      status: pass
-      notes: "Token family tracking via family_id column. Reuse of a revoked token triggers revocation of the entire family (all descendant tokens). Fixed 2026-02-10"
-    V7.3.5:
-      desc: "Logout invalidates tokens"
-      level: 1
-      status: pass
-      notes: "Logout revokes refresh token AND blacklists access token JTI (in-memory, auto-cleaned). Token immediately rejected by verifyAccessToken(). Fixed 2026-02-10. The web client did not send the access token on logout, so the blacklist never ran for it, until 2026-09-27 (#1110): useAuth takes the token before clearing state and logout() sends it"
-    V7.3.6:
-      desc: "Concurrent session limits"
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.1.2:
+      desc: "Documentation defines how many concurrent sessions one account may have and what happens when the maximum is reached"
       level: 2
       status: pass
       notes: "Max 10 active refresh tokens per user. Oldest tokens auto-revoked when limit exceeded. Fixed 2026-02-10"
-    V7.3.7:
-      desc: "Expired token cleanup"
+    V7.1.3:
+      desc: "Systems that create and manage sessions in a federated identity ecosystem are documented, with the controls that coordinate session lifetime, termination and re-authentication"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.2.1:
+      desc: "All session token verification is done by a trusted backend service"
+      level: 1
+      status: pass
+      notes: "Established by V9.1.1's and V9.2.2's notes: the access token is verified on the backend with jsonwebtoken.verify(), and the refresh token by a lookup of its hash in the backend's database. Recorded from those notes on 2026-11-15 (#2524), not re-audited against the code."
+    V7.2.2:
+      desc: "Session management uses dynamically generated self-contained or reference tokens, not static API secrets and keys"
+      level: 1
+      status: pass
+      notes: "Established by V7.2.3's and V9.1.1's notes: sessions use a signed JWT access token and a refresh token of 32 random bytes, not a static API secret or key. Recorded from those notes on 2026-11-15 (#2524), not re-audited against the code."
+    V7.2.3:
+      desc: "Reference session tokens are unique, generated by a CSPRNG, with at least 128 bits of entropy"
+      level: 1
+      status: pass
+      notes: "Refresh tokens are 32 random bytes (256 bits entropy). JWT signed with HMAC-SHA256"
+    V7.2.4:
+      desc: "A new session token is generated on authentication, re-authentication included, and the current one is terminated"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.3.1:
+      desc: "An inactivity timeout enforces re-authentication according to risk analysis and documented security decisions"
       level: 2
       status: pass
-      notes: "cleanup_refresh_tokens() SQL function scheduled via setInterval every 6 hours in index.ts. Fixed 2026-02-10"
+      notes: "Access token: 15min. Refresh token: 7 days. Both enforced"
+    V7.3.2:
+      desc: "An absolute maximum session lifetime enforces re-authentication according to risk analysis and documented security decisions"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.4.1:
+      desc: "A terminated session (logout, expiry) cannot be used again; self-contained tokens need a list of terminated tokens, a per-user cutoff or a rotated per-user key"
+      level: 1
+      status: pass
+      notes: "Logout revokes refresh token AND blacklists access token JTI (in-memory, auto-cleaned). Token immediately rejected by verifyAccessToken(). Fixed 2026-02-10. The web client did not send the access token on logout, so the blacklist never ran for it, until 2026-09-27 (#1110): useAuth takes the token before clearing state and logout() sends it"
+    V7.4.2:
+      desc: "All active sessions are terminated when a user account is disabled or deleted"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.4.3:
+      desc: "After a change or removal of an authentication factor (a password change included), the user is offered to terminate all other active sessions"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.4.4:
+      desc: "Every page that requires authentication has easy, visible access to logout"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.4.5:
+      desc: "Administrators can terminate the active sessions of an individual user or of all users"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.5.1:
+      desc: "Full re-authentication is required before changing sensitive account attributes that affect authentication (email, phone, MFA configuration, recovery information)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.5.2:
+      desc: "Users can view and, after authenticating again with at least one factor, terminate any or all of their active sessions"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.6.1:
+      desc: "Session lifetime and termination between relying parties and identity providers behave as documented, with re-authentication as needed"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V7.6.2:
+      desc: "Creating a session requires the user's consent or an explicit action"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    expired_token_cleanup:
+      desc: "Expired and revoked refresh tokens are deleted on a schedule (project-specific check, not an ASVS 5.0 requirement id)"
+      level: 2
+      status: pass
+      notes: "cleanup_refresh_tokens() SQL function scheduled via setInterval every 6 hours in index.ts. Fixed 2026-02-10. Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V7.3.7, an ASVS 4.0 number that ASVS 5.0 does not have. The nearest 5.0 text, V14.2.7 (L3: outdated sensitive data deleted automatically on a schedule), asks for a data retention classification this entry does not check."
+    refresh_token_reuse_detection:
+      desc: "Reuse of a revoked refresh token revokes its whole family (project-specific check, not an ASVS 5.0 requirement id)"
+      level: 2
+      status: pass
+      notes: "Token family tracking via family_id column. Reuse of a revoked token triggers revocation of the entire family (all descendant tokens). Fixed 2026-02-10. Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V7.3.4, an ASVS 4.0 number that ASVS 5.0 does not have. The nearest 5.0 text is V10.4.5 (revoke all refresh tokens of an authorization when a used one is presented again), which binds an OAuth authorization server serving public clients; this application issues its own session tokens and is not one."
+    refresh_token_rotation:
+      desc: "The refresh token is rotated on every use (project-specific check, not an ASVS 5.0 requirement id)"
+      level: 2
+      status: pass
+      notes: "Old refresh token revoked when new one issued via rotateRefreshToken(). Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V7.3.2, an ASVS 4.0 number; ASVS 5.0 gives V7.3.2 to an absolute maximum session lifetime. The nearest 5.0 text is V10.4.5 (refresh token rotation that revokes the authorization on reuse), which binds an OAuth authorization server serving public clients; this application issues its own session tokens and is not one."
 
   V8_authorization:
-    V8.2.1:
-      desc: "Authorization enforced server-side"
+    V8.1.1:
+      desc: "Authorization documentation defines rules restricting function-level and data-specific access by consumer permissions and resource attributes"
       level: 1
-      status: pass
-      notes: "All admin endpoints use requireAdmin. SSE geometry compute endpoint fixed to include requireAdmin. Fixed 2026-02-10. World view visibility is checked server-side too, via two mechanisms: a declared route's scope (ADR-0071), checked by isVisibleToReaders in backend/src/middleware/worldViewVisibility.ts, guards the region/experience read surface (404, not 403) and getWorldViews filters the listing; GET /api/experiences/:id can't use either, since the experience itself is public, so it filters the regions[] it returns with the same predicate instead — and separately does 404 for an unread row from a gated source, which is not public (ADR-0025). See V8.3.1 for detail."
-    V8.3.1:
-      desc: "Users can only access their own data (IDOR protection)"
-      level: 1
-      status: pass
-      notes: "All user-scoped queries use /me/ pattern with req.user.id. No URL-based user ID accepted for personal data. World view visibility is enforced by two mechanisms, shaped by what each route can answer. (1) a declared route's scope (ADR-0071) guards region reads, experience-by-region reads, and the region-scoped experience locations reads (regionId as a route param or a query param); it answers 404 rather than 403, so existence is not confirmed. (2) GET /api/experiences/:id (getExperience) can't 404 on *world-view* visibility — the experience itself is public data, only its world-view association is sensitive — so it instead filters the regions[] array it returns, using the same is_active/is_public predicate as getWorldViews. That sentence stopped being the whole story with ADR-0025: the same route now does 404 on a different axis, because an unread row from a gated source (curation_state = 'pending') is not public data at all — no read has ever shown it — so /:id, /:id/locations and /:id/treasures answer 404/empty for it and widen only for a curator or admin whose scope reaches the experience (maySeeUnreadExperience). Two axes, two different answers, and the reason they differ is what each hides: a hidden world view is a fact about our organisation of public objects, an unread row is an object nobody has vouched for. POST /experiences/:id/publish is the one route that accepts caller-supplied child ids (locationIds, treasureIds); both arrays are re-scoped inside the statements that consume them, so an id belonging to another experience is discarded rather than trusted — see SECURITY.md. Added 2026-08-12 (ADR-0025). The regions[] array gained a second filter on that same second axis on 2026-08-24 (#521): a region is named only where the object has a point there that this caller may see, so an assignment a gated run made on an unread point no longer discloses the region it landed in — placement writes such a point into experience_regions deliberately (ADR-0025 decision 5), and every reader-facing region read now asks readerRegionMembershipSql() rather than reading that roll-up bare. It is relaxed on the same maySeeUnreadExperience boolean as the row itself, for the reason /:id/locations is: a curator reading a queue item has to be shown where publishing will put it. A manual assignment is exempt, having been made by a curator rather than derived from a point. GET /:id/treasures names the museums each work hangs in (venues) behind the same boolean and to no reader: every venue, a refused, unread or out-of-scope one included, by name, kind, source id and whether readers see the work there - intended, since the curator's correction writes the row all of them carry and the dialog must say which they are."
-    V8.3.2:
-      desc: "Curator scope enforcement"
-      level: 1
-      status: pass
-      notes: "checkCuratorScope() validates global/source/region scopes with recursive CTE — those three are what curator_assignments.scope_type permits in db/init/01-schema.sql since migration 055 (#819, 2026-09-13): the scope that names a source is spelled 'source', the word db/migrations/001-curator-system.sql created it with. In between, 01-schema.sql spelled it 'category' and no migration converted a 001-provisioned database, so such a database could hold 'source' rows that granted nothing (the matchers said 'category'). 055 converts every 'category' row to 'source', re-creates both CHECK constraints and the partial unique index under that word and renames category_id to source_id, so a 'source' assignment now grants exactly the scope it names — the intended one (#452, closed by #819) — and CuratorScopeType matches the schema. Older sentences below that say category, e.category_id or /experiences/categories/:categoryId/publish-waiting describe the same code under its earlier names: it is source, e.source_id and /experiences/sources/:sourceId/publish-waiting now. getCurationLog's check was added 2026-02-10 but qualified one arbitrary region of the experience while the response carried rows for all of them (#442); it now resolves scope against everything in the log attributable to the caller — the experience's assigned regions and the regions its log rows already name — and filters the rows themselves through CURATOR_SCOPED_REGIONS_CTE, so a region-scoped curator sees only the entries for regions they cover. Fixed 2026-07-29. Since #1366 (2026-10-12) the log it reads is the place's and that of every entry a standing merge folded into it (LOG_PLACES_CTE), under the same gate and the same per-row filter. editExperience carried the same one-arbitrary-region shape on the write path (#450): an unordered LIMIT 1 over experience_regions both decided the 403 — refusing a curator who was in scope whenever it returned another of the experience's regions — and landed on the audit row, which since the log change above hid the edit from its own author. It now intersects the experience's assignments with CURATOR_SCOPED_REGIONS_CTE for the grant, and names on the log row a region the caller covers (NULL for admins, global curators, and curators of the category, whose authority came from no one region). The other curation handlers are told their region by the request, so none of them shares the shape. Fixed 2026-07-29. The review queue (GET /experiences/review/queue, POST /experiences/:id/state, POST /experiences/:id/accept-source, added 2026-08-03) runs on the same predicate: the two write endpoints reuse resolveExperienceScope, and the queue — the first set-returning caller — qualifies rows with CURATOR_SCOPED_REGIONS_CTE. POST /experiences/:id/admission joins them unchanged (ADR-0024, 2026-08-08): resolveExperienceScope for the grant, and the queue's fourth set — keptOut, the refusals a curator confirmed — carries the same CTE, so a region-scoped curator can only take back a withdrawal they could have made. That set exists because the withdrawal is otherwise irreversible: experienceOfferedToReaderSql rides on no reader toggle, so a confirmed row is reachable on no other surface, and override therefore stays permitted on a pinned row while confirm does not — the asymmetry is the audit-relevant part, since only confirm hides. Its rows span categories, so it correlates the unrestricted check on e.category_id rather than on the caller's optional categoryId filter; binding $3 there would have measured every row against one request parameter and silently stripped a category curator of the scope they hold whenever they did not filter by their own category. curatorUnrestrictedScopeExists() now emits both forms from one definition, and its parameter is a two-literal union, not a string. accept-source reads curated_fields under OBJECT_LOCK (FOR NO KEY UPDATE, the one mode every writer takes on an object - it self-conflicts, so writers still serialise, and it does not conflict with the key share a foreign key takes, which is what stops a curator and a sync run deadlocking on one object) inside the transaction that rewrites it: the whole column is replaced, so a value read before the lock would discard a concurrent claim, and the lock is what makes \"is this field still claimed\" authoritative rather than a guess. POST /experiences/:id/publish is the fifth on the same predicate (ADR-0025, 2026-08-12): resolveExperienceScope for the grant, and the queue's three new sets — arrival, held, contents — carry CURATOR_SCOPED_REGIONS_CTE like the rest, so a region-scoped curator is only asked about, and can only publish, rows they cover. It is also the first curator route to take request-supplied child ids: locationIds and treasureIds are re-scoped inside the statements that consume them (WHERE experience_id = the locked row), so an id from another experience is discarded rather than published, and the response reports what was released rather than echoing what was asked for. The endpoint reads the row under OBJECT_LOCK and compares expectedSyncLogId with pending_change_sync_log_id, which is what makes \"is this the proposal the curator was shown\" authoritative rather than a guess — the same shape as accept-source, one column over. POST /experiences/categories/:categoryId/publish-waiting (ADR-0025, 2026-08-12) resolves scope per object rather than per category and reports what the caller does not cover as outOfScope, so a region-scoped curator releases only rows they hold and cannot mistake a short result for a cleared source; it reuses publishUnderLock per object, so the row lock, the staleness comparison and the per-object audit row are the same ones the single endpoint uses. It deliberately does not publish gate-held field proposals: applying one rewrites a row readers already see with a value nobody read, and satisfying the staleness check for a batch would mean passing each row's own stored pointer back to it — which would satisfy it falsely. POST /experiences/:id/decline-source (2026-08-14) is the sixth on the same predicate and the mirror of accept-source: resolveExperienceScope for the grant, curated_fields re-read under OBJECT_LOCK inside its own transaction, and expectedSyncLogId compared against the proposal resolved under that lock. The comparison matters in the opposite direction to accept-source's — accepting the wrong run writes a value nobody read, refusing the wrong run silences a proposal nobody read — and the refused value is taken from the locked row rather than the request, so a caller cannot record a refusal of something the source never proposed. It writes nothing to the experience. POST /experiences/:id/decline-held (ADR-0038, 2026-08-31) is the seventh, and answers one held row rather than the whole proposal: resolveExperienceScope for the grant, pending_change_sync_log_id re-read under OBJECT_LOCK, and expectedSyncLogId — required here rather than optional, since a per-row answer has nothing to be about without the run it answers — compared against it. The refused value is taken from the locked proposal exactly as decline-source's is, and is load-bearing for a second reason here: the readers suppress a held row only while the proposal is jsonb-equal to what was answered, so an answer recorded about a value nobody proposed would silence nothing while reporting success. The selection names rows by kind, reference, name and field and never by id — the record names a part and does not identify it (ADR-0026 decision 4) — and a name the locked proposal does not carry is refused with 409 rather than ignored, so a caller cannot file an answer against a row that is not open. It writes nothing to the experience and nothing to curated_fields, and clears the pointer only when nothing on the card is left open. POST /experiences/:id/publish took the same selection at the same time and reads its values from the same locked proposal, so the two answers are bounded by one rule rather than two. The gate switch itself (PUT /api/admin/sync/sources/:sourceId/curation-gate) is admin-only by its route's declared admin access (backend/src/routes/adminDeclaredRoutes.ts, ADR-0071) and writes experience_sources alone, so it can neither publish nor hide an existing row. The queue read was rebuilt on 2026-09-07 (ADR-0051, #805) and the predicate has a second place to be missing from, so it is carried in both: the keys union that chooses the page joins curator_scoped_regions in all seven of its branches - conflict, arrival, held, contents, withdrawn, refused, missing - before the search and before any facet, so no name outside the caller's scope can be reached through the search box or counted into a chip, and a test asserts the number of those joins rather than their presence, which is what makes a branch added without one fail instead of widening the queue silently. GET /experiences/review/queue/map (#2477, 2026-11-13) reads the same union through the same function (scopedQuestionsSql in reviewQueueKeys.ts) under the same chips (selectedSql), every question with its place's point and no page, so the map can name no place the list would not show the caller. POST /experiences/:id/admission-pin (#1367, 2026-10-12) answers the queue's pin-question card on the same predicate: answeredSourceId and resolveExperienceScope for the grant, the membership re-read under OBJECT_LOCK and required to belong to the place and to carry the question the card showed (409 otherwise), and the pin-question branch of the keys union carries the scope join like the rest. POST /experiences/:id/visit-question (#1770, 2026-10-21) answers the visit-question card the same way: answeredSourceId and resolveExperienceScope for the grant, the question re-read under OBJECT_LOCK with visitQuestionOpenSql and required to belong to that membership of the place (409 otherwise), and its keys branch carries the scope join. POST /experiences/:id/keep-out and GET /experiences/:id/kinds (#2022, 2026-10-25) follow it: the refusal resolves the named membership's source scope with answeredSourceId and resolveExperienceScope, and re-reads the membership under OBJECT_LOCK, required offered and of that place (409 otherwise); the read answers only a curator whose scope reaches the place (resolveExperienceScope with 'place', 403 otherwise, 404 for a missing place) and lists every kind of it with canAnswer from queueScopeSql on the membership's source, names the curator who kept a kind out only where the curation log's per-row rule would, and shows the note only within the caller's scope. POST /experiences/:id/kinds (#2035, 2026-10-26) puts a place into a kind no run offers it in on the same predicate: the kind's source (its first by display_priority) and resolveExperienceScope for the grant, the place re-read under OBJECT_LOCK and required to hold no membership in that kind (409 otherwise), World Heritage Sites refused; the kinds GET /experiences/:id/kinds offers for an add are filtered by queueScopeSql on each kind's source. POST /experiences/:id/parts, POST /experiences/:id/parts/take-out, GET /experiences/:id/parts and GET /experiences/:id/part-candidates (#2118, 2026-11-13) set and read a curator's word that a place is a part of a whole: a write changes two places, so its grant is resolveExperienceScope with 'place' on the whole and on the part, both required (403 otherwise), and each place's log row names the region its own grant came from; the two places are locked in id order and the pair re-read under the locks, so a word is written only about the pair as it stands (409 otherwise); the reads answer only a curator whose scope reaches the place, and check every row they return (2026-11-14): a part, a whole or a candidate is listed only when readers are offered it (placeOrPartOfferedSql) or the caller's scope reaches it (canCurateExperienceSql), so an unread place outside the scope is never named nor measured from as a candidate's nearest part, and an offered one outside it is returned as not choosable, as the write would refuse it; the note shown is read off the place's own history under the curation log's per-row rule (unrestricted, no region, or a region in the caller's closure), so a row naming a region outside the caller's scope reads as none. A word refused for a chain too deep names the chain's places by the same rule (2026-11-14, #2522): a place no reader is offered outside the caller's scope is null in the refusal's chain and only counted in its message. The crowding window and answers (#2282, ADR-0180, 2026-11-02) follow it too: GET /experiences/review/crowding/group and GET /experiences/review/crowding/place/:membershipId (#2358, 2026-11-04, replacing the window around one membership) list the places a reader is shown or that wait in a tail to any curator, as the region's page does, mark each one's canAnswer by queueScopeSql on its own source, and leave out an unread arrival outside the caller's scope, the place read answering it 404; GET /experiences/review/crowding/arrivals lists only arrivals within queueScopeSql; POST /experiences/review/crowding/answers resolves each body membership id's own source scope before any write, counts one outside it without naming it, and re-reads the membership under OBJECT_LOCK. GET /experiences/review/pins and POST /experiences/:id/admission-pin/hand-back (#1369) follow it: the list filters each pin by queueScopeSql on the membership's source and names the answering curator only where the curation log's per-row rule would, and the hand-back resolves the membership's source scope and re-reads the pin under OBJECT_LOCK Since #1893 (2026-10-23) a 'source' scope reaches a place as a whole when the place holds a membership of that source (curatorPlaceScopeExists in backend/src/middleware/auth.ts, the maintainer's decision), and an answer about one membership is scoped by the membership the writer answers: the named one, or the one waiting or refused that the writer picks unnamed (answeredSourceId). Before, an answer naming no membership was scoped by the place's first source while the writer could answer another source's membership. The first source (experiences.source_id) decides no scope now, and the lint rule provenance/no-first-source-key refuses a comparison with it."
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V8.1.1_cvpy:
-      desc: "cv-python authorization model"
-      level: 2
+      desc: "cv-python service: authorization documentation defines rules restricting function-level and data-specific access by consumer permissions and resource attributes"
+      level: 1
       status: pass
       notes: "Service has no per-request authn/authz. Trust derives from Docker network isolation: no `ports:` mapping in docker-compose.yml (only `expose: 8000`), service reachable only at http://cv-python:8000 from other containers on the bridge. Documented as a trust boundary in SECURITY.md. If cv-python ever moves out of the bridge or onto a shared cluster, a shared-secret header or mTLS becomes mandatory — tracked as a follow-up. Verified 2026-05-10."
+    V8.1.2:
+      desc: "Authorization documentation defines field-level read and write access rules by consumer permissions and resource attributes"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V8.2.1:
+      desc: "Function-level access is restricted to consumers with explicit permissions"
+      level: 1
+      status: pass
+      notes: "All admin endpoints use requireAdmin. SSE geometry compute endpoint fixed to include requireAdmin. Fixed 2026-02-10. World view visibility is checked server-side too, via two mechanisms: a declared route's scope (ADR-0071), checked by isVisibleToReaders in backend/src/middleware/worldViewVisibility.ts, guards the region/experience read surface (404, not 403) and getWorldViews filters the listing; GET /api/experiences/:id can't use either, since the experience itself is public, so it filters the regions[] it returns with the same predicate instead — and separately does 404 for an unread row from a gated source, which is not public (ADR-0025). See V8.2.2 for detail."
+    V8.2.2:
+      desc: "Data-specific access is restricted to consumers with explicit permissions to the specific data items (IDOR, BOLA)"
+      level: 1
+      status: pass
+      notes: "All user-scoped queries use /me/ pattern with req.user.id. No URL-based user ID accepted for personal data. World view visibility is enforced by two mechanisms, shaped by what each route can answer. (1) a declared route's scope (ADR-0071) guards region reads, experience-by-region reads, and the region-scoped experience locations reads (regionId as a route param or a query param); it answers 404 rather than 403, so existence is not confirmed. (2) GET /api/experiences/:id (getExperience) can't 404 on *world-view* visibility — the experience itself is public data, only its world-view association is sensitive — so it instead filters the regions[] array it returns, using the same is_active/is_public predicate as getWorldViews. That sentence stopped being the whole story with ADR-0025: the same route now does 404 on a different axis, because an unread row from a gated source (curation_state = 'pending') is not public data at all — no read has ever shown it — so /:id, /:id/locations and /:id/treasures answer 404/empty for it and widen only for a curator or admin whose scope reaches the experience (maySeeUnreadExperience). Two axes, two different answers, and the reason they differ is what each hides: a hidden world view is a fact about our organisation of public objects, an unread row is an object nobody has vouched for. POST /experiences/:id/publish is the one route that accepts caller-supplied child ids (locationIds, treasureIds); both arrays are re-scoped inside the statements that consume them, so an id belonging to another experience is discarded rather than trusted — see SECURITY.md. Added 2026-08-12 (ADR-0025). The regions[] array gained a second filter on that same second axis on 2026-08-24 (#521): a region is named only where the object has a point there that this caller may see, so an assignment a gated run made on an unread point no longer discloses the region it landed in — placement writes such a point into experience_regions deliberately (ADR-0025 decision 5), and every reader-facing region read now asks readerRegionMembershipSql() rather than reading that roll-up bare. It is relaxed on the same maySeeUnreadExperience boolean as the row itself, for the reason /:id/locations is: a curator reading a queue item has to be shown where publishing will put it. A manual assignment is exempt, having been made by a curator rather than derived from a point. GET /:id/treasures names the museums each work hangs in (venues) behind the same boolean and to no reader: every venue, a refused, unread or out-of-scope one included, by name, kind, source id and whether readers see the work there - intended, since the curator's correction writes the row all of them carry and the dialog must say which they are. Merged from the row filed as V8.3.2 until 2026-11-15 (#2524): checkCuratorScope() validates global/source/region scopes with recursive CTE — those three are what curator_assignments.scope_type permits in db/init/01-schema.sql since migration 055 (#819, 2026-09-13): the scope that names a source is spelled 'source', the word db/migrations/001-curator-system.sql created it with. In between, 01-schema.sql spelled it 'category' and no migration converted a 001-provisioned database, so such a database could hold 'source' rows that granted nothing (the matchers said 'category'). 055 converts every 'category' row to 'source', re-creates both CHECK constraints and the partial unique index under that word and renames category_id to source_id, so a 'source' assignment now grants exactly the scope it names — the intended one (#452, closed by #819) — and CuratorScopeType matches the schema. Older sentences below that say category, e.category_id or /experiences/categories/:categoryId/publish-waiting describe the same code under its earlier names: it is source, e.source_id and /experiences/sources/:sourceId/publish-waiting now. getCurationLog's check was added 2026-02-10 but qualified one arbitrary region of the experience while the response carried rows for all of them (#442); it now resolves scope against everything in the log attributable to the caller — the experience's assigned regions and the regions its log rows already name — and filters the rows themselves through CURATOR_SCOPED_REGIONS_CTE, so a region-scoped curator sees only the entries for regions they cover. Fixed 2026-07-29. Since #1366 (2026-10-12) the log it reads is the place's and that of every entry a standing merge folded into it (LOG_PLACES_CTE), under the same gate and the same per-row filter. editExperience carried the same one-arbitrary-region shape on the write path (#450): an unordered LIMIT 1 over experience_regions both decided the 403 — refusing a curator who was in scope whenever it returned another of the experience's regions — and landed on the audit row, which since the log change above hid the edit from its own author. It now intersects the experience's assignments with CURATOR_SCOPED_REGIONS_CTE for the grant, and names on the log row a region the caller covers (NULL for admins, global curators, and curators of the category, whose authority came from no one region). The other curation handlers are told their region by the request, so none of them shares the shape. Fixed 2026-07-29. The review queue (GET /experiences/review/queue, POST /experiences/:id/state, POST /experiences/:id/accept-source, added 2026-08-03) runs on the same predicate: the two write endpoints reuse resolveExperienceScope, and the queue — the first set-returning caller — qualifies rows with CURATOR_SCOPED_REGIONS_CTE. POST /experiences/:id/admission joins them unchanged (ADR-0024, 2026-08-08): resolveExperienceScope for the grant, and the queue's fourth set — keptOut, the refusals a curator confirmed — carries the same CTE, so a region-scoped curator can only take back a withdrawal they could have made. That set exists because the withdrawal is otherwise irreversible: experienceOfferedToReaderSql rides on no reader toggle, so a confirmed row is reachable on no other surface, and override therefore stays permitted on a pinned row while confirm does not — the asymmetry is the audit-relevant part, since only confirm hides. Its rows span categories, so it correlates the unrestricted check on e.category_id rather than on the caller's optional categoryId filter; binding $3 there would have measured every row against one request parameter and silently stripped a category curator of the scope they hold whenever they did not filter by their own category. curatorUnrestrictedScopeExists() now emits both forms from one definition, and its parameter is a two-literal union, not a string. accept-source reads curated_fields under OBJECT_LOCK (FOR NO KEY UPDATE, the one mode every writer takes on an object - it self-conflicts, so writers still serialise, and it does not conflict with the key share a foreign key takes, which is what stops a curator and a sync run deadlocking on one object) inside the transaction that rewrites it: the whole column is replaced, so a value read before the lock would discard a concurrent claim, and the lock is what makes \"is this field still claimed\" authoritative rather than a guess. POST /experiences/:id/publish is the fifth on the same predicate (ADR-0025, 2026-08-12): resolveExperienceScope for the grant, and the queue's three new sets — arrival, held, contents — carry CURATOR_SCOPED_REGIONS_CTE like the rest, so a region-scoped curator is only asked about, and can only publish, rows they cover. It is also the first curator route to take request-supplied child ids: locationIds and treasureIds are re-scoped inside the statements that consume them (WHERE experience_id = the locked row), so an id from another experience is discarded rather than published, and the response reports what was released rather than echoing what was asked for. The endpoint reads the row under OBJECT_LOCK and compares expectedSyncLogId with pending_change_sync_log_id, which is what makes \"is this the proposal the curator was shown\" authoritative rather than a guess — the same shape as accept-source, one column over. POST /experiences/categories/:categoryId/publish-waiting (ADR-0025, 2026-08-12) resolves scope per object rather than per category and reports what the caller does not cover as outOfScope, so a region-scoped curator releases only rows they hold and cannot mistake a short result for a cleared source; it reuses publishUnderLock per object, so the row lock, the staleness comparison and the per-object audit row are the same ones the single endpoint uses. It deliberately does not publish gate-held field proposals: applying one rewrites a row readers already see with a value nobody read, and satisfying the staleness check for a batch would mean passing each row's own stored pointer back to it — which would satisfy it falsely. POST /experiences/:id/decline-source (2026-08-14) is the sixth on the same predicate and the mirror of accept-source: resolveExperienceScope for the grant, curated_fields re-read under OBJECT_LOCK inside its own transaction, and expectedSyncLogId compared against the proposal resolved under that lock. The comparison matters in the opposite direction to accept-source's — accepting the wrong run writes a value nobody read, refusing the wrong run silences a proposal nobody read — and the refused value is taken from the locked row rather than the request, so a caller cannot record a refusal of something the source never proposed. It writes nothing to the experience. POST /experiences/:id/decline-held (ADR-0038, 2026-08-31) is the seventh, and answers one held row rather than the whole proposal: resolveExperienceScope for the grant, pending_change_sync_log_id re-read under OBJECT_LOCK, and expectedSyncLogId — required here rather than optional, since a per-row answer has nothing to be about without the run it answers — compared against it. The refused value is taken from the locked proposal exactly as decline-source's is, and is load-bearing for a second reason here: the readers suppress a held row only while the proposal is jsonb-equal to what was answered, so an answer recorded about a value nobody proposed would silence nothing while reporting success. The selection names rows by kind, reference, name and field and never by id — the record names a part and does not identify it (ADR-0026 decision 4) — and a name the locked proposal does not carry is refused with 409 rather than ignored, so a caller cannot file an answer against a row that is not open. It writes nothing to the experience and nothing to curated_fields, and clears the pointer only when nothing on the card is left open. POST /experiences/:id/publish took the same selection at the same time and reads its values from the same locked proposal, so the two answers are bounded by one rule rather than two. The gate switch itself (PUT /api/admin/sync/sources/:sourceId/curation-gate) is admin-only by its route's declared admin access (backend/src/routes/adminDeclaredRoutes.ts, ADR-0071) and writes experience_sources alone, so it can neither publish nor hide an existing row. The queue read was rebuilt on 2026-09-07 (ADR-0051, #805) and the predicate has a second place to be missing from, so it is carried in both: the keys union that chooses the page joins curator_scoped_regions in all seven of its branches - conflict, arrival, held, contents, withdrawn, refused, missing - before the search and before any facet, so no name outside the caller's scope can be reached through the search box or counted into a chip, and a test asserts the number of those joins rather than their presence, which is what makes a branch added without one fail instead of widening the queue silently. GET /experiences/review/queue/map (#2477, 2026-11-13) reads the same union through the same function (scopedQuestionsSql in reviewQueueKeys.ts) under the same chips (selectedSql), every question with its place's point and no page, so the map can name no place the list would not show the caller. POST /experiences/:id/admission-pin (#1367, 2026-10-12) answers the queue's pin-question card on the same predicate: answeredSourceId and resolveExperienceScope for the grant, the membership re-read under OBJECT_LOCK and required to belong to the place and to carry the question the card showed (409 otherwise), and the pin-question branch of the keys union carries the scope join like the rest. POST /experiences/:id/visit-question (#1770, 2026-10-21) answers the visit-question card the same way: answeredSourceId and resolveExperienceScope for the grant, the question re-read under OBJECT_LOCK with visitQuestionOpenSql and required to belong to that membership of the place (409 otherwise), and its keys branch carries the scope join. POST /experiences/:id/keep-out and GET /experiences/:id/kinds (#2022, 2026-10-25) follow it: the refusal resolves the named membership's source scope with answeredSourceId and resolveExperienceScope, and re-reads the membership under OBJECT_LOCK, required offered and of that place (409 otherwise); the read answers only a curator whose scope reaches the place (resolveExperienceScope with 'place', 403 otherwise, 404 for a missing place) and lists every kind of it with canAnswer from queueScopeSql on the membership's source, names the curator who kept a kind out only where the curation log's per-row rule would, and shows the note only within the caller's scope. POST /experiences/:id/kinds (#2035, 2026-10-26) puts a place into a kind no run offers it in on the same predicate: the kind's source (its first by display_priority) and resolveExperienceScope for the grant, the place re-read under OBJECT_LOCK and required to hold no membership in that kind (409 otherwise), World Heritage Sites refused; the kinds GET /experiences/:id/kinds offers for an add are filtered by queueScopeSql on each kind's source. POST /experiences/:id/parts, POST /experiences/:id/parts/take-out, GET /experiences/:id/parts and GET /experiences/:id/part-candidates (#2118, 2026-11-13) set and read a curator's word that a place is a part of a whole: a write changes two places, so its grant is resolveExperienceScope with 'place' on the whole and on the part, both required (403 otherwise), and each place's log row names the region its own grant came from; the two places are locked in id order and the pair re-read under the locks, so a word is written only about the pair as it stands (409 otherwise); the reads answer only a curator whose scope reaches the place, and check every row they return (2026-11-14): a part, a whole or a candidate is listed only when readers are offered it (placeOrPartOfferedSql) or the caller's scope reaches it (canCurateExperienceSql), so an unread place outside the scope is never named nor measured from as a candidate's nearest part, and an offered one outside it is returned as not choosable, as the write would refuse it; the note shown is read off the place's own history under the curation log's per-row rule (unrestricted, no region, or a region in the caller's closure), so a row naming a region outside the caller's scope reads as none. A word refused for a chain too deep names the chain's places by the same rule (2026-11-14, #2522): a place no reader is offered outside the caller's scope is null in the refusal's chain and only counted in its message. The crowding window and answers (#2282, ADR-0180, 2026-11-02) follow it too: GET /experiences/review/crowding/group and GET /experiences/review/crowding/place/:membershipId (#2358, 2026-11-04, replacing the window around one membership) list the places a reader is shown or that wait in a tail to any curator, as the region's page does, mark each one's canAnswer by queueScopeSql on its own source, and leave out an unread arrival outside the caller's scope, the place read answering it 404; GET /experiences/review/crowding/arrivals lists only arrivals within queueScopeSql; POST /experiences/review/crowding/answers resolves each body membership id's own source scope before any write, counts one outside it without naming it, and re-reads the membership under OBJECT_LOCK. GET /experiences/review/pins and POST /experiences/:id/admission-pin/hand-back (#1369) follow it: the list filters each pin by queueScopeSql on the membership's source and names the answering curator only where the curation log's per-row rule would, and the hand-back resolves the membership's source scope and re-reads the pin under OBJECT_LOCK Since #1893 (2026-10-23) a 'source' scope reaches a place as a whole when the place holds a membership of that source (curatorPlaceScopeExists in backend/src/middleware/auth.ts, the maintainer's decision), and an answer about one membership is scoped by the membership the writer answers: the named one, or the one waiting or refused that the writer picks unnamed (answeredSourceId). Before, an answer naming no membership was scoped by the place's first source while the writer could answer another source's membership. The first source (experiences.source_id) decides no scope now, and the lint rule provenance/no-first-source-key refuses a comparison with it."
+    V8.2.3:
+      desc: "Field-level access is restricted to consumers with explicit permissions to the specific fields (BOPLA)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V8.3.1:
+      desc: "Authorization rules are enforced at a trusted service layer, not by controls an untrusted consumer could manipulate such as client-side JavaScript"
+      level: 1
+      status: pass
+      notes: "Established by V8.2.1's and V8.2.2's notes: admin endpoints are gated by requireAdmin, a curator's reads and writes by a scope resolved on the backend (checkCuratorScope, resolveExperienceScope, CURATOR_SCOPED_REGIONS_CTE), a user's own data by the caller's id from the token, and world view visibility by isVisibleToReaders, all in backend middleware and handlers. Recorded from those notes on 2026-11-15 (#2524), not re-audited against the code."
+    V8.4.1:
+      desc: "In a multi-tenant application, cross-tenant controls keep a consumer's operations from affecting tenants they may not interact with"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
 
   V9_self_contained_tokens:
     V9.1.1:
-      desc: "Tokens validated using digital signature or MAC"
+      desc: "Self-contained tokens are validated by their digital signature or MAC before their contents are accepted"
       level: 1
       status: pass
       notes: "JWT verified with jsonwebtoken.verify() using HMAC-SHA256"
     V9.1.2:
-      desc: "Algorithm allowlist enforced, no 'None' algorithm"
+      desc: "Only allowlisted algorithms can create and verify self-contained tokens, never 'None'"
       level: 1
       status: pass
       notes: "jwt.verify() now called with { algorithms: ['HS256'] }. Fixed 2026-02-10"
     V9.1.3:
-      desc: "Key material from trusted pre-configured sources only"
+      desc: "Key material that validates self-contained tokens comes from trusted pre-configured sources for the issuer (jku, x5u and jwk headers validated against an allowlist)"
       level: 1
       status: pass
       notes: "JWT_SECRET from environment variable, not from token headers"
     V9.2.1:
-      desc: "Token validity time span verified (nbf, exp claims)"
+      desc: "A token with a validity time span is accepted only within it (nbf and exp for JWTs)"
       level: 1
       status: pass
       notes: "Access token expires in 15min; jsonwebtoken.verify() checks exp automatically"
     V9.2.2:
-      desc: "Token type validated (access vs refresh)"
+      desc: "The receiving service checks that a token is of the correct type and meant for the purpose before accepting its contents"
       level: 2
       status: pass
       notes: "Structurally incompatible: access=JWT (jwt.verify), refresh=opaque hash (DB lookup). Cannot interchange"
     V9.2.3:
-      desc: "Audience (aud) claim validated"
+      desc: "The service accepts only tokens intended for it (audience; the 'aud' claim for JWTs, against an allowlist)"
       level: 2
       status: pass
       notes: "iss='track-your-regions' and aud='track-your-regions-app' set in jwt.sign() and validated in jwt.verify(). Fixed 2026-02-10"
     V9.2.4:
-      desc: "No sensitive data in JWT payload"
+      desc: "An issuer that uses the same key for several audiences puts an audience restriction in each token that uniquely identifies the intended audience"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    jwt_payload_minimal:
+      desc: "The access token JWT carries no sensitive data in its payload (project-specific check, not an ASVS 5.0 requirement id)"
       level: 2
       status: pass
-      notes: "JWT payload contains only sub (user id), uuid, and role. Email and displayName removed — fetched via /me endpoint. Fixed 2026-02-10"
+      notes: "JWT payload contains only sub (user id), uuid, and role. Email and displayName removed — fetched via /me endpoint. Fixed 2026-02-10. Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V9.2.4, which ASVS 5.0 gives to an audience restriction in tokens when one key issues tokens for several audiences, so V9.2.4 has its own row. ASVS 5.0 names a JWT's plaintext payload only as data to identify and classify (V14.1.1), not as a place sensitive data may not go."
+
+  V10_oauth_oidc:
+    V10.1.1:
+      desc: "Tokens are sent only to components that strictly need them (with a backend-for-frontend, access and refresh tokens are accessible to the backend only)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.1.2:
+      desc: "The client accepts values from the authorization server only from a flow started by the same user agent session and transaction (PKCE code_verifier, state or nonce: unguessable, transaction-specific and bound)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.2.1:
+      desc: "With the code flow, the OAuth client is protected against request forgery that triggers token requests, by PKCE or by checking 'state'"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.2.2:
+      desc: "An OAuth client that talks to more than one authorization server defends against mix-up attacks, for example by validating 'iss'"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.3.1:
+      desc: "The resource server accepts only access tokens intended for it (audience)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.3.2:
+      desc: "The resource server bases authorization decisions on the access token's delegated-authorization claims (sub, scope, authorization_details)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.3.3:
+      desc: "The resource server identifies a unique user from claims that cannot be reassigned (typically 'iss' plus 'sub')"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.3.4:
+      desc: "Where the resource server requires an authentication strength, method or recentness, it verifies that the access token meets it (acr, amr, auth_time)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.1:
+      desc: "The authorization server validates redirect URIs against a client-specific allowlist of pre-registered URIs by exact string comparison"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.2:
+      desc: "An authorization code can be used only once; a second use is rejected and the tokens issued from it are revoked"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.3:
+      desc: "The authorization code is short-lived (at most 10 minutes for L1 and L2)"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.4:
+      desc: "The authorization server allows a client only the grants it needs; the implicit and password grants are not used"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.5:
+      desc: "The authorization server mitigates refresh token replay for public clients (sender-constrained tokens, or rotation that invalidates a used token and revokes the authorization on reuse)"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.6:
+      desc: "With the code grant, the authorization server requires PKCE (no 'plain' method; code_verifier validated)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.7:
+      desc: "Unauthenticated dynamic client registration, if supported, validates client metadata, ensures consent and warns about untrusted clients"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.8:
+      desc: "Refresh tokens have an absolute expiration, sliding expiration included"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.9:
+      desc: "Refresh tokens and reference access tokens can be revoked by an authorized user through the authorization server's interface"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.10:
+      desc: "Confidential clients are authenticated for back-channel requests (token, pushed authorization and revocation requests)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.4.11:
+      desc: "The authorization server assigns an OAuth client only the scopes it requires"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.5.1:
+      desc: "The OIDC client mitigates ID Token replay, for example by matching the 'nonce' claim to the one it sent"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.5.2:
+      desc: "The client identifies the user from ID Token claims that cannot be reassigned, usually 'sub'"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.5.3:
+      desc: "The client rejects authorization server metadata whose issuer URL does not exactly match the pre-configured one"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.5.4:
+      desc: "The client checks that the ID Token's 'aud' claim equals its client_id"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.5.5:
+      desc: "With OIDC back-channel logout, the relying party checks the logout token's type, its 'event' claim and the absence of 'nonce'"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.6.1:
+      desc: "The OpenID Provider allows only the 'code', 'ciba', 'id_token' or 'id_token code' response modes, never 'token'"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.6.2:
+      desc: "The OpenID Provider mitigates forced-logout denial of service by explicit user confirmation or by validating logout parameters such as id_token_hint"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.7.1:
+      desc: "The authorization server ensures the user consents to each authorization request, always prompting when the client's identity cannot be assured"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.7.2:
+      desc: "A consent prompt shows clear information about what is consented to (scopes, resource server, client, lifetime)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V10.7.3:
+      desc: "The user can review, modify and revoke the consents granted through the authorization server"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+
+  V11_cryptography:
+    V11.1.1:
+      desc: "A documented key management policy and key lifecycle follow a standard such as NIST SP 800-57, and keys are not overshared"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.1.2:
+      desc: "A cryptographic inventory of keys, algorithms and certificates is maintained, documenting where keys may be used and what data they may protect"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.2.1:
+      desc: "Industry-validated implementations are used for cryptographic operations"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.2.2:
+      desc: "The application is crypto-agile: algorithms, key lengths, ciphers and modes can be reconfigured or swapped, and keys and passwords replaced and data re-encrypted"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.2.3:
+      desc: "All cryptographic primitives give at least 128 bits of security"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.3.1:
+      desc: "Insecure block modes (ECB) and weak padding schemes (PKCS#1 v1.5) are not used"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.3.2:
+      desc: "Only approved ciphers and modes such as AES with GCM are used"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.3.3:
+      desc: "Encrypted data is protected against unauthorized modification by authenticated encryption or an approved MAC"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.4.1:
+      desc: "Only approved hash functions are used for general cryptographic purposes; MD5 and other disallowed ones are not"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.4.2:
+      desc: "Passwords are stored with an approved, computationally intensive key derivation (password hashing) function with parameters set by current guidance"
+      level: 2
+      status: pass
+      notes: "bcryptjs with 12 salt rounds"
+    V11.4.3:
+      desc: "Hash functions used in signatures, data authentication or integrity are collision resistant with appropriate output lengths"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.4.4:
+      desc: "Keys derived from passwords use approved key derivation functions with key stretching parameters"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.5.1:
+      desc: "Random numbers and strings meant to be unguessable come from a CSPRNG with at least 128 bits of entropy (UUIDs do not qualify)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V11.6.1:
+      desc: "Only approved algorithms and modes are used for key generation and seeding and for signature generation and verification"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+
+  V12_secure_communication:
+    V12.1.1:
+      desc: "Only the latest recommended TLS versions (such as 1.2 and 1.3) are enabled, the latest preferred"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.1.2:
+      desc: "Only recommended cipher suites are enabled, the strongest preferred"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.1.3:
+      desc: "mTLS client certificates are validated as trusted before their identity is used for authentication or authorization"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.2.1:
+      desc: "TLS is used for all connections between clients and external-facing HTTP-based services, with no fallback to unencrypted communication"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.2.2:
+      desc: "External-facing services use publicly trusted TLS certificates"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.3.1:
+      desc: "An encrypted protocol such as TLS is used for all inbound and outbound connections (monitoring, management, databases, partner systems, external APIs), with no fallback"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.3.2:
+      desc: "TLS clients validate the certificates they receive before communicating"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.3.3:
+      desc: "TLS or another transport encryption is used for all connections between internal HTTP-based services, with no fallback"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V12.3.4:
+      desc: "TLS between internal services uses trusted certificates; internal or self-signed ones are trusted only through specific internal CAs or certificates"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
 
   V13_configuration:
-    V13.3.1:
-      desc: "No secrets in source code or config files"
-      level: 1
-      status: pass
-      notes: ".env excluded by .gitignore; .env.example has placeholder values only. The security:secrets gate (gitleaks over every tracked file, ADR-0108, #1504) fails any change that adds a generic credential or a provider key, findings redacted; GitHub push protection is on (2026-10-15)"
-    V13.4.1:
-      desc: "No sensitive data in error messages"
-      level: 1
-      status: pass
-      notes: "500 errors masked in production (generic message). Stack traces never sent. Fixed 2026-02-10. Handler-caught failures (admin import review, AI routes, the progress statuses of imports, runs, syncs and picture repairs, SSE errors, Catalogue Checks, the OAuth callbacks' redirects) answer fixed sentences and log the error; a sync's own log row still records its error for the history; ERROR_TEXT_RULES in backend/eslint.config.mjs refuses an error's own text in an answer (#1021, 2026-09-25)"
-    V13.4.2:
-      desc: "Production secret validation"
+    V13.1.1:
+      desc: "All communication needs are documented, including the external services relied on and any case where a user can supply an external location the application then connects to"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.2.1:
+      desc: "Communications between backend components outside the user session mechanism are authenticated with individual service accounts, short-term tokens or certificates, not unchanging credentials"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.2.2:
+      desc: "Communications between backend components run under accounts with the least necessary privileges"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.2.3:
+      desc: "A credential used for service authentication is not a default credential (such as root/root or admin/admin)"
       level: 2
       status: pass
       notes: "Fail-fast startup validator (validateEnv) blocks boot in
@@ -385,42 +1112,296 @@ chapters:
         FRONTEND_URL is non-https. Dev mode logs warnings but continues.
         Dev stack binds to loopback (127.0.0.1) — not LAN-exposed.
         Fixed 2026-02-10; startup validator hardened 2026-05-30."
-    V13.4.3_cvpy:
-      desc: "cv-python error responses don't leak internals"
+    V13.2.4:
+      desc: "An allowlist defines the external resources or systems the application may communicate with"
       level: 2
-      status: pass
-      notes: "FastAPI exception handler in app/middleware.py catches Exception, logs the traceback through stdlib logging to stdout (Docker collects it, #623), and returns {'detail':'Internal error'} with 500. NDJSON streaming worker similarly returns {'type':'error','message':'Internal error during processing'} instead of str(exc). InvalidImageBytes is the one allowlisted exception that surfaces a generic message via 400. Fixed 2026-05-10."
-
-  V14_data_protection:
-    V14.2.1:
-      desc: "Sensitive data identified and classified"
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.2.5:
+      desc: "The web or application server is configured with an allowlist of resources or systems it may send requests to or load data or files from"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.3.1:
+      desc: "A secrets management solution such as a key vault creates, stores, controls access to and destroys backend secrets; secrets are not in source code or build artifacts"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.3.2:
+      desc: "Access to secret assets follows the principle of least privilege"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.4.1:
+      desc: "The deployment carries no source control metadata (.git, .svn), or that metadata is inaccessible externally and to the application"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.4.2:
+      desc: "Debug modes are disabled for all components in production"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.4.3:
+      desc: "Web servers do not expose directory listings unless that is intended"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.4.4:
+      desc: "The HTTP TRACE method is not supported in production"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V13.4.5:
+      desc: "Documentation (such as for internal APIs) and monitoring endpoints are not exposed unless that is intended"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    no_secrets_in_source:
+      desc: "No secrets in source code or config files (project-specific check, not an ASVS 5.0 requirement id)"
       level: 1
       status: pass
+      notes: ".env excluded by .gitignore; .env.example has placeholder values only. The security:secrets gate (gitleaks over every tracked file, ADR-0108, #1504) fails any change that adds a generic credential or a provider key, findings redacted; GitHub push protection is on (2026-10-15). Kept under a descriptive key since 2026-11-15 (#2524): it was filed as V13.3.1, whose ASVS 5.0 requirement also asks for a secrets management solution such as a key vault to create, store, control access to and destroy backend secrets, which this entry does not check; V13.3.1 has its own row."
+
+  V14_data_protection:
+    V14.1.1:
+      desc: "All sensitive data created and processed is identified and classified into protection levels (encoded data such as a JWT payload included), with regard to applicable regulations"
+      level: 2
+      status: pass
       notes: "User travel data, visited regions, auth tokens identified as sensitive. The dates of a traveller's trips (user_visit_trips, #2120, ADR-0202) are travel data of the same class: read and written only under /api/users/me, of the caller's own visits"
+    V14.1.2:
+      desc: "Each sensitive data protection level has documented protection requirements (encryption, integrity, retention, logging, access, database encryption, privacy)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V14.2.1:
+      desc: "Sensitive data is sent to the server only in the HTTP body or header fields; URLs and query strings carry no sensitive information such as an API key or session token"
+      level: 1
+      status: partial
+      notes: "OAuth callback uses one-time authorization code in URL. Tokens exchanged via POST /api/auth/exchange-code (refresh set as httpOnly cookie). Fixed 2026-02-10. Filed as V14.3.2 until 2026-08-29, whose ASVS 5.0 requirement is the anti-caching one, then kept under the descriptive key oauth_tokens_not_in_urls, and filed as V14.2.1 since 2026-11-15 (#2524), the 5.0 requirement this entry checks. Partial since 2026-11-15 (#2524): V14.2.1 covers every URL, and the three server-sent event streams take the access token as a ?token= query parameter, because EventSource cannot send a header (requireAuth in backend/src/middleware/auth.ts reads req.query.token; the streams are opened in frontend/src/api/geometry.ts, frontend/src/api/admin/wvImportCvMatch.ts and frontend/src/api/admin/wvImportCoverage.ts), as V14.2.2 and V14.3.2 already record. The email verification link carries its one-time token in the query string as well (verify-email?token=, backend/src/services/emailService.ts)."
     V14.2.2:
-      desc: "Sensitive data not cached in server components (load balancers, application caches)"
+      desc: "Sensitive data is not cached in server components such as load balancers and application caches, or is securely purged after use"
       level: 2
       status: pass
       notes: "No shared cache is deployed in front of the API today, and the responses now say what one may do with them rather than relying on that. Every response shaped by the caller — the world view listing, the optional experience reads, every read with a world view scope — is marked Cache-Control: private, no-cache with Authorization appended to Vary, by its declared optional access and revalidate policy (backend/src/api/route.ts, ADR-0071), so a proxy or CDN cannot store an admin's or a curator's answer under the URL alone and hand it to a visitor; auth.test.ts holds the headers on the wire beside CORS's own Vary, and a declared route cannot give a public handler its caller (ADR-0071), so a caller-shaped read cannot drop the policy unnoticed. 2026-08-29, #597 (the listing alone had it since #460). The requireAuth responses are kept out of a shared cache twice over where the token travels in the header: RFC 9111 § 3.5 forbids storing the answer to such a request, and since #710 requireAuth marks each one private, no-store — for the one caller that cannot send that header — the streams EventSource opens, which take the token as a query parameter — the private is the whole of it — the browser-side half of that header is recorded under V14.3.2."
+    V14.2.3:
+      desc: "Defined sensitive data is not sent to untrusted parties such as user trackers"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V14.2.4:
+      desc: "Controls for sensitive data (encryption, integrity, retention, logging, access to logs, privacy) are implemented as documented for its protection level"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V14.3.1:
-      desc: "Sensitive data not stored in browser storage unencrypted"
+      desc: "Authenticated data is cleared from client storage, the browser DOM included, after the client or session is terminated"
       level: 1
-      status: pass
-      notes: "Refresh token in httpOnly cookie (not accessible to JS). Access token in memory. Only non-sensitive data (last-used email, theme, a signed-out visitor's maps app as tyr.mapsApp, #1604, and reading languages as tyr.readingLanguages, #2209) in localStorage, and the world view last open as tyr.lastWorldViewId in sessionStorage (#2474: a world view id, public, read by the review page's links). Fixed 2026-02-10. Authenticated data the web keeps outside the query cache is forgotten with it on every change of who is signed in (sign-in, email verification, OAuth, sign-out, an expired session: forgetIdentity in useAuth.tsx): the visits a traveller's last untick removed, held in memory for its Undo, and the date line a tick opens with the offer's session (the ticks' places and times, the mode and the carried year), held in the trips chunk's memory only and gone with the tab or a reload, each of which also records its owner and answers no one else (#2120). No travel data, which V14.2.1 classes as sensitive, is in browser storage (ASVS 5.0 V14.3.3): the offer stores only 'Don't ask in this session' in sessionStorage as tyr.tripOfferSilence, the time it lasts until (at most 12 hours) and the account id it is for, no place and no time of a tick; it is cleared when the tab closes, as sessionStorage is, and on sign-out and every other change of who is signed in (forgetTraveller), which is what V14.3.1 asks of authenticated data once the session ends. Every step after a tick's own start (the trips chunk arriving, a choice on the line) checks again that the tick's sign-in is current (isCurrentOrigin in visitRemovals.ts) before it stores or writes anything. A refresh that returns another account than the tab held, as after a sign-in in another tab, counts as such a change, and apiFetch sends no request, nor retries one, under another account than the one that made it (refuseAnotherAccount in fetchUtils.ts)"
+      status: partial
+      notes: "Partial since 2026-11-15 (#2524, #2554): the last-used email, written after an authenticated sign-in, stays in localStorage after sign-out, and whether it is sensitive is the open question V14.3.3 names. The rest holds: authenticated data the web keeps outside the query cache is forgotten with it on every change of who is signed in (sign-in, email verification, OAuth, sign-out, an expired session: forgetIdentity in useAuth.tsx): the visits a traveller's last untick removed, held in memory for its Undo, and the date line a tick opens with the offer's session (the ticks' places and times, the mode and the carried year), held in the trips chunk's memory only and gone with the tab or a reload, each of which also records its owner and answers no one else (#2120). The one thing the trips offer stores, 'Don't ask in this session' in sessionStorage as tyr.tripOfferSilence (V14.3.3), is cleared when the tab closes, as sessionStorage is, and on sign-out and every other change of who is signed in (forgetTraveller), which is what V14.3.1 asks of authenticated data once the session ends. Every step after a tick's own start (the trips chunk arriving, a choice on the line) checks again that the tick's sign-in is current (isCurrentOrigin in visitRemovals.ts) before it stores or writes anything. A refresh that returns another account than the tab held, as after a sign-in in another tab, counts as such a change, and apiFetch sends no request, nor retries one, under another account than the one that made it (refuseAnotherAccount in fetchUtils.ts)"
     V14.3.2:
-      desc: "Sufficient anti-caching response header fields so sensitive data is not cached in browsers"
+      desc: "Sufficient anti-caching response header fields (Cache-Control: no-store) keep sensitive data out of browser caches"
       level: 2
       status: pass
-      notes: "requireAuth (backend/src/middleware/auth.ts) sends Cache-Control: private, no-store and appends Authorization to Vary on every response it lets through, ahead of the token check so the 401s carry it too. That covers two of the three classes V14.2.1 names: a traveller's travel data and visited regions — the reads under /api/users/me, the profile with its email, and every read behind requireAdmin or requireCurator. The third class, auth tokens, is mostly not requireAuth's to cover: four of the five responses carrying accessToken in their body — POST /api/auth/login, /verify-email, /refresh and /exchange-code — are what a caller gets before holding a token, so they sit ahead of this middleware and would answer with Express's defaults (POST /api/auth/register carries none: it answers with a message, the same one whether or not the account existed). The fifth, POST /api/auth/change-password, is behind requireAuth and does carry private, no-store. All five now say private, no-store for themselves through the token cache policy their routes declare (backend/src/api/route.ts, ADR-0071; routerOf refuses any route whose response schema declares accessToken under another policy), which also sets the Pragma: no-cache the same RFC asks for — deprecated in a response by RFC 9111 § 5.4 and read by nothing here, so it states the intent for an auditor rather than changing behaviour: a browser stores no POST response in its HTTP cache, which is what these are, but RFC 6749 § 5.1 asks a token response for the header outright and an argument from the method is a guarantee about caches rather than about the endpoint. The reads that needed the header are the visited-data ones: before #710 they answered with Express's defaults — a weak ETag, no Cache-Control — so the browser stored the body and served it back on 304 after sign-out, on whatever machine the traveller had used. A handler that needs another value sets it after the middleware and wins, since setHeader replaces: the three SSE streams keep private, no-cache (by their declared revalidate policy, ADR-0071) — private rather than § 3.5 is what keeps a shared cache off those, since EventSource cannot send a header and the streams take the token as a query parameter — the four admin image endpoints their declared max-age, and the reads whose body is public reference data behind the auth gate private, no-cache — the division geometry read by its route's declared revalidate policy (backend/src/api/route.ts, ADR-0071). /api/divisions is admin-gated because the editor is its only caller, not because GADM boundaries are anyone's own data; no-store there would trade a 304 for the whole body on every dialog open while protecting nothing. The rule has one owner: every route declares its cache policy and the route registry (backend/src/api/route.ts) writes the header — public, no-cache only for a route declared public, public, max-age only for a policy that states its reason beside it (the admin image proxy's alone), which routerOf refuses when empty; a route written around the registry with its path spelled out fails lint (ROUTE_REGISTRY_RULES, pinned in both directions by routeRegistryLint.test.ts), so the Cache-Control lint rules and cacheOverrides.test.ts, which held hand-written overrides, went with the last of them (#793). The optionalAuth reads keep no-cache rather than no-store deliberately: they hold nothing V14.2.1 classifies as sensitive, and the round-trip is worth hundreds of kilobytes per read (V14.2.2). auth.test.ts holds the header on a fake res, on both 401 paths and on the wire beside an SSE handler whose own no-cache still wins; every route on the user router is declared signed-in (ADR-0071), which builds requireAuth into its chain. 2026-08-29, #710"
-    oauth_tokens_not_in_urls:
-      desc: "OAuth tokens not exposed in URLs (project-specific check, not an ASVS 5.0 requirement id)"
+      notes: "requireAuth (backend/src/middleware/auth.ts) sends Cache-Control: private, no-store and appends Authorization to Vary on every response it lets through, ahead of the token check so the 401s carry it too. That covers two of the three classes V14.1.1 names: a traveller's travel data and visited regions — the reads under /api/users/me, the profile with its email, and every read behind requireAdmin or requireCurator. The third class, auth tokens, is mostly not requireAuth's to cover: four of the five responses carrying accessToken in their body — POST /api/auth/login, /verify-email, /refresh and /exchange-code — are what a caller gets before holding a token, so they sit ahead of this middleware and would answer with Express's defaults (POST /api/auth/register carries none: it answers with a message, the same one whether or not the account existed). The fifth, POST /api/auth/change-password, is behind requireAuth and does carry private, no-store. All five now say private, no-store for themselves through the token cache policy their routes declare (backend/src/api/route.ts, ADR-0071; routerOf refuses any route whose response schema declares accessToken under another policy), which also sets the Pragma: no-cache the same RFC asks for — deprecated in a response by RFC 9111 § 5.4 and read by nothing here, so it states the intent for an auditor rather than changing behaviour: a browser stores no POST response in its HTTP cache, which is what these are, but RFC 6749 § 5.1 asks a token response for the header outright and an argument from the method is a guarantee about caches rather than about the endpoint. The reads that needed the header are the visited-data ones: before #710 they answered with Express's defaults — a weak ETag, no Cache-Control — so the browser stored the body and served it back on 304 after sign-out, on whatever machine the traveller had used. A handler that needs another value sets it after the middleware and wins, since setHeader replaces: the three SSE streams keep private, no-cache (by their declared revalidate policy, ADR-0071) — private rather than § 3.5 is what keeps a shared cache off those, since EventSource cannot send a header and the streams take the token as a query parameter — the four admin image endpoints their declared max-age, and the reads whose body is public reference data behind the auth gate private, no-cache — the division geometry read by its route's declared revalidate policy (backend/src/api/route.ts, ADR-0071). /api/divisions is admin-gated because the editor is its only caller, not because GADM boundaries are anyone's own data; no-store there would trade a 304 for the whole body on every dialog open while protecting nothing. The rule has one owner: every route declares its cache policy and the route registry (backend/src/api/route.ts) writes the header — public, no-cache only for a route declared public, public, max-age only for a policy that states its reason beside it (the admin image proxy's alone), which routerOf refuses when empty; a route written around the registry with its path spelled out fails lint (ROUTE_REGISTRY_RULES, pinned in both directions by routeRegistryLint.test.ts), so the Cache-Control lint rules and cacheOverrides.test.ts, which held hand-written overrides, went with the last of them (#793). The optionalAuth reads keep no-cache rather than no-store deliberately: they hold nothing V14.1.1 classifies as sensitive, and the round-trip is worth hundreds of kilobytes per read (V14.2.2). auth.test.ts holds the header on a fake res, on both 401 paths and on the wire beside an SSE handler whose own no-cache still wins; every route on the user router is declared signed-in (ADR-0071), which builds requireAuth into its chain. 2026-08-29, #710"
+    V14.3.3:
+      desc: "Data in browser storage (localStorage, sessionStorage, IndexedDB, cookies) contains no sensitive data, session tokens excepted"
+      level: 2
+      status: partial
+      notes: "Partial since 2026-11-15 (#2524): the last-used email (and tyr-last-google-email, kept for Google's sign-in hint) stays in localStorage, including after sign-out, while SECURITY.md and backend/src/middleware/auth.ts count a profile with its email as sensitive data; the checklist had called it non-sensitive since 2026-02-10, and the two classifications disagree until one of them is settled (#2554). Everything else holds: refresh token in httpOnly cookie (not accessible to JS): a session token, which the requirement excepts. Access token in memory. Otherwise only non-sensitive data (theme, a signed-out visitor's maps app as tyr.mapsApp, #1604, and reading languages as tyr.readingLanguages, #2209) in localStorage, and the world view last open as tyr.lastWorldViewId in sessionStorage (#2474: a world view id, public, read by the review page's links). Fixed 2026-02-10. No travel data, which V14.1.1 classes as sensitive, is in browser storage: the trips offer stores only 'Don't ask in this session' in sessionStorage as tyr.tripOfferSilence, the time it lasts until (at most 12 hours) and the account id it is for, no place and no time of a tick (#2120). Every use of localStorage, sessionStorage, indexedDB and document.cookie in frontend/src was read on 2026-11-15 (#2524), and these are all of them: the last-used email is the address of the last Google sign-in, kept as tyr-last-google-email for Google's login_hint (setLastGoogleEmail in frontend/src/api/auth.ts, written by useAuth.tsx after a Google sign-in); the theme is theme-mode (AppThemeContext.tsx); tyr.mapsApp, tyr.readingLanguages, tyr.lastWorldViewId and tyr.tripOfferSilence are written by useMapsApp.tsx, useReadingLanguages.tsx, utils/lastWorldView.ts and shared/trips/dateOffer.ts; and the world view editor's subdivision dialog keeps an admin's working state per region (custom-subdivision-dialog-state-<regionId> and ai-group-descriptions-<regionId>: groups, AI suggestions and descriptions, overlay settings, request counts), which is work on a world view's regions rather than anyone's travel data or a token. No IndexedDB and no script-written cookie is used; useAuth.tsx only removes a refresh token that old versions kept in localStorage (tyr-refresh-token)."
+
+  V15_secure_coding_architecture:
+    V15.1.1:
+      desc: "Documentation defines risk-based remediation time frames for vulnerable third-party components and for updating libraries in general"
       level: 1
-      status: pass
-      notes: "OAuth callback uses one-time authorization code in URL. Tokens exchanged via POST /api/auth/exchange-code (refresh set as httpOnly cookie). Fixed 2026-02-10. Kept under a descriptive key since 2026-08-29: it was filed as V14.3.2, whose canonical ASVS 5.0 requirement is the anti-caching one recorded above, so the number said something the entry did not check."
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.1.2:
+      desc: "An inventory (such as an SBOM) of all third-party libraries is maintained, and components come from pre-defined, trusted, maintained repositories"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.1.3:
+      desc: "Documentation identifies time-consuming or resource-demanding functionality and how loss of availability and consumer timeouts are prevented"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.2.1:
+      desc: "Components stay within the documented update and remediation time frames"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.2.2:
+      desc: "Defenses against loss of availability from time-consuming or resource-demanding functionality are implemented as documented"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.2.3:
+      desc: "Production includes only the functionality the application needs, no test code, sample snippets or development features"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.1:
+      desc: "Only the required subset of a data object's fields is returned"
+      level: 1
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.2:
+      desc: "Backend calls to external URLs do not follow redirects unless that is intended"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.3:
+      desc: "Mass assignment is prevented by limiting the fields each controller and action may set"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.4:
+      desc: "Proxies and middleware pass the user's original IP address in trusted fields the user cannot manipulate, and that value is used for logging and for decisions such as rate limiting"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.5:
+      desc: "Variables are ensured to be of the correct type, with strict equality and comparison operations (no type juggling or type confusion)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.6:
+      desc: "JavaScript is written to prevent prototype pollution, for example by using Set or Map instead of object literals"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V15.3.7:
+      desc: "HTTP parameter pollution is defended against, especially where the framework does not distinguish parameter sources"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
 
   V16_security_logging:
+    V16.1.1:
+      desc: "An inventory documents the logging at each layer of the stack: the events, formats, storage, use, access control and retention"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
     V16.1.1_cvpy:
-      desc: "cv-python service logging"
+      desc: "cv-python service: an inventory documents the logging at each layer of the stack: the events, formats, storage, use, access control and retention"
       level: 2
       status: pass
       notes: "Service logs through stdlib logging (app/logging_config.py, #623): one stdout handler collected by Docker, level from CV_LOG_LEVEL, timestamp, level and module on every line; caught errors logged with their trace. No security-relevant events to audit at this layer (no authn, no authz, no data-mutating side effects). The Node backend layer remains the source of truth for V16 audit trails. A per-upload request id is the next step once observability expands."
+    V16.2.1:
+      desc: "Each log entry carries the metadata (when, where, who, what) that an investigation of the timeline needs"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.2.2:
+      desc: "Logging time sources are synchronized, and security event timestamps use UTC or an explicit offset"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.2.3:
+      desc: "Logs are stored or sent only to the files and services named in the log inventory"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.2.4:
+      desc: "Logs can be read and correlated by the log processor in use, preferably in a common format"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.2.5:
+      desc: "Sensitive data is logged only as its protection level allows (credentials never; session tokens only hashed or masked)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.3.1:
+      desc: "All authentication operations are logged, successful and unsuccessful"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.3.2:
+      desc: "Failed authorization attempts are logged"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.3.3:
+      desc: "The documented security events and attempts to bypass security controls (validation, business logic, anti-automation) are logged"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.3.4:
+      desc: "Unexpected errors and security control failures such as backend TLS failures are logged"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.4.1:
+      desc: "Logging components encode data to prevent log injection"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.4.2:
+      desc: "Logs are protected from unauthorized access and cannot be modified"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.4.3:
+      desc: "Logs are sent securely to a logically separate system for analysis, detection, alerting and escalation"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.5.1:
+      desc: "A generic message is returned on an unexpected or security-sensitive error, exposing no stack traces, queries, secret keys or tokens"
+      level: 2
+      status: pass
+      notes: "500 errors return generic 'Internal server error' in production (err.message masked). Stack traces never sent. Fixed 2026-02-10. Merged from the row filed as V13.4.1 until 2026-11-15 (#2524): 500 errors masked in production (generic message). Stack traces never sent. Fixed 2026-02-10. Handler-caught failures (admin import review, AI routes, the progress statuses of imports, runs, syncs and picture repairs, SSE errors, Catalogue Checks, the OAuth callbacks' redirects) answer fixed sentences and log the error; a sync's own log row still records its error for the history; ERROR_TEXT_RULES in backend/eslint.config.mjs refuses an error's own text in an answer (#1021, 2026-09-25)"
+    V16.5.1_cvpy:
+      desc: "cv-python service: a generic message is returned on an unexpected or security-sensitive error, exposing no stack traces, queries, secret keys or tokens"
+      level: 2
+      status: pass
+      notes: "FastAPI exception handler in app/middleware.py catches Exception, logs the traceback through stdlib logging to stdout (Docker collects it, #623), and returns {'detail':'Internal error'} with 500. NDJSON streaming worker similarly returns {'type':'error','message':'Internal error during processing'} instead of str(exc). InvalidImageBytes is the one allowlisted exception that surfaces a generic message via 400. Fixed 2026-05-10."
+    V16.5.2:
+      desc: "The application keeps operating securely when access to an external resource fails (circuit breakers, graceful degradation)"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V16.5.3:
+      desc: "The application fails gracefully and securely, an exception included, with no fail-open conditions"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+
+  V17_webrtc:
+    V17.1.1:
+      desc: "The TURN service allows access only to IP addresses not reserved for special purposes (internal networks, broadcast, loopback), IPv4 and IPv6 alike"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V17.2.1:
+      desc: "The DTLS certificate's key is managed and protected under the documented key management policy"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V17.2.2:
+      desc: "The media server uses approved DTLS cipher suites and a secure DTLS-SRTP protection profile"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V17.2.3:
+      desc: "SRTP authentication is checked at the media server to prevent RTP injection"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V17.2.4:
+      desc: "The media server keeps processing incoming media when it meets malformed SRTP packets"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V17.3.1:
+      desc: "The signaling server keeps processing legitimate messages during a flood, through signaling-level rate limiting"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
+    V17.3.2:
+      desc: "The signaling server keeps processing legitimate messages when it meets malformed ones"
+      level: 2
+      status: not-checked
+      notes: "Not yet audited against the code under ASVS 5.0 (added 2026-11-15, #2524)."
