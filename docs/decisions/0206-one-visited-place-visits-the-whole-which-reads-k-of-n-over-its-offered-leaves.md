@@ -1,7 +1,7 @@
 # ADR-0206: One visited place visits the whole, which reads "k of N" over its offered leaves
 
 **Date:** 2026-11-15
-**Status:** Draft
+**Status:** Accepted
 
 ---
 
@@ -75,8 +75,9 @@ and a chain deeper than four levels.
    places it can order them in a circle.
 
 Once accepted, this narrows ADR-0145 decision 5 (an edition and a serial site no longer differ in
-state, only in the count), ADR-0199 decisions 2 and 5 (partly visited is retired; a whole is
-visited when any place below it is), ADR-0100 decision 5 further, and ADR-0086 decision 6 (two
+state, only in the count), ADR-0199 decisions 2, 3, 5 and 6 (partly visited is retired, and with it
+the visit read's `partialIds`; a whole is visited when any place below it is, so the belfries
+read visited through a work seen in Antwerp Cathedral), ADR-0100 decision 5 further, and ADR-0086 decision 6 (two
 places are locked in that order rather than by id, decision 8). ADR-0197 is unchanged by
 decision 4: the region refresh still walks up one level and places a whole by its direct parts'
 points; what a nested whole shows and where it is placed are a later change.
@@ -111,6 +112,10 @@ points; what a nested whole shows and where it is placed are a later change.
   its direct wholes; the leaf trigger then adds the wholes further up, possibly out of key order.
   Two such transactions meeting in a cycle are broken by Postgres aborting one, as
   `lock_place_regions()` already accepts for a key a wait added. No whole is nested today.
+
+**Amended in its accepting pull request (#2547):** the list of what this narrows names ADR-0199
+decisions 3 and 6 beside 2 and 5. Decision 3 named `partialIds`, which the flip removes, and
+decision 6 said the belfries read partly visited through a work seen in one of them.
 
 ## References
 
