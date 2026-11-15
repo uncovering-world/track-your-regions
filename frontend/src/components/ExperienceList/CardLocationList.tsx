@@ -10,7 +10,7 @@
  * hover from the map names a place the cap is hiding.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Chip, List, TextField, Typography } from '@mui/material';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import ChevronRight from '@mui/icons-material/ChevronRight';
@@ -25,6 +25,7 @@ import {
   hoverRevealsCappedPlace,
 } from './utils';
 import { plural } from '../../utils/plural';
+import { onRevealPlaces } from '../shared/wholeAsk';
 
 /**
  * "Show all 93 places", and the same control under the out-of-region list.
@@ -129,6 +130,8 @@ function InRegionVisits({ objectName, visited, total, onMarkAll, onUnmarkAll, di
 }
 
 export interface CardLocationListProps {
+  /** The object these places belong to: for a whole, the line asking which places brings this list into view (#2121). */
+  experienceId: number;
   /** The object these places belong to, which each one's copied full name begins with. */
   objectName: string;
   inRegionLocs: LocationRowData[];
@@ -160,6 +163,7 @@ export interface CardLocationListProps {
 }
 
 export function CardLocationList({
+  experienceId,
   objectName,
   inRegionLocs,
   outOfRegionLocs,
@@ -268,8 +272,19 @@ export function CardLocationList({
 
   const inRegionCount = inRegionLocs.length;
 
+  // "Mark them in the list" (#2121): the line under a whole's own tick makes
+  // this list its picker, brought into view with the keyboard taken to it.
+  // The caps stay as they are: a search and "Show all" are one press away, and
+  // they spare mounting the 193 places the Frontiers of the Roman Empire hold
+  // in England, Hadrian's Wall's sections among them.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => onRevealPlaces(experienceId, () => {
+    rootRef.current?.focus({ preventScroll: true });
+    rootRef.current?.scrollIntoView({ block: 'start' });
+  }), [experienceId]);
+
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box ref={rootRef} tabIndex={-1} sx={{ mb: 2 }}>
       {isAuthenticated && showCheckbox && (
         <InRegionVisits
           objectName={objectName}

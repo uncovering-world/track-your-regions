@@ -6,18 +6,33 @@
 import { describe, expect, it } from 'vitest';
 import { cardVisitCount, offersWholeTick, wholeCountLabel } from './visitWords';
 
+const NOT_BEEN = { ticked: false, progress: undefined };
+const STRUVE = { has_parts: true };
+const SHOWS_ONLY_PARTS = { has_own_point: false };
+
 describe('the whole tick on a card', () => {
   it('is offered on a whole that shows only its parts: the Struve Arc', () => {
-    expect(offersWholeTick({ has_parts: true }, { has_own_point: false })).toBe(true);
+    expect(offersWholeTick({ has_parts: true }, { has_own_point: false }, NOT_BEEN)).toBe(true);
   });
 
   it("is not offered on a whole with a point of its own, whose tick is that point's: the City of Graz", () => {
-    expect(offersWholeTick({ has_parts: true }, { has_own_point: true })).toBe(false);
+    expect(offersWholeTick({ has_parts: true }, { has_own_point: true }, NOT_BEEN)).toBe(false);
   });
 
   it('is not offered on a place of no parts, nor while the card is still reading', () => {
-    expect(offersWholeTick({ has_parts: false }, { has_own_point: false })).toBe(false);
-    expect(offersWholeTick({ has_parts: true }, undefined)).toBe(false);
+    expect(offersWholeTick({ has_parts: false }, { has_own_point: false }, NOT_BEEN)).toBe(false);
+    expect(offersWholeTick({ has_parts: true }, undefined, NOT_BEEN)).toBe(false);
+  });
+
+  it('stays offered while the whole reads "? of 34", ticked as a whole', () => {
+    const ticked = { ticked: true, progress: { visited: null, total: 34 } };
+    expect(offersWholeTick(STRUVE, SHOWS_ONLY_PARTS, ticked)).toBe(true);
+  });
+
+  it('is not offered once a station is named, "1 of 34", unless the whole\'s own tick stands to be taken back', () => {
+    const named = { visited: 1, total: 34 };
+    expect(offersWholeTick(STRUVE, SHOWS_ONLY_PARTS, { ticked: false, progress: named })).toBe(false);
+    expect(offersWholeTick(STRUVE, SHOWS_ONLY_PARTS, { ticked: true, progress: named })).toBe(true);
   });
 });
 

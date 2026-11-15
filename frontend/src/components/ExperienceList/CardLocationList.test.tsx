@@ -20,6 +20,7 @@ function renderList() {
   render(
     <HoverProvider>
       <CardLocationList
+        experienceId={73}
         objectName="Prehistoric Pile Dwellings around the Alps"
         inRegionLocs={[place(1, 'Riesi', null, true), place(2, 'Ägelmoos', null, true)]}
         outOfRegionLocs={[
@@ -80,6 +81,7 @@ describe("a whole's places in the region", () => {
     return render(
       <HoverProvider>
         <CardLocationList
+          experienceId={847}
           objectName="Struve Geodetic Arc"
           inRegionLocs={[{ ...place(1, 'Rudi', null), isVisited: visited > 0 }]}
           outOfRegionLocs={[place(10, 'Fuglenes', 'Europe > Norway > Finnmark')]}
@@ -131,6 +133,7 @@ describe("a whole's places in the region", () => {
     view.rerender(
       <HoverProvider>
         <CardLocationList
+          experienceId={847}
           objectName="Struve Geodetic Arc"
           inRegionLocs={[{ ...place(1, 'Rudi', null), isVisited: true }]}
           outOfRegionLocs={[place(10, 'Fuglenes', 'Europe > Norway > Finnmark')]}

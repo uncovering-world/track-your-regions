@@ -11,14 +11,28 @@ export const VISIT_BUTTON_LABEL: Record<VisitedStatus, string> = {
 };
 
 /**
+ * Whether the traveller named a place of the whole (ADR-0206): "1 of 34", not
+ * "? of 34" or a whole they have not been to.
+ */
+export function placesNamed(progress: WholeProgress | undefined): boolean {
+  return (progress?.visited ?? 0) > 0;
+}
+
+/**
  * Whether a place's card offers "Visited, not sure which part" (#2120): a
  * whole whose detail read says it shows no point of its own. On a whole that
  * does, such as the City of Graz, a tick on that point is the whole's own
  * visit, so its checkbox in the list of places says it, and more precisely.
- * Not while the detail read is on its way.
+ * Not while the detail read is on its way. Once the traveller named a place
+ * of it, "1 of 34", it is not offered either, unless the whole's own tick
+ * stands (`ticked`), which stays to be taken back (#2121).
  */
-export function offersWholeTick(place: { has_parts: boolean }, details: { has_own_point: boolean } | undefined): boolean {
-  return place.has_parts && details?.has_own_point === false;
+export function offersWholeTick(
+  place: { has_parts: boolean },
+  details: { has_own_point: boolean } | undefined,
+  visit: { ticked: boolean; progress: WholeProgress | undefined },
+): boolean {
+  return place.has_parts && details?.has_own_point === false && (visit.ticked || !placesNamed(visit.progress));
 }
 
 /** A count as a row, a card or a list header shows it, and the name it is read out by. */

@@ -45,6 +45,7 @@ import { filterParts, groupParts } from '../../utils/partGroups';
 import type { LocationWithVisitedStatus } from '../../api/visited';
 import { PointArticleLink } from '../shared/PointArticleLink';
 import type { VisitCount } from '../shared/visitWords';
+import { onRevealPlaces } from '../shared/wholeAsk';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 
@@ -210,8 +211,18 @@ export function LocationsSection({
     }
   }), [store, virtualizer]);
 
+  // "Mark them in the list" (#2121): the line under a whole's own tick opens
+  // this section as its picker, brought into view with the keyboard taken to
+  // it. The parts in the region are its first group, open already.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => onRevealPlaces(experienceId, () => {
+    setExpanded(true);
+    rootRef.current?.focus({ preventScroll: true });
+    rootRef.current?.scrollIntoView({ block: 'start' });
+  }), [experienceId]);
+
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box ref={rootRef} tabIndex={-1} sx={{ mb: 2 }}>
       {/* Same disclosure, and if anything the sharper of the two: each row inside
           carries a visit checkbox, so a signed-in keyboard reader was locked out of
           *recording* — on a serial site of more than fifteen places, which is every
