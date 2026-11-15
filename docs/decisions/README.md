@@ -232,6 +232,7 @@ and accepted by it.
 | [0211](0211-a-nested-whole-is-shown-and-placed-by-its-leaves.md) | A nested whole is shown and placed by its leaves | Accepted | 2026-11-15 |
 | [0212](0212-the-openstreetmap-layer-keeps-whole-the-objects-of-a-bridges-item-and-its-line-places-it.md) | The OpenStreetMap layer keeps whole the objects of a bridge's item, and its line places it | Accepted | 2026-11-15 |
 | [0213](0213-a-parts-gate-is-its-record-in-its-whole.md) | A part's gate is its record in its whole, by the rules of its whole's source | Draft | 2026-11-15 |
+| [0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md) | A place carries its lifetime, and only the place's own end hides it | Draft | 2026-11-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
