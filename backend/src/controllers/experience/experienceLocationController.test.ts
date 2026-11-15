@@ -67,7 +67,7 @@ function placeRow(over: Record<string, unknown> = {}) {
   return {
     id: 9, experience_id: 42, name: 'See', external_ref: '1363-061', ordinal: 0,
     longitude: 9.4, latitude: 47.5, created_at: new Date('2026-08-04T15:01:24.341Z'),
-    curated_fields: [], in_region: true, region_path: null, curation_state: 'auto', refused_at: null,
+    curated_fields: [], in_region: true, own_point: true, region_path: null, curation_state: 'auto', refused_at: null,
     image_url: null, image_credit: null, description: null, wikidata_item: null, is_part: false,
     // The part place a point is the point of, which "mark all" visits instead (ADR-0100).
     part_id: null,
@@ -210,6 +210,26 @@ describe('reads that show a point', () => {
       expect(locationRead()).toMatch(/el\.approximate/);
       expect(res.json.mock.calls[0][0].locationsByExperience[42][0].approximate).toBe('whole-minute');
     }
+  });
+
+  it("sends own_point only on a place's own point, as the last key of the point (#2534)", async () => {
+    // Last, so the keys every row repeats stay in one run for compression, and
+    // absent where false, so a part's point carries no key at all (ADR-0211).
+    const own = placeRow({ id: 9, own_point: true });
+    const leaf = placeRow({ id: 10, own_point: false });
+    mockedQuery.mockResolvedValue({ rows: [own, leaf], rowCount: 2 });
+    const res = makeRes();
+    await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), { params: { regionId: '7' }, query: {} } as never, res as never);
+    const sent = JSON.parse(JSON.stringify(res.json.mock.calls[0][0])).locationsByExperience[42];
+    expect(Object.keys(sent[0]).at(-1)).toBe('own_point');
+    expect(sent[0].own_point).toBe(true);
+    expect(sent[1]).not.toHaveProperty('own_point');
+
+    const card = makeRes();
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '42' }, query: {} } as never, card as never);
+    const read = JSON.parse(JSON.stringify(card.json.mock.calls[0][0])).locations;
+    expect(Object.keys(read[0]).at(-1)).toBe('own_point');
+    expect(read[1]).not.toHaveProperty('own_point');
   });
 
   it('leaves a withdrawn point out of the markers a region asks for', async () => {

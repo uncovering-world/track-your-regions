@@ -51,6 +51,7 @@ function place(over: Partial<ExperienceLocationWithState> = {}): ExperienceLocat
     id: 9001, experience_id: 6205, name: null, external_ref: null, ordinal: 0,
     latitude: 51.5194, longitude: -0.127, created_at: '2026-08-01T00:00:00Z',
     approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
+    own_point: true,
     image_url: null, image_credit: null, description: null, wikidata_item: null, wikipedia_url: null, is_part: false,
     ...over,
   };

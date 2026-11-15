@@ -43,6 +43,7 @@ function asRegionPoints(answer: ExperienceLocationsResponse): RegionExperienceLo
       created_at: loc.created_at,
       curated_fields: loc.curated_fields,
       in_region: loc.in_region,
+      ...(loc.own_point ? { own_point: true as const } : {}),
       image_url: loc.image_url,
       image_credit: loc.image_credit,
       wikipedia_url: loc.wikipedia_url,

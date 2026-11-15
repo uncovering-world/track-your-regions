@@ -2761,6 +2761,8 @@ export interface RegionExperienceLocation {
   curated_fields: string[];
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
+  /** Present, and true, where the point is the object's own. Absent where the object shows it as the point of a place inside it, as a serial site shows its components' points (#2534). One point two listed objects share, such as Seville Cathedral's under the cathedral and under its World Heritage site, is one pin, which opens the object it is own to. Sent only when true, so the two thirds of a region's points that are parts' points carry no key. */
+  own_point?: true;
   /**
      * The picture of the point of a serial site's part, the part place's own: a World Heritage component's Wikidata picture, a Commons file (#1270, #1946), or one a curator chose, which may be an /images/ path we host. Null where the part holds none and on a point of any other place, which holds none of its own (#2117); it then shows its object's picture.
      * @nullable
@@ -3002,6 +3004,8 @@ export interface ExperienceLocationWithState {
   curated_fields: string[];
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
+  /** Present, and true, where the point is the object's own. Absent where the object shows it as the point of a place inside it, as a serial site shows its components' points (#2534). One point two listed objects share, such as Seville Cathedral's under the cathedral and under its World Heritage site, is one pin, which opens the object it is own to. Sent only when true, so the two thirds of a region's points that are parts' points carry no key. */
+  own_point?: true;
   /**
      * The picture of the point of a serial site's part, the part place's own: a World Heritage component's Wikidata picture, a Commons file (#1270, #1946), or one a curator chose, which may be an /images/ path we host. Null where the part holds none and on a point of any other place, which holds none of its own (#2117); it then shows its object's picture.
      * @nullable
