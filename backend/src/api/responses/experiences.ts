@@ -202,6 +202,13 @@ export type PlaceKind = z.infer<typeof PlaceKind>;
 const placeKinds = z.array(PlaceKind)
   .describe('Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller.');
 
+const LeafCount = z.number().int().nullable().describe(
+  'How many offered leaves the place has, the N of a whole\'s "k of N" (ADR-0206): places below it at any depth with'
+  + ' no parts of their own and a point a reader is shown, each counted once. The Struve Geodetic Arc counts 34.'
+  + ' Null on a place with none, such as an edition, whose casts are its own points, or a whole whose parts all wait'
+  + ' for a curator.',
+);
+
 export const FocusBbox = z.tuple([z.number(), z.number(), z.number(), z.number()])
   .describe(
     'The frame a camera fits, [west, south, east, north], measured by `geometry_focus()`.'
@@ -268,6 +275,7 @@ export const Experience = z.strictObject({
     'A whole shown by its parts, such as a serial site: its visit is read from its parts, which are ticked one by one,'
     + ' so its row shows the state and ticks nothing (#2120).',
   ),
+  leaf_count: LeafCount,
   treasure_count: z.number().int().describe('Offered and published links to works.'),
   finds_count: z.number().int()
     .describe('Finds dug up at this place, or taken from it by a confirmed link (#2242), and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row with neither.'),
@@ -411,6 +419,7 @@ export const ExperienceDetail = z.strictObject({
     + ' whole itself, as on the point named for the whole of the City of Graz beside its historic centre, so its card'
     + ' offers no separate "visited, not sure which part" (#2120).',
   ),
+  leaf_count: LeafCount,
 }).describe('One object, as its own page reads it.');
 export type ExperienceDetail = z.infer<typeof ExperienceDetail>;
 

@@ -30,7 +30,7 @@ import { isNewSql, type NewBadgeReaderParam } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { findsOnViewCountSql } from './siteFinds.js';
 import { pointsShownSql } from '../../db/placePoints.js';
-import { showsPartsSql } from '../../db/visits.js';
+import { leafCountSql, showsPartsSql } from '../../db/visits.js';
 
 /**
  * Not rejected by a curator from any of the regions `regionsSql` selects
@@ -95,6 +95,8 @@ export function rowColumnsSql(
         -- Whether it is a whole a reader is shown by its parts, whose visit is
         -- read from them: its row shows the state and ticks nothing (#2120).
         ${showsPartsSql('e.id')} AS has_parts,
+        -- The N of its "k of N": its offered leaves, null on a place with none (ADR-0206).
+        ${leafCountSql('e.id')} AS leaf_count,
         e.image_url,
         -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
         -- Commons, and the licences most of them carry ask one thing of a page

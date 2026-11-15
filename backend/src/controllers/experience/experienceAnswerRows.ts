@@ -128,6 +128,8 @@ export interface ExperienceListRow extends PlacePosition {
   cast_points: boolean;
   /** A whole shown by its parts (#2120). */
   has_parts: boolean;
+  /** Its offered leaves, null on a place with none (ADR-0206). */
+  leaf_count: number | null;
   treasure_count: number;
   finds_count: number;
   source_membership: Membership;
@@ -164,6 +166,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     location_count: row.location_count,
     cast_points: row.cast_points,
     has_parts: row.has_parts,
+    leaf_count: row.leaf_count,
     treasure_count: row.treasure_count,
     finds_count: row.finds_count,
     created_at: row.created_at?.toISOString(),
@@ -215,6 +218,7 @@ export interface ExperienceDetailRow extends PlacePosition {
   part_of_kind_id: number | null;
   part_of_regions: ExperienceRegionRef[] | null;
   has_own_point: boolean;
+  leaf_count: number | null;
 }
 
 export function experienceDetailOf(row: ExperienceDetailRow, regions: ExperienceRegionRef[]): ExperienceDetail {
@@ -259,6 +263,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
         kind_id: row.part_of_kind_id, regions: row.part_of_regions ?? [],
       },
     has_own_point: row.has_own_point,
+    leaf_count: row.leaf_count,
   };
 }
 

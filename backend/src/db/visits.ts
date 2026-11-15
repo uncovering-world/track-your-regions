@@ -25,13 +25,30 @@ import { RESTORE_LIMITS, TOO_MUCH_TO_UNDO } from '../types/trips.js';
  * its direct parts has a point a reader is shown. Such a place is ticked by
  * its parts, so its row shows its state and ticks nothing (#2120). A part
  * whose points are all unread or withdrawn does not count, so a reader never
- * learns from the row that unread parts exist.
+ * learns from the row that unread parts exist. One level down, as the card
+ * lists a whole's points (`pointsShownSql`): a whole whose places sit inside a
+ * whole nested in it keeps its checkbox, since its card has no place to tick.
+ * It moves to the whole's offered leaves (`whole_leaves`) together with the
+ * card in the slice of #2121 that shows and places a nested whole by its
+ * leaves.
  */
 export function showsPartsSql(place: string): string {
   return `EXISTS (SELECT 1 FROM experience_parts sp_prt
                    JOIN experience_locations sp_el ON sp_el.experience_id = sp_prt.part_id
                   WHERE sp_prt.whole_id = ${place}
                     AND ${offeredLocationSql('sp_el')} AND ${publishedContentSql('sp_el')})`;
+}
+
+/**
+ * How many offered leaves the place `place` has, the N of a whole's "k of N"
+ * (ADR-0206): places below it at any depth with no parts of their own and a
+ * point a reader is shown, each counted once however many points it holds.
+ * Null on a place with none: a place with no parts, an edition whose casts
+ * are its own points, and a whole whose parts all wait for a curator, as
+ * Wudang's 45 do.
+ */
+export function leafCountSql(place: string): string {
+  return `(SELECT NULLIF(count(*), 0)::int FROM whole_leaves lc_wl WHERE lc_wl.whole_id = ${place} AND lc_wl.offered)`;
 }
 
 /**

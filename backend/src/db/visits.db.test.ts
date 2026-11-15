@@ -6,6 +6,8 @@ import {
   getExperienceVisitedStatus, getVisitedLocationIds, markLocationVisited, unmarkAllLocationsVisited, unmarkLocationVisited,
 } from '../controllers/experience/locationVisitController.js';
 import { markTreasureViewed } from '../controllers/experience/experienceTreasureController.js';
+import { getExperience } from '../controllers/experience/experienceQueryController.js';
+import { showsPartsSql } from './visits.js';
 import { getVisitedRegions, getVisitedRegionsInWorldView } from '../controllers/user/visitedRegions.js';
 
 /**
@@ -270,6 +272,28 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
     await visit(EDITION);
 
     expect(await counts()).toEqual({});
+    expect((await getExperience({ params: { id: SITE }, caller: undefined })).leaf_count).toBeNull();
+    expect((await getExperience({ params: { id: EDITION }, caller: undefined })).leaf_count).toBeNull();
+  });
+
+  it("sends a whole's offered leaves as its leaf_count, each place once however many points it holds", async () => {
+    // The Cave of Altamira's part holds its point twice.
+    await point(PART_A, 44.705);
+
+    expect((await getExperience({ params: { id: SITE }, caller: undefined })).leaf_count).toBe(3);
+  });
+
+  it('keeps the checkbox on a whole whose places all sit inside a whole nested in it, and still counts them', async () => {
+    // Its card lists its places one level down, and the site nested in it
+    // holds no point of its own, so its row has nothing to read a state from.
+    await nestSite();
+    const shownByParts = async (id: number) => (await pool.query<{ has_parts: boolean }>(
+      `SELECT ${showsPartsSql('$1::int')} AS has_parts`, [id],
+    )).rows[0].has_parts;
+
+    expect(await shownByParts(SITE)).toBe(true);
+    expect(await shownByParts(GRAND)).toBe(false);
+    expect((await getExperience({ params: { id: GRAND }, caller: undefined })).leaf_count).toBe(3);
   });
 
   it('marks no region visited when a whole listed in two of them reads visited (ADR-0206 decision 7)', async () => {
