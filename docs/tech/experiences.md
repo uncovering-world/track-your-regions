@@ -140,6 +140,9 @@ An experience can have zero, one, or many locations. Location-bound experiences 
   ADR-0046 decision 6): the whole, the part, why it was recorded (`component` — a serial site's
   component, placed by the site's membership under the reference its source knows it by in
   `external_ref`; `wikidata_part_of`; `curator`), and, for a component, the membership.
+- `whole_leaves`: every whole's leaves, at any depth, each with whether a reader is shown it
+  ([ADR-0206](../decisions/0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md));
+  derived, see *A whole knows its leaves* below.
 
 **The points a place shows are its own and its parts'** (ADR-0100). Ancient Thebes shows the Luxor
 Temple, its own point, and the Temple of Karnak, the point of a place that is its part, on its map,
@@ -182,6 +185,38 @@ a point is judged and locked under `answeringPlaceSql` — the site that shows i
 a part — so a curator's correction of the Temple of Karnak is taken under Ancient Thebes' lock and
 scope, as a component's is. A part carries no membership of the site's kind, so no list offers it as
 a place of its own.
+
+**A whole knows its leaves** (ADR-0206, #2121). `whole_leaves` holds, for every place made of
+parts, the places at the bottom of its parts at any depth: a place reached down `experience_parts`
+that has no parts of its own, once per whole however many paths reach it, with `offered` saying
+whether a reader is shown one of its points. A leaf is a place, so a part holding two points is
+one leaf, and a whole's own point is none. A nested whole's leaves are its parent's leaves too,
+and the nested whole is not: with Oshino Hakkai a whole inside Fujisan, Fujisan holds 25 leaves,
+its 17 places and Oshino Hakkai's 8 ponds, and Oshino Hakkai holds its 8. This is what a whole's
+"k of N" counts. On the development catalogue (2026-11-15) it is 5,620 rows for 482 wholes, since
+no whole is nested yet.
+
+`whole_leaves_expected(wholes)` (NULL for every whole) is the rule: a walk down that carries its
+path, never steps onto a place already on it and stops at eight levels, since part relations are
+derived from records with no loop guard of their own; `offered` is the visible point
+`place_shown_points()` places by, held to `offeredLocationSql` and `publishedContentSql` by
+`placeRegionsSchema.test.ts`. `place_ancestors(places)` is the walk up, the same way.
+`refresh_whole_leaves(places)` is the table's one writer: it rewrites the rows of the places and
+of every whole above them, writing only what differs, after taking the region keys
+`lock_place_regions()` takes for each of them, in key order, and reading the reach again until it
+holds still. Statement-level triggers call it, named `trg_place_leaves_*` so they fire before the
+region triggers on the same tables and the region refresh after them takes no key out of order:
+on `experience_parts` (any write, the whole and the part locked), and on `experience_locations`
+(an insert, a delete, and an update of the columns the region trigger follows). It is not part of
+`refresh_place_regions()`: the two read the same inputs and neither calls the other. A part
+relation written per record, as a run writes its parts, refreshes its whole once per record.
+Measured on 2026-11-15 on a copy of the development catalogue's places, points and part relations
+in a throwaway database: the backfill writes the 5,620 rows in 1.2 s; a refresh of the Rock Art of
+the Mediterranean Basin (758 leaves) that changes nothing takes about 26 ms, and one of the Struve
+Arc about 8 ms; writing the Rock Art's 758 relations one statement each, from none, takes 16 s,
+and in one statement it refreshes the site once. The catalogue check `whole-leaves-out-of-step`
+compares the rows with what the function makes, and `SELECT refresh_whole_leaves(ARRAY[id])`
+settles one whole. No reader reads the table yet.
 
 **A part reads as a place** (ADR-0100 decisions 2 and 5, #1425). A part carries no membership of its
 own for its site's kind, so the membership predicates never offer it; `partOfferedSql`
