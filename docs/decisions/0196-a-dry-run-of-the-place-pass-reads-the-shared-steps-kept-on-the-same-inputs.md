@@ -1,7 +1,7 @@
 # ADR-0196: A dry run of the place pass reads the shared steps kept on the same inputs
 
 **Date:** 2026-11-11
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0209](0209-the-kept-gather-of-places-is-keyed-by-what-it-asks-and-the-pool-by-its-own-code.md)
 
 ---
 
