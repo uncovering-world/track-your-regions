@@ -7,7 +7,7 @@
  * the slot and none is queued beside it.
  */
 
-import { dumpsDir } from './buildQueue.js';
+import { dumpsDir } from './localCopies.js';
 import { DUMPS } from './catalog.js';
 import { copyDue, copyFacts, queueScheduledBuild } from './copySchedule.js';
 import { BuildAlreadyRunning } from './ledger.js';

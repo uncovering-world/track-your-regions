@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pool } from '../../../db/index.js';
-import { dumpsDir } from '../../dumps/buildQueue.js';
+import { dumpsDir } from '../../dumps/localCopies.js';
 import { codeHash } from './codeGraph.js';
 import { readSliced, writeSliced } from './slicedV8.js';
 import { gatherPlaces, type GatheredPlaces, type GatherRequest, type KindShare, type PlaceKind } from './gather.js';

@@ -14,7 +14,10 @@ const ledger = vi.hoisted(() => ({
 }));
 vi.mock('./ledger.js', () => ledger);
 const copies = vi.hoisted(() => ({ newest: null as null | { fileName: string } }));
-vi.mock('./localCopies.js', () => ({ newestLocalCopy: async () => copies.newest }));
+vi.mock('./localCopies.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./localCopies.js')>()),
+  newestLocalCopy: async () => copies.newest,
+}));
 const samples = vi.hoisted(() => ({ newest: null as null | { fileName: string } }));
 vi.mock('./samples.js', () => ({ newestSample: async () => samples.newest }));
 const kept = vi.hoisted(() => ({

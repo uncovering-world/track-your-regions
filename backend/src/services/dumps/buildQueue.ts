@@ -11,7 +11,7 @@ import {
   activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild, type BuildKind, type BuildProgressRecord, type BuildRequestRecord,
 } from './ledger.js';
 import { keeperOf, type Keeper } from './keepers.js';
-import { newestLocalCopy } from './localCopies.js';
+import { dumpsDir, newestLocalCopy } from './localCopies.js';
 import { newestDump } from './newestOnHost.js';
 import { newestSample } from './samples.js';
 
@@ -45,12 +45,6 @@ export interface DumpBuildProgress {
  * built from even when a newer dump has appeared since.
  */
 export type BuildFrom = 'newest' | 'local';
-
-/** Where a local copy is kept, if the deployment names one; absent, a build streams. */
-export function dumpsDir(): string | undefined {
-  const dir = process.env.DUMPS_DIR?.trim();
-  return dir ? dir : undefined;
-}
 
 /** The file name of the dump's newest local copy; refuses where there is none. */
 async function localCopyName(descriptor: DumpDescriptor): Promise<string> {

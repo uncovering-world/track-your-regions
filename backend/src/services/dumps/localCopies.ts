@@ -21,6 +21,12 @@
 import { readdir, rm, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 
+/** Where a local copy is kept, if the deployment names one; absent, a build streams. */
+export function dumpsDir(): string | undefined {
+  const dir = process.env.DUMPS_DIR?.trim();
+  return dir ? dir : undefined;
+}
+
 const LEFTOVER = /(?:\.part(?:\.json(?:\.tmp)?)?|\.terms\.gz|\.scope(?:\.tmp)?)$/;
 const DATED = /^([a-z_]+)-(\d{6}|\d{8})([-.].+)$/;
 

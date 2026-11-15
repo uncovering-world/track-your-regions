@@ -15,7 +15,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { dumpNamed, type DumpDescriptor, type DumpFile } from './catalog.js';
 import { fetchText, hostFailure, sizeOf } from './fetch.js';
 import { BEAT_EVERY_MS, beat, closeBuild, recordFile, recordUpdate, type BuildProgressRecord, type ClaimedBuild } from './ledger.js';
-import { dumpsDir } from './buildQueue.js';
+import { dumpsDir } from './localCopies.js';
 import { keeperOf, type Keeper } from './keepers.js';
 import { PassClock } from './passClock.js';
 import { countLines, CutDownload, holdVerifiedCopy, isDamagedRead, readDump, sizeWords, type ReadOptions } from './read.js';
