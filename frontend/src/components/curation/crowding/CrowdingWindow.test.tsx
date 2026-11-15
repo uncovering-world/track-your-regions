@@ -256,7 +256,8 @@ describe('the window open on a place, as a way in opens it', () => {
 
     const row = circleRow('Volkspark Friedrichshain');
     expect(row.queryByRole('img')).toBeNull();
-    expect(row.getAllByRole('button')).toHaveLength(1);
+    // Its name opens its circle, and the guide's yes the articles behind it (#2520).
+    expect(row.getAllByRole('button').map(button => button.textContent)).toEqual(['Volkspark Friedrichshain', 'yes']);
     expect(row.getAllByRole('cell').map(cell => cell.textContent).slice(0, 4)).toEqual(['209,401', '47', 'yes', '0.10']);
   });
 
@@ -334,7 +335,10 @@ describe('the window open on a place, as a way in opens it', () => {
     renderWindow();
     await inRegion();
 
-    const buttons = (name: string) => rowOf(name).queryAllByRole('button').map(button => button.textContent).slice(1);
+    // After the name, the answers; the guide's yes opens the articles behind it, no answer (#2520).
+    const buttons = (name: string) => rowOf(name).queryAllByRole('button')
+      .filter(button => !button.getAttribute('aria-label')?.includes('Wikivoyage articles'))
+      .map(button => button.textContent).slice(1);
     expect(buttons('Nollendorfplatz')).toEqual(['Shadow']);
     expect(buttons('Leipziger Platz')).toEqual(['Show anyway', 'Keep shadowed']);
     expect(buttons('Rosa-Luxemburg-Platz')).toEqual(['Publish', 'Shadow', 'Don’t take']);

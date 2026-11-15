@@ -11,14 +11,21 @@
  * list built of separate rows still lines its figures up under its headings.
  * A kind whose places the place pass counts venues around (ADR-0192) has a
  * fifth column, after the score, since the venues are no part of it.
+ *
+ * A guide's yes opens the Wikivoyage articles that use the place's item
+ * (`GuideArticlesButton`, #2520), where the row names its place.
  */
 
 import { Box, Link, Tooltip, Typography } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material';
 import type { ReactNode } from 'react';
 import type { CrowdingGroupPlace } from '../../../api/crowding';
+import { GuideArticlesButton } from '../../shared/GuideArticlesButton';
 
 type Signals = Pick<CrowdingGroupPlace, 'readers' | 'wikipediaEditions' | 'guideUsed' | 'score' | 'venues'>;
+
+/** The place a row's figures are of, for a cell that opens what stands behind its value. */
+export interface FigurePlace { membershipId: number; name: string }
 
 const DASH = '—';
 const NOT_MEASURED = 'Not measured yet.';
@@ -30,6 +37,8 @@ interface FigureColumn {
   width: string;
   align: 'right' | 'center';
   text: (signals: Signals) => string | null;
+  /** What the cell shows in place of its text, where the value opens more; null to show the text. */
+  cell?: (signals: Signals, place: FigurePlace) => ReactNode | null;
 }
 
 const count = (value: number | null) => (value === null ? null : value.toLocaleString('en'));
@@ -56,6 +65,9 @@ const FAME_COLUMNS: readonly FigureColumn[] = [
     heading: 'In Wikivoyage', width: '6.5rem', align: 'center',
     hint: 'Whether a Wikivoyage guide writes about it.',
     text: signals => guideText(signals.guideUsed),
+    cell: (signals, place) => (signals.guideUsed
+      ? <GuideArticlesButton membershipId={place.membershipId} placeName={place.name}>yes</GuideArticlesButton>
+      : null),
   },
   {
     heading: 'Score', width: '4.5rem', align: 'right',
@@ -170,16 +182,22 @@ export function FigureHeadings({ columns }: { columns: FigureColumns }) {
   );
 }
 
-/** One place's figures, in the headings' columns; a value not read yet is a dash with its hint. */
-export function FigureCells({ columns, signals, strong = false }: { columns: FigureColumns; signals: Signals; strong?: boolean }) {
+/**
+ * One place's figures, in the headings' columns; a value not read yet is a dash with its hint. A value that opens more
+ * (`cell`) does so where the row names its place.
+ */
+export function FigureCells({ columns, signals, place, strong = false }: {
+  columns: FigureColumns; signals: Signals; place?: FigurePlace; strong?: boolean;
+}) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: gridOf(columns), flexShrink: 0 }}>
       {columns.map(column => {
         const text = column.text(signals);
+        const opens = place && column.cell ? column.cell(signals, place) : null;
         return (
           <Typography key={column.heading} role="cell" variant="body2" color={text === null ? 'text.secondary' : 'text.primary'}
             sx={{ px: 0.75, textAlign: column.align, fontVariantNumeric: 'tabular-nums', fontWeight: strong ? 500 : undefined }}>
-            {text === null ? <NotMeasured /> : text}
+            {text === null ? <NotMeasured /> : opens ?? text}
           </Typography>
         );
       })}

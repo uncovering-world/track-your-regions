@@ -10,10 +10,11 @@
  * suggested answer: refuse it from the kind, which a curator's refusal of an
  * arrival is, and which the kept-out list can take back. Keeping it closes the
  * question for good. One section per kind asked about, so a place two kinds
- * offer is one card.
+ * offer is one card. A travel guide's yes opens the Wikivoyage articles that
+ * use the place's item (`GuideArticlesButton`, #2520).
  */
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import { answerVisitQuestion, type VisitQuestionAnswered } from '../../api/curation';
@@ -22,6 +23,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { ItemHeader, messageFor } from './queueCard';
 import { readingWords } from './VisitReadingLine';
 import { CrowdingWayIn } from './crowding/CrowdingWayIn';
+import { GuideArticlesButton } from '../shared/GuideArticlesButton';
 
 type OnDone = (message?: string, experienceId?: number) => void;
 type VisitQuestion = NonNullable<ReviewQueueItem['visit_question']>;
@@ -46,6 +48,24 @@ export function witnessLines(witnesses: readonly Witness[]): { found: string | n
     found: witnesses.length === 0 ? null : witnesses.map(witness => WITNESS_WORDS[witness].found).join('; '),
     missing: missing.join('; '),
   };
+}
+
+/** What vouched, as `witnessLines` words it, a travel guide's yes opening the articles behind it. */
+function FoundWitnesses({ witnesses, membershipId, placeName }: {
+  witnesses: readonly Witness[]; membershipId: number; placeName: string;
+}) {
+  return (
+    <>
+      {witnesses.map((witness, at) => (
+        <Fragment key={witness}>
+          {at > 0 && '; '}
+          {witness === 'guide' ? (
+            <GuideArticlesButton membershipId={membershipId} placeName={placeName}>{WITNESS_WORDS.guide.found}</GuideArticlesButton>
+          ) : WITNESS_WORDS[witness].found}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 /** The outcome line the page shows once the answer lands. */
@@ -99,7 +119,12 @@ function VisitSection({ item, membershipId, question, heading, onDone }: {
       {heading && <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>{heading}</Typography>}
 
       <Typography variant="body2">
-        {witnesses.found ? `One witness of four says a visitor goes here: ${witnesses.found}.` : 'None of the four witnesses says a visitor goes here.'}
+        {witnesses.found ? (
+          <>
+            {'One witness of four says a visitor goes here: '}
+            <FoundWitnesses witnesses={question.witnesses} membershipId={membershipId} placeName={item.name} />.
+          </>
+        ) : 'None of the four witnesses says a visitor goes here.'}
       </Typography>
       <Typography variant="body2" color="text.secondary">Missing: {witnesses.missing}.</Typography>
       <Typography variant="body2" sx={{ mt: 1 }}>

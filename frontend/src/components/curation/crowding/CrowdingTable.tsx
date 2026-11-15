@@ -214,7 +214,7 @@ export function CrowdingRow({
           {answers && <Box sx={{ ml: 'auto' }}>{answers}</Box>}
         </Stack>
       </Box>
-      <FigureCells columns={columns} signals={place.signals} strong={own} />
+      <FigureCells columns={columns} signals={place.signals} place={{ membershipId: place.membershipId, name: place.name }} strong={own} />
       {distance !== undefined && (
         <Typography role="cell" variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
           {distance}
