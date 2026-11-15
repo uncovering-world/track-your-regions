@@ -1,7 +1,7 @@
 # ADR-0205: A whole has no coordinate in a reader's answer, and is framed by its places
 
 **Date:** 2026-11-15
-**Status:** Accepted
+**Status:** Accepted — decisions 1 and 3 narrowed by [ADR-0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md): a dispersed whole holds no point, and a reader's answer asks the column
 **Issue:** [#2122](https://github.com/uncovering-world/track-your-regions/issues/2122), Epic #2115
 **Narrows:** [ADR-0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) decision 1,
 [ADR-0028](0028-a-reader-is-positioned-by-places-they-can-go-to.md) decision 2

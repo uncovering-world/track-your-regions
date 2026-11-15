@@ -1,7 +1,7 @@
 # ADR-0095: A place of several points has no coordinate of its own
 
 **Date:** 2026-10-12
-**Status:** Accepted — decision 1 narrowed by [ADR-0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md): a whole has no coordinate in a reader's answer, and is framed by its places
+**Status:** Accepted — decision 1 narrowed by [ADR-0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md): a whole has no coordinate in a reader's answer, and is framed by its places; decision 1 superseded and decision 2 narrowed by [ADR-0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md): a dispersed whole holds no point, and the anchor is its record's view only
 
 ---
 

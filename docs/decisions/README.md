@@ -114,7 +114,7 @@ and accepted by it.
 | [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | A gate reads its own side and its own settings, and only CI runs everything for the map | Accepted | 2026-10-11 |
 | [0093](0093-the-web-unit-lane-runs-under-happy-dom.md) | The web unit lane runs under happy-dom, not jsdom | Accepted | 2026-10-12 |
 | [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | The item named as a World Heritage property is its item, whichever number it carries | Accepted | 2026-10-12 |
-| [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | A place of several points has no coordinate of its own | Accepted — decision 1 narrowed by [0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md) | 2026-10-12 |
+| [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | A place of several points has no coordinate of its own | Accepted — decision 1 narrowed by [0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md) and superseded by [0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md), decision 2 narrowed by [0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md) | 2026-10-12 |
 | [0096](0096-the-unread-batchs-pins-are-released-once-read.md) | The pins of the unread batch of 2026-09-14 are released once a curator has read them | Accepted | 2026-10-12 |
 | [0097](0097-a-cards-put-back-pins-only-when-the-curator-remembers-it.md) | A card's put-back pins only when the curator chooses to remember it | Accepted | 2026-10-12 |
 | [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md) | A place the map shows in use is refused on the map's entrance | Accepted | 2026-10-12 |
@@ -223,10 +223,11 @@ and accepted by it.
 | [0202](0202-a-visit-holds-its-trips-each-with-an-approximate-date.md) | A visit holds its trips, each with an approximate date | Accepted | 2026-11-13 |
 | [0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md) | A place made of parts is never merged, and claims no Wikidata item | Accepted | 2026-11-13 |
 | [0204](0204-a-run-chooses-among-its-items-coordinates-by-the-places-outline-and-other-views.md) | A run chooses among its item's coordinates by the place's outline and other views | Accepted | 2026-11-13 |
-| [0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md) | A whole has no coordinate in a reader's answer, and is framed by its places | Accepted | 2026-11-15 |
+| [0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md) | A whole has no coordinate in a reader's answer, and is framed by its places | Accepted — decisions 1 and 3 narrowed by [0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md) | 2026-11-15 |
 | [0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md) | One visited place visits the whole, which reads "k of N" over its offered leaves | Accepted | 2026-11-15 |
 | [0207](0207-a-places-regions-come-from-its-own-geometry-and-a-point-no-region-holds-takes-its-nearest.md) | A place's regions come from its own geometry, and a point no region holds takes its nearest | Accepted | 2026-11-15 |
 | [0209](0209-the-kept-gather-of-places-is-keyed-by-what-it-asks-and-the-pool-by-its-own-code.md) | The kept gather of places is keyed by what it asks, and the pool by its own code | Accepted | 2026-11-15 |
+| [0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md) | A dispersed whole holds no point, and every line of a serial site is a part | Accepted | 2026-11-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
