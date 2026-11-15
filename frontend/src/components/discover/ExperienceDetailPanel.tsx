@@ -62,7 +62,7 @@ import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { queryKeys } from '../../api/queryKeys';
-import { VISIT_BUTTON_LABEL, offersWholeTick } from '../shared/visitWords';
+import { VISIT_BUTTON_LABEL, cardVisitCount, offersWholeTick } from '../shared/visitWords';
 import { WholeVisitButton } from '../shared/WholeVisitButton';
 import { LazyTripsSection } from '../shared/lazyVisitTrips';
 
@@ -116,7 +116,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   });
 
   // Visited state
-  const { visitedStatusOf, isWholeTicked, markVisited, unmarkVisited } = useVisitedExperiences();
+  const { visitedStatusOf, isWholeTicked, progressOf, markVisited, unmarkVisited } = useVisitedExperiences();
   // Any visit write of this traveller on its way: every control here that
   // writes one waits on it (#2120).
   const visitWritePending = useVisitWritePending();
@@ -159,6 +159,11 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   // A whole lists its places even where it shows one: they are what a
   // traveller ticks it by (#2120).
   const listsPlaces = isMultiLocation || experience.has_parts;
+  // The count the place's row shows, a whole's over its leaves (ADR-0206): the
+  // summary and the list of places read it, never a count of their own.
+  const visitCount = cardVisitCount(
+    experience, progressOf(experience.id), { visited: visitedLocationCount, total: visitedTotalLocations },
+  );
 
   // The region's batch, as Discover's map reads it — lost places' points
   // included (#609) — so the same key and no second request: the region path and
@@ -295,7 +300,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
               <Typography variant="caption" color="text.secondary">
                 {castPoints
                   ? `${visitedTotalLocations} casts of one work`
-                  : `${visitedLocationCount}/${visitedTotalLocations} locations visited`}
+                  : visitCount && `${visitCount.text} visited`}
               </Typography>
               <Chip
                 label={visitedStatusLabel}
@@ -304,9 +309,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
                 sx={{ height: 22, fontSize: '0.65rem' }}
               />
             </Box>
-            {!castPoints && <LinearProgress
+            {visitCount && <LinearProgress
               variant="determinate"
-              value={visitedTotalLocations > 0 ? (visitedLocationCount / visitedTotalLocations) * 100 : 0}
+              aria-label={visitCount.name}
+              value={visitCount.share * 100}
               sx={{
                 height: 4,
                 borderRadius: 2,
@@ -377,6 +383,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             objectName={experience.name}
             locations={displayLocations}
             totalCount={totalLocations}
+            visitCount={visitCount}
             isAuthenticated={isAuthenticated}
             onMarkLocation={markLocationVisited}
             onUnmarkLocation={unmarkLocationVisited}

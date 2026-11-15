@@ -19,6 +19,8 @@ import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 import { PlaceSubtitle } from '../shared/PlaceSubtitle';
 import { VisitStatusMark } from '../shared/VisitStatusMark';
 import type { VisitedStatus } from '../../api/visited';
+import type { WholeProgress } from '@tyr/shared/visits';
+import { placesCount, wholeCountLabel, type VisitCount } from '../shared/visitWords';
 
 interface CardSurfaceInputs {
   isRejected: boolean | undefined;
@@ -64,6 +66,8 @@ interface ExperienceCardProps {
   isVisited: boolean;
   /** Visited in part (#2120): a whole some of whose parts the traveller ticked. */
   isPartlyVisited?: boolean;
+  /** How far through the whole the traveller is (ADR-0206), absent where they have not been. */
+  progress?: WholeProgress;
   isHovered?: boolean;
   isSelected?: boolean;
   onClick: () => void;
@@ -81,6 +85,7 @@ export function ExperienceCard({
   experience,
   isVisited,
   isPartlyVisited = false,
+  progress,
   isHovered = false,
   isSelected = false,
   onClick,
@@ -97,6 +102,11 @@ export function ExperienceCard({
   // A card reads as done only when the place is: a whole visited in part keeps
   // its full colour, title and picture, since parts of it are still ahead (#2120).
   const isDone = visitState === 'visited';
+  // The count Map mode's row shows, from the same formatter: "1 of 34" for the
+  // Struve Arc after one station, in every region's list (ADR-0206).
+  let count: VisitCount | null = null;
+  if (experience.has_parts && !experience.cast_points) count = wholeCountLabel(experience.leaf_count, progress, showCheckbox);
+  else if (experience.location_count > 1) count = placesCount(experience.location_count);
   const isRejected = experience.is_rejected;
   const imageUrl = extractImageUrl(experience.image_url);
   // The kind's colour, refined by the type where the types are told apart —
@@ -235,20 +245,22 @@ export function ExperienceCard({
           <LifecycleChip state={experience} />
           <TreasuresInsideChip count={experience.treasure_count} kindId={experience.kind_id} />
           <FindsOnViewChip count={experience.finds_count} />
-          {(experience.location_count ?? 0) > 1 && (
-            <Chip
-              icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}
-              label={experience.location_count}
-              size="small"
-              sx={{
-                height: 16,
-                fontSize: '0.55rem',
-                fontWeight: 600,
-                '& .MuiChip-label': { px: 0.5 },
-                '& .MuiChip-icon': { ml: 0.25 },
-                flexShrink: 0,
-              }}
-            />
+          {count && (
+            <Tooltip title={count.name}>
+              <Chip
+                icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}
+                label={count.text}
+                size="small"
+                sx={{
+                  height: 16,
+                  fontSize: '0.55rem',
+                  fontWeight: 600,
+                  '& .MuiChip-label': { px: 0.5 },
+                  '& .MuiChip-icon': { ml: 0.25 },
+                  flexShrink: 0,
+                }}
+              />
+            </Tooltip>
           )}
         </Box>
         {/* What the place is, in a line under its name (#1795). */}

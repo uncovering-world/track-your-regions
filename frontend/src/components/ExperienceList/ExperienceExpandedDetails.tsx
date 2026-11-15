@@ -53,7 +53,7 @@ import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
-import { VISIT_BUTTON_LABEL, offersWholeTick } from '../shared/visitWords';
+import { VISIT_BUTTON_LABEL, cardVisitCount, offersWholeTick } from '../shared/visitWords';
 import { WholeVisitButton } from '../shared/WholeVisitButton';
 import { LazyTripsSection } from '../shared/lazyVisitTrips';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
@@ -194,8 +194,12 @@ function ExperienceExpandedDetailsComponent({
 
   // The place's own state, the one read its row and Discover draw from (#2120).
   const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
-  const { visitedStatusOf, isWholeTicked } = useVisitedExperiences();
+  const { visitedStatusOf, isWholeTicked, progressOf } = useVisitedExperiences();
   const visitedStatus: VisitedStatus = visitedStatusOf(experience.id);
+  // The count its row shows, a whole's over its leaves (ADR-0206).
+  const visitCount = cardVisitCount(
+    experience, progressOf(experience.id), { visited: visitedLocations, total: totalLocations },
+  );
 
   // Resolved once, by the same helper the row's hover preload calls, so the two
   // cannot ask for different files. It answers with an empty string for a remote
@@ -461,15 +465,10 @@ function ExperienceExpandedDetailsComponent({
             {VISIT_BUTTON_LABEL[visitedStatus]}
           </Button>
         )}
-        {/* And withheld entirely rather than shown as `0/N Visited`, which is
-            the same confident zero the ratio chip above no longer states. */}
+        {/* Only once the batch has settled: a place shown at more than one
+            point is counted over them, and a zero read before them is a guess. */}
         {isAuthenticated && showCheckbox && listsPlaces && locationsResolved && (
-          <VisitedStatusButton
-            visitedStatus={visitedStatus}
-            visitedCount={visitedLocations}
-            totalCount={totalLocations}
-            castPoints={experience.cast_points}
-          />
+          <VisitedStatusButton visitedStatus={visitedStatus} count={visitCount} />
         )}
         {/* A whole ticked without naming a part, on its card and never its row. */}
         {isAuthenticated && showCheckbox && offersWholeTick(experience, details) && (

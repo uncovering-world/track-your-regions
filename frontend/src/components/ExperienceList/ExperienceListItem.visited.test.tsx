@@ -7,11 +7,12 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HoverProvider } from '../../hooks/useHoverContext';
 import type { Experience, RegionExperienceLocation } from '../../api/experiences';
 import type { VisitedStatus } from '../../api/visited';
+import type { WholeProgress } from '@tyr/shared/visits';
 import { ExperienceListItem } from './ExperienceListItem';
 
 // The date line under a row reads who is signed in: no one, here.
@@ -36,16 +37,22 @@ const arc = [
 
 interface RowOptions {
   whole?: boolean;
+  /** The whole's offered leaves, the N of its count. */
+  leafCount?: number;
+  progress?: WholeProgress;
+  signedIn?: boolean;
+  /** A whole whose points are casts of one work. */
+  castPoints?: boolean;
   visited?: number[];
   onTogglePlace?: (id: number, tick: boolean) => void;
   onClick?: () => void;
 }
 
 function renderRow(visitedStatus: VisitedStatus, options: RowOptions = {}) {
-  const { whole = false, visited = [BILBAO] } = options;
+  const { whole = false, leafCount = 34, visited = [BILBAO] } = options;
   const experience = (whole
-    ? { id: 1093, name: 'Struve Geodetic Arc', kind_id: 1, type: 'cultural', location_count: 2, kinds: [], cast_points: false, has_parts: true }
-    : { id: 1581, name: 'Maman', kind_id: 3, type: 'sculpture', location_count: 2, kinds: [], cast_points: true, has_parts: false }
+    ? { id: 1093, name: 'Struve Geodetic Arc', kind_id: 1, type: 'cultural', location_count: 2, kinds: [], cast_points: options.castPoints ?? false, has_parts: true, leaf_count: leafCount }
+    : { id: 1581, name: 'Maman', kind_id: 3, type: 'sculpture', location_count: 2, kinds: [], cast_points: true, has_parts: false, leaf_count: null }
   ) as unknown as Experience;
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -56,10 +63,11 @@ function renderRow(visitedStatus: VisitedStatus, options: RowOptions = {}) {
           locationsResolved
           isLocationVisited={(id) => visited.includes(id)}
           visitedStatus={visitedStatus}
+          progress={options.progress}
           isSelected={false}
           locationRefs={{ current: new Map() }}
           itemRefs={{ current: new Map() }}
-          showCheckbox
+          showCheckbox={options.signedIn ?? true}
           isLoading={false}
           onHover={() => {}}
           onLeave={() => {}}
@@ -117,5 +125,44 @@ describe("the row of a whole", () => {
   it('offers no button beside the mark: its places are marked on its card', () => {
     renderRow('partial', { whole: true, visited: [FUGLENES] });
     expect(screen.queryAllByRole('button', { name: /all/ })).toHaveLength(0);
+  });
+});
+
+describe("the count on a row (ADR-0206)", () => {
+  it("reads the whole's own count in every region's list: the Struve Arc in Moldova's after a station in Finland", () => {
+    renderRow('partial', { whole: true, visited: [FUGLENES], progress: { visited: 1, total: 34 } });
+    expect(screen.getByText('1 of 34')).toBeTruthy();
+    expect(screen.getByLabelText('1 of 34 places visited')).toBeTruthy();
+    expect(screen.queryByText('1/2')).toBeNull();
+  });
+
+  it('reads "?" for a whole ticked without naming a place', () => {
+    renderRow('partial', { whole: true, visited: [], progress: { visited: null, total: 34 } });
+    expect(screen.getByText('? of 34')).toBeTruthy();
+  });
+
+  it('reads 0 of N where the traveller has not been, and N places to a visitor signed out', () => {
+    renderRow('not_visited', { whole: true, visited: [] });
+    expect(screen.getByText('0 of 34')).toBeTruthy();
+    cleanup();
+    renderRow('not_visited', { whole: true, visited: [], signedIn: false });
+    expect(screen.getByText('34 places')).toBeTruthy();
+  });
+
+  it('shows none on a whole of one offered place', () => {
+    renderRow('not_visited', { whole: true, leafCount: 1, visited: [] });
+    expect(screen.queryByText(/ of |places/)).toBeNull();
+  });
+
+  it('counts no visit on an edition a curator has given parts: every cast is the work', () => {
+    renderRow('visited', { whole: true, castPoints: true, progress: { visited: 1, total: 34 } });
+    expect(screen.queryByText('1 of 34')).toBeNull();
+    expect(screen.getByText('2 places')).toBeTruthy();
+  });
+
+  it('says how many places an edition stands at, never how many are in the region', () => {
+    renderRow('visited');
+    expect(screen.getByText('2 places')).toBeTruthy();
+    expect(screen.queryByText('1/2')).toBeNull();
   });
 });

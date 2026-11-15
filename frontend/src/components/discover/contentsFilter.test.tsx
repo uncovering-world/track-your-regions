@@ -90,6 +90,7 @@ function renderPlaces() {
           externalRef: name === null ? '874-758' : null,
         }))}
         totalCount={names.length}
+        visitCount={null}
         isAuthenticated
         onMarkLocation={vi.fn()}
         onUnmarkLocation={vi.fn()}
@@ -179,6 +180,7 @@ describe('the places of a long serial site in groups (#1271)', () => {
           objectName="Rock Art of the Mediterranean Basin on the Iberian Peninsula"
           locations={locations}
           totalCount={locations.length}
+          visitCount={null}
           isAuthenticated={false}
           onMarkLocation={vi.fn()}
           onUnmarkLocation={vi.fn()}

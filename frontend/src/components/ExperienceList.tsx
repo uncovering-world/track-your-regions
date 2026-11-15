@@ -104,7 +104,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const { isAuthenticated, isCurator, user } = useAuth();
   const { selectedRegion } = useNavigation();
   const queryClient = useQueryClient();
-  const { visitedStatusOf, markVisited, unmarkVisited } = useVisitedExperiences();
+  const { visitedStatusOf, progressOf, markVisited, unmarkVisited } = useVisitedExperiences();
   // Any visit write of this traveller on its way, a seen work's venue included:
   // every control that writes one waits on it (#2120).
   const isMutating = useVisitWritePending();
@@ -624,6 +624,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       locationsResolved={resolved}
       isLocationVisited={isLocationVisited}
       visitedStatus={visitedStatusOf(exp.id)}
+      progress={progressOf(exp.id)}
       // Hover is not passed down. It arrives at the row and at the place from
       // the store, each subscribing to its own boolean, so a mouse move does not
       // re-render this list to hand a new prop to every row it holds.

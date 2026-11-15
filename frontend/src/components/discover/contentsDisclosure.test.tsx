@@ -130,6 +130,7 @@ describe('the way into a serial site\'s places', () => {
           curatedFields: claimOn === i + 1 ? ['location'] : undefined,
         }))}
         totalCount={count}
+        visitCount={null}
         isAuthenticated
         onMarkLocation={vi.fn()}
         onUnmarkLocation={vi.fn()}
