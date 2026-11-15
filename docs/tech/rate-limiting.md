@@ -169,7 +169,8 @@ catalogue of 2026-09-07), still with nothing after the read.
 union under the same chips, every question rather than a page, writing nothing and
 with nothing after the read. The union held 15,709 open questions on the development
 catalogue of 2026-11-13 and was read in 1.0 s, the same union the queue's facets count
-on every request.
+on every request. `/review/queue/map/names` (#2501) is the same statement opening over at
+most 100 asked ids, read when a short list on the map opens, writing nothing.
 
 `POST /api/experiences/locations/:locationId/state` — a curator's verdict on one
 point of an object (ADR-0026) — carries `authenticatedLimiter`, and it is worth

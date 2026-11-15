@@ -544,7 +544,14 @@ while the map is shown.
   drawn on top; places a closer view would not separate are listed together, by place: those on one
   and the same point, and any under one pin once the map is as close as it frames (zoom 14), such as
   a square and the fountain in it. An open list reads the current answer, so a question answered
-  meanwhile leaves it. Under the heat only the open question's pin is clickable, at every zoom, and the
+  meanwhile leaves it. The list names its places from reads of their names it makes when it
+  opens, `QUEUE_MAP_NAMES_MAX` places to a read so a longer list is named whole
+  (`useQueueMapNames`, `GET /api/experiences/review/queue/map/names`, under
+  `queryKeys.curation.reviewQueueMapNames`, outside `reviewQueueAll` since an answer renames
+  nothing), never from the rows the review list has loaded. A place's heading says *this place*
+  until its name arrives; an entry under a list of several places says *Reading its name…*, then
+  the name, or *Could not read its name* where the read failed or left the place out. Under the
+  heat only the open question's pin is clickable, at every zoom, and the
   fading pins answer a click from the zoom they start to show.
 - **The camera** is not stored. A region chip frames the region by its stored `focusBbox` and
   `anchorPoint` through `smartFitBounds`, read from the last of its ancestors
