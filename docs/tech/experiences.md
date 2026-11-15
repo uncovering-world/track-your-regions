@@ -3318,7 +3318,7 @@ urban art (`STREET_ART_CATEGORY`), less the categories that file people, works a
 (`NOT_A_PLACE_CATEGORY`: `Street artists from Brazil`), read from the copy of the category
 structure (ADR-0121, `structureItemsInCategories`); every item filed under the genre street art
 or graffiti (`P136`, `STREET_ART_GENRES`); every item typed a wall of graffiti paintings or a
-subclass of one (`P31/P279*`, `GRAFFITI_WALL_CLASSES` in `streetArtTest.ts`, #2055), the one class that names such a place
+subclass of one (`P31/P279*`, `GRAFFITI_WALL_CLASSES` in `publicArt/entrances.ts`, #2055), the one class that names such a place
 and all that says the East Side Gallery is street art, since Wikidata types it an art museum and
 Art Museums' rule keeps it out; and every place the source already holds as `street-art`, so a place a category stops naming is judged by this rule and not refused for its
 lack of a sculpture class. Without the copy the run reads the others and says so in its log.

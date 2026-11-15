@@ -20,7 +20,8 @@ vi.mock('../admission.js', () => ({
 }));
 
 import { classifyPublicArt, type EntranceReadings, type PublicArtShare } from './pipeline.js';
-import { STREET_ART_ENTRANCE, type StreetArtReading } from './streetArtPlaces.js';
+import type { StreetArtReading } from './streetArtPlaces.js';
+import { STREET_ART_ENTRANCE } from './entrances.js';
 import { MONUMENTS_CATEGORY_ENTRANCE, type MonumentCategoryReading } from './monumentCategories.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';

@@ -5,7 +5,7 @@ import {
   forgetCollectionShelves, structureArticleItems, structureCategories, structureCategoriesOfItems, structureCategoryReads,
   structureCollectionItems, structureItemsInCategories,
 } from './wikipediaStructure.js';
-import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/streetArtTest.js';
+import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/entrances.js';
 
 /**
  * English Wikipedia's categories read from the copy of its structure (#1440),

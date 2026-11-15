@@ -32,7 +32,8 @@ import {
 } from './classes.js';
 import { publicArtVerdict, type FiledAsMonument, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
-import { enterStreetArtPlaces, STREET_ART_ENTRANCE, streetArtGuideOf, type StreetArtReading } from './streetArtPlaces.js';
+import { streetArtGuideOf, type StreetArtReading } from './streetArtPlaces.js';
+import { enterStreetArtPlaces, STREET_ART_ENTRANCE } from './entrances.js';
 import {
   categoryNote, enterMonumentCategories, filedAsMonument, MONUMENTS_CATEGORY_ENTRANCE, type MonumentCategoryReading,
 } from './monumentCategories.js';
