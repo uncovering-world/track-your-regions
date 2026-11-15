@@ -39,3 +39,4 @@ and says so in its first lines.
 | [2026-11-10 — A walked street read from the venues around it](2026-11-10-a-walked-street-read-from-the-venues-around-it.md) | #2311, ADR-0192 |
 | [2026-11-12 — Which dedications a monument's lead states, and how they resolve to an item](2026-11-12-dedications-stated-in-a-lead.md) | #2435 |
 | [2026-11-13 — How map-and-list review tools let a person work a queue on a map](2026-11-13-a-review-queue-worked-on-a-map.md) | #2477 |
+| [2026-11-15 — The venue share for streets read along their lines](2026-11-15-the-venue-share-for-streets-read-along-their-lines.md) | #2450 |
