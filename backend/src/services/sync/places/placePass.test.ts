@@ -5,7 +5,38 @@ import { PLACE_PASS } from '../passes.js';
 vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set<string>()) }));
 
 import { codeHash } from './codeGraph.js';
-import { gatheredPlaceKinds, PASS_KIND_MODULES, passKinds, SHARED_STEPS_CODE } from './placePass.js';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { gatheredPlaceKinds, KIND_GATHER_MODULES, PASS_KIND_MODULES, passKinds, STEPS_CODE } from './placePass.js';
+
+/** A module by its path from `src/`, as the code key lists them. */
+const SRC = new URL('../../../', import.meta.url);
+const fromSrc = (url: URL) => fileURLToPath(url).slice(fileURLToPath(SRC).length);
+
+/**
+ * The modules a kind's verdict, exceptions or world bars are declared in,
+ * which the gather of places must not import (#2448): each kind's declaring
+ * module, the declared kinds' verdict and declarations, every rule module of
+ * a kind, and the world tier with the register of the admission frame.
+ */
+const RULE_MODULES = [
+  ...PASS_KIND_MODULES.map((url) => fromSrc(url).replace(/\.js$/, '.ts')),
+  'services/sync/places/declaredKind.ts',
+  'services/sync/places/worldTier.ts',
+  'services/sync/places/worldBars.ts',
+  'services/sync/places/worldMemory.ts',
+  'services/sync/places/admissionRegister.ts',
+  'services/sync/squares/classes.ts',
+  'services/sync/towers/classes.ts',
+  'services/sync/towers/masts.ts',
+  'services/sync/bridges/classes.ts',
+  'services/sync/publicArt/kindRules.ts',
+  'services/sync/publicArt/publicArtTest.ts',
+  'services/sync/publicArt/streetArtTest.ts',
+  'services/sync/worship/worshipTest.ts',
+  'services/sync/archaeology/siteTest.ts',
+  'services/sync/archaeology/museumTest.ts',
+];
 
 describe('the kinds of the place pass (#2320)', () => {
   const gather = () => Promise.reject(new Error('not read'));
@@ -36,18 +67,40 @@ describe('the kinds of the place pass (#2320)', () => {
     expect(publicArt?.surroundings()).toHaveLength(2);
   });
 
-  it('declare every kind they gather in a module the kept gather\'s code key reads (#2424)', async () => {
+  it('declare every kind they gather in a module the kept pool\'s code key reads (#2424)', async () => {
     const exported = new Set<unknown>();
     for (const module of PASS_KIND_MODULES) for (const value of Object.values(await import(module.href))) exported.add(value);
     const missing = gatheredPlaceKinds().filter(({ kind }) => !exported.has(kind)).map(({ kind }) => kind.name);
     expect(missing).toEqual([]);
   });
 
-  it('have a code key over the code the pass runs, every module it reaches found, the key\'s own modules among them (#2424)', async () => {
-    const { files } = await codeHash(SHARED_STEPS_CODE);
+  it('declare every kind\'s entrances and editions in a module the gather\'s code key reads (#2448)', async () => {
+    const exported = new Set<unknown>();
+    for (const module of KIND_GATHER_MODULES) for (const value of Object.values(await import(module.href))) exported.add(value);
+    const doors = gatheredPlaceKinds().flatMap(({ kind }) => [
+      ...(kind.entrances ? [[`${kind.name}'s entrances`, kind.entrances]] : []),
+      ...(kind.editions ? [[`${kind.name}'s editions`, kind.editions]] : []),
+    ] as [string, unknown][]);
+    expect(doors.map(([name]) => name)).toEqual(["public art and monuments's entrances", "public art and monuments's editions"]);
+    expect(doors.filter(([, value]) => !exported.has(value)).map(([name]) => name)).toEqual([]);
+  });
+
+  it('have a gather\'s code key that reaches no kind\'s verdict, exceptions or world bars (#2448)', async () => {
+    for (const module of RULE_MODULES) expect(existsSync(new URL(module, SRC)), module).toBe(true);
+    const { files } = await codeHash(STEPS_CODE.places);
     expect(files).toEqual(expect.arrayContaining([
       'services/sync/places/gather.ts', 'services/sync/places/keptGather.ts', 'services/sync/places/codeGraph.ts',
-      'services/sync/places/surroundingsPool.ts', 'services/sync/squares/kind.ts',
+      'services/sync/publicArt/entrances.ts', 'services/sync/publicArt/monumentCategories.ts', 'services/sync/publicArt/castGroups.ts',
+    ]));
+    expect(files.filter((file) => RULE_MODULES.includes(file))).toEqual([]);
+  });
+
+  it('have a pool\'s code key over the surroundings tier, its cut and venues, and every kind\'s declaration (#2448)', async () => {
+    const { files } = await codeHash(STEPS_CODE.pool);
+    expect(files).toEqual(expect.arrayContaining([
+      'services/sync/places/surroundingsPool.ts', 'services/sync/places/surroundingsTier.ts', 'services/sync/places/surroundingsCut.ts',
+      'services/sync/places/surroundingsVenues.ts', 'services/sync/places/admissionRegister.ts', 'services/sync/places/keptGather.ts',
+      ...PASS_KIND_MODULES.map((url) => fromSrc(url).replace(/\.js$/, '.ts')),
     ]));
   });
 });

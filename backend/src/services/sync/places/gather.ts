@@ -235,19 +235,32 @@ export function namedByClass(classes: ReadonlySet<string>, own: readonly string[
   return own.some((cls) => classes.has(cls));
 }
 
-/** Every kind's trees, and the classes the pool is asked by: the broad roots once each, then the rest. */
-async function askedClasses(run: QueryRunner, requests: GatherRequest[]) {
+/** Every kind's class trees, walked: what its rule reads, and what the classes it asks by are read from. */
+export type KindTrees = ReadonlyMap<PlaceKind<unknown>, unknown>;
+
+/**
+ * Walk the class trees of every kind asked for, each kind's once. The first
+ * step of the gather, and the one a kept gather is never read in place of
+ * (`keptGather.ts`): the trees are what a kind's rule reads, so a rule that
+ * reads one tree more reads it on its first run.
+ */
+export async function walkTrees(run: QueryRunner, requests: readonly GatherRequest[]): Promise<KindTrees> {
   const trees = new Map<PlaceKind<unknown>, unknown>();
+  for (const { kind } of requests) trees.set(kind, await kind.trees(run));
+  return trees;
+}
+
+/** The classes the pool is asked by, from every kind's trees: the broad roots once each, then the rest. */
+function askedClasses(requests: GatherRequest[], trees: KindTrees) {
   const classesOf = new Map<PlaceKind<unknown>, Set<string>>();
   const roots = new Map<string, PoolRoot>();
   for (const { kind } of requests) {
-    const kindTrees = await kind.trees(run);
-    trees.set(kind, kindTrees);
+    const kindTrees = trees.get(kind);
     for (const root of kind.poolClasses(kindTrees).broad) roots.set(root.qid, root);
     classesOf.set(kind, kindClasses(kind, kindTrees));
   }
   const narrow = new Set([...classesOf.values()].flatMap((classes) => [...classes]).filter((qid) => !roots.has(qid)));
-  return { trees, classesOf, roots: [...roots.values()], narrow: [...narrow] };
+  return { classesOf, roots: [...roots.values()], narrow: [...narrow] };
 }
 
 /**
@@ -341,9 +354,13 @@ function withOwn(pooled: Map<string, PoolEntity>, own: Map<string, PoolEntity> |
   return own ? new Map([...own, ...pooled]) : pooled;
 }
 
-/** Gather the candidate places of every kind asked for, and what each of them is. */
-export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]): Promise<GatheredPlaces> {
-  const { trees, classesOf, roots, narrow } = await askedClasses(run, requests);
+/**
+ * Gather the candidate places of every kind asked for, and what each of them
+ * is, over the trees `walked` where the caller walked them already (`walkTrees`).
+ */
+export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[], walked?: KindTrees): Promise<GatheredPlaces> {
+  const trees = walked ?? await walkTrees(run, requests);
+  const { classesOf, roots, narrow } = askedClasses(requests, trees);
   const pooled = await collectPool(run, roots, narrow);
   const editions = requests.map(({ kind }) => kind.editions).filter((e): e is NonNullable<typeof e> => e !== undefined);
   for (const edition of editions) {

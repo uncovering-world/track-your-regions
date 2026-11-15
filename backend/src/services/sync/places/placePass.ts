@@ -34,7 +34,7 @@ import { WORSHIP_KIND } from '../worship/places.js';
 import { delay, SPARQL_DELAY_MS } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
 import { fetchClassTree, MUSEUM_ROOT, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
-import type { GatheredPlaces, GatherRequest, PlaceGather, PlaceKind } from './gather.js';
+import { walkTrees, type GatheredPlaces, type GatherRequest, type PlaceGather, type PlaceKind } from './gather.js';
 import type { GatheredWorks } from '../museum/worksGather.js';
 import { gatherPassWorks, readMuseumClasses } from './passWorks.js';
 import { fetchTreasureClasses } from '../worship/queries.js';
@@ -42,9 +42,9 @@ import { museumSource } from '../museumSyncService.js';
 import { surroundingsReader, type SurroundingsReader } from './surroundingsTier.js';
 import { publicArtSurroundings, type PlaceClassifier } from '../landmarkSyncService.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from '../publicArt/kindRules.js';
-import type { SurroundingsPool } from './surroundingsPool.js';
+import { readSurroundingsPool, type SurroundingsPool } from './surroundingsPool.js';
 import { SURROUNDINGS_CUT } from './surroundingsCut.js';
-import { gatherKey, placesOf, poolOf, type PassKeep } from './keptGather.js';
+import { passKeys, placesOf, poolOf, type PassKeep, type StepsCode } from './keptGather.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import { keepVenueFigures, type VenueSource } from './venueFigures.js';
 
@@ -160,7 +160,7 @@ async function surroundingsPoolOf(gathered: GatheredPlaces, sparql: SparqlFn, ru
   const lines = readers.map((reader) => reader.venueLine(gathered));
   const venueLine = (classes: readonly string[]) => lines.some((line) => line(classes));
   const members = { classes: new Set([...gathered.classes, ...museums]), items, venues, venueLine };
-  return poolOf(keep, members, SURROUNDINGS_CUT, groups, run);
+  return poolOf(keep, members, SURROUNDINGS_CUT, groups, run, readSurroundingsPool);
 }
 
 /** The sources whose kinds read the venues around their places, with the classes those places are of. */
@@ -184,10 +184,11 @@ async function keepVenues(read: SurroundingsPool, gathered: GatheredPlaces, dryR
 }
 
 /**
- * The modules the pass's kinds are declared in: a kind's classes, entrances
- * and editions are code the gather runs, so they are part of the code a kept
- * gather is read again by. A kind that joins `passKinds` joins this list
- * (`placePass.test.ts` holds the two together).
+ * The modules the pass's kinds are declared in, each of which reaches the
+ * kind's rule and its surroundings reader. The surroundings pool runs the
+ * readers' code (`venueLine`), so these are part of the code the pool is kept
+ * by. A kind that joins `passKinds` joins this list (`placePass.test.ts` holds
+ * the two together).
  */
 export const PASS_KIND_MODULES: readonly URL[] = [
   new URL('../publicArt/pipeline.js', import.meta.url),
@@ -199,15 +200,36 @@ export const PASS_KIND_MODULES: readonly URL[] = [
 ];
 
 /**
- * The code the shared steps are made and kept by: the gather, the surroundings
- * pool, the kinds' declarations, and the format a step is kept in.
+ * The modules a kind's entrances and editions are declared in: the code the
+ * gather of places runs for a kind beside its trees and classes, which the
+ * gather's key reads as code (ADR-0209). A kind's trees and classes are read
+ * as data (`gatherQuestion`), so no kind's declaring module is here, and none
+ * of these reaches a kind's rule (`placePass.test.ts`).
  */
-export const SHARED_STEPS_CODE: readonly URL[] = [
-  new URL('./gather.js', import.meta.url),
-  new URL('./surroundingsPool.js', import.meta.url),
-  new URL('./keptGather.js', import.meta.url),
-  ...PASS_KIND_MODULES,
+export const KIND_GATHER_MODULES: readonly URL[] = [
+  new URL('../publicArt/entrances.js', import.meta.url),
 ];
+
+/**
+ * The code each of the shared steps is made and kept by (ADR-0209). The
+ * gather of places: the gather, the kinds' entrances and editions, and the
+ * format a step is kept in. The surroundings pool: the pool, the surroundings
+ * tier's readers, the kinds' declarations and the same format; its key adds
+ * the gather's too.
+ */
+export const STEPS_CODE: StepsCode = {
+  places: [
+    new URL('./gather.js', import.meta.url),
+    new URL('./keptGather.js', import.meta.url),
+    ...KIND_GATHER_MODULES,
+  ],
+  pool: [
+    new URL('./surroundingsPool.js', import.meta.url),
+    new URL('./surroundingsTier.js', import.meta.url),
+    new URL('./keptGather.js', import.meta.url),
+    ...PASS_KIND_MODULES,
+  ],
+};
 
 /** Every row a set of sources' world tier admits before the run: the surroundings tier's rows are its own step's (#2178). */
 async function admittedBy(sourceIds: readonly number[]): Promise<Set<string>> {
@@ -241,13 +263,16 @@ function placeGather({ refreshCache, dryRun }: Pick<SyncRunOptions, 'refreshCach
     };
     const requests: GatherRequest[] = [];
     for (const { share } of passKinds()) if (share) requests.push({ kind: share.kind, admitted: await share.admitted() });
+    // Walked every run, a kept gather or not: the trees are what the rules read,
+    // and the classes the gather is asked by are read off them for its key.
+    const trees = await walkTrees(run, requests);
     // Kept only from the subset: a live answer is no build's, and no key names it.
     const keep: PassKeep = {
-      key: readsSubset(sparql) ? await gatherKey(requests, SHARED_STEPS_CODE) : null,
+      key: readsSubset(sparql) ? await passKeys(requests, trees, STEPS_CODE) : null,
       read: dryRun === true && refreshCache !== true,
       note: {},
     };
-    const gathered = await placesOf(keep, requests, run);
+    const gathered = await placesOf(keep, requests, trees, run);
     // The surroundings tier's pool (ADR-0171, #2178), read once for the pass over
     // every place kind's classes together — a church is measured against the
     // digs and towers around it, as the measurement measured it — and only

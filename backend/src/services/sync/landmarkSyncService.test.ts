@@ -72,6 +72,7 @@ vi.mock('./publicArt/streetArtWorks.js', () => ({ streetArtContents: vi.fn(() =>
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
 vi.mock('./places/gather.js', () => ({
   gatherPlaces: vi.fn(),
+  walkTrees: vi.fn(async () => new Map()),
   shareOf: (gathered: { shares: Map<unknown, unknown> }, kind: unknown) => gathered.shares.get(kind),
 }));
 // The pass's third and fourth members, whose own specs are
@@ -120,7 +121,7 @@ vi.mock('./shownElsewhere.js', () => ({ placesOtherSourcesOffer: vi.fn().mockRes
 // The pass's shared steps are made in every test, with no key to keep them under (#2424).
 vi.mock('./places/keptGather.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./places/keptGather.js')>()),
-  gatherKey: vi.fn().mockResolvedValue(null),
+  passKeys: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('./subset/reader.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./subset/reader.js')>()),
