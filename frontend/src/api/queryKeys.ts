@@ -157,6 +157,8 @@ export const queryKeys = {
     /** Every page of the queue, under whatever filter: what an answer invalidates. */
     reviewQueueAll: ['curation', 'reviewQueue'] as const,
     reviewQueue: (...page: readonly unknown[]) => ['curation', 'reviewQueue', ...page] as const,
+    /** The names of the places a short list on the queue's map shows (#2501): outside `reviewQueueAll`, since an answer renames nothing. */
+    reviewQueueMapNames: (placeIds: readonly number[]) => ['curation', 'reviewQueueMapNames', ...placeIds] as const,
     /** The regions a review Region chip found by name (#1920, #2349), for the text typed. */
     reviewRegionSearch: (query: string) => ['curation', 'reviewRegionSearch', query] as const,
     /** The people and events a name finds on Wikidata, for whom a place commemorates (#2144). */

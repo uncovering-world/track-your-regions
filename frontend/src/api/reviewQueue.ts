@@ -8,11 +8,12 @@
  */
 
 import type {
-  ReviewAnswer, ReviewAnswerResult, ReviewQueue, ReviewQueueMap, ReviewRegionSearchResults, RunSetAside,
+  ReviewAnswer, ReviewAnswerResult, ReviewQueue, ReviewQueueMap, ReviewQueueMapNames, ReviewRegionSearchResults,
+  RunSetAside,
 } from './client.generated';
 import {
   deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, getExperiencesReviewQueueMap,
-  getExperiencesReviewRegionsSearch, postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
+  getExperiencesReviewQueueMapNames, getExperiencesReviewRegionsSearch, postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
   type GetExperiencesReviewQueueMapParams, type ReviewAnswerBodyRowsItem,
 } from './client.generated';
 import type { ReviewAddress } from '../utils/appUrl';
@@ -103,6 +104,15 @@ export async function fetchReviewQueue(params: ReviewAddress & {
  */
 export async function fetchReviewQueueMap(params: ReviewAddress): Promise<ReviewQueueMap> {
   return getExperiencesReviewQueueMap(selectionParams(params));
+}
+
+/**
+ * The names of the places a short list on the map shows (#2501), which the map's read
+ * leaves out. The answer holds only the places this curator has an open question about;
+ * the request names at most `QUEUE_MAP_NAMES_MAX` of them (`@tyr/shared/reviewQueue`).
+ */
+export async function fetchQueueMapNames(placeIds: readonly number[]): Promise<ReviewQueueMapNames> {
+  return getExperiencesReviewQueueMapNames({ ids: placeIds.join(',') });
 }
 
 /**

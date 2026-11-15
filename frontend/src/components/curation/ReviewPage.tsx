@@ -215,9 +215,6 @@ export function ReviewPage() {
     if (selectedIndex >= 0) lastIndex.current = selectedIndex;
   }, [selectedIndex, queue.filterKey]);
 
-  // A place's name, where the list has loaded a row of it: the map's short list names it.
-  const placeName = useCallback((placeId: number) => rows.find(r => r.id === placeId)?.name, [rows]);
-
   // On the map, the question after an answer is the nearest open one the map holds.
   const { step: mapStep, nextAfterAnswer } = useMapWalk(address, selected, mapOpen);
 
@@ -539,7 +536,6 @@ export function ReviewPage() {
                 >
                   <LazyReviewQueueMap
                     address={address}
-                    placeName={placeName}
                     onOpen={key => go({ row: key })}
                     onShowList={() => go({ view: 'questions' })}
                     step={mapStep}
