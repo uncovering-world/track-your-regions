@@ -3,9 +3,9 @@
  * (#1247, ADR-0046, ADR-0086).
  *
  * A merge folds one place into another in one transaction, under both places'
- * locks taken in id order: the folded place's memberships, points, work links,
- * changeset rows, answers and part-of relations (ADR-0100 decision 4) move to
- * the survivor, a point or a link both hold
+ * locks taken in the place order (`lockTwoExperiences`): the folded place's
+ * memberships, points, work links, changeset rows, answers and part-of
+ * relations (ADR-0100 decision 4) move to the survivor, a point or a link both hold
  * is folded into the survivor's, and every traveller's visit is reconciled as
  * ADR-0046 decision 5 says — the earlier date, both notes, the later visit's
  * rating. The folded place is kept, marked `merged_into_id`; it keeps no
@@ -24,7 +24,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { lockTwoExperiences, markFolded, type LockedExperience } from '../../db/experienceWriter.js';
+import { lockPartsAndRegionKeys, lockTwoExperiences, markFolded, type LockedExperience } from '../../db/experienceWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { moveConflictDecisions } from './conflictDecisions.js';
@@ -178,7 +178,7 @@ export async function mergePlaces(
 
 /** The moves, in the order `db/locks.ts` asks: the objects are locked; their contents follow. */
 async function moveEverything(client: PoolClient, folded: LockedExperience, survivor: LockedExperience): Promise<MergeRecord> {
-  await lockRegionKeys(client, folded, survivor);
+  await lockPartsAndRegionKeys(client, [folded, survivor]);
   const foldedPoints = await foldPoints(client, folded, survivor);
   const points = await movePoints(client, folded, survivor);
   const foldedLinks = await foldLinks(client, folded, survivor);
@@ -196,26 +196,6 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
     memberships, points, foldedPoints, links, foldedLinks, changes, heldDecisions, conflictDecisions, rejections,
     assignments, viewChoices, wholeRecords, visits,
   };
-}
-
-/**
- * The region keys of every place the moves below reach, taken after both
- * object locks and before any of their rows (ADR-0197, `db/locks.ts`): the
- * moves write `experience_regions` rows and set off refreshes, and a refresh
- * elsewhere already holding a key may be waiting for one of those rows. The
- * record moves remake part relations (ADR-0198), whose refreshes reach both
- * places, the parts of either and the wholes either is a part of, so their
- * keys, and those of the wholes above them, are taken in the same ordered
- * pass rather than one refresh at a time.
- */
-async function lockRegionKeys(client: PoolClient, folded: LockedExperience, survivor: LockedExperience): Promise<void> {
-  await client.query(
-    `SELECT lock_place_regions(ARRAY(
-       SELECT unnest(ARRAY[$1::int, $2::int])
-       UNION SELECT prt.part_id FROM experience_parts prt WHERE prt.whole_id IN ($1, $2)
-       UNION SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id IN ($1, $2)))`,
-    [folded.id, survivor.id],
-  );
 }
 
 /** A region's refusal of the folded place, where the survivor has none in that region. */
@@ -459,7 +439,7 @@ export async function undoMerge(
 async function moveEverythingBack(
   client: PoolClient, record: MergeRecord, folded: LockedExperience, survivor: LockedExperience,
 ): Promise<void> {
-  await lockRegionKeys(client, folded, survivor);
+  await lockPartsAndRegionKeys(client, [folded, survivor]);
   await restoreVisits(client, record);
   await unfoldLinks(client, record.foldedLinks);
   await moveLinks(client, survivor, folded, record.links);

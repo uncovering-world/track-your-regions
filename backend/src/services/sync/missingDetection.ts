@@ -16,7 +16,7 @@
  */
 
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { OBJECT_LOCK } from '../../db/locks.js';
+import { OBJECT_LOCK, placeLockOrderSql } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipAdmittedSql, sourcePlacesSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
 import { hideLostSql } from '../../db/readerPredicates.js';
@@ -129,7 +129,8 @@ export async function countSeenAmongActive(
 /**
  * Mark the memberships `flagged` names, under their places' locks.
  *
- * The places first, in one statement and in id order, then the memberships:
+ * The places first, in one statement and in the place order
+ * (`placeLockOrderSql`, a whole before its parts), then the memberships:
  * the order a curator's write takes (the place's `OBJECT_LOCK`, then its
  * membership), so this many-row write and a curator's one-row write cannot
  * each hold what the other waits for. Marking the membership writes the place
@@ -145,7 +146,7 @@ async function markMemberships(
   try {
     await client.query('BEGIN');
     const locked = await client.query(
-      `SELECT id FROM experiences WHERE id IN (SELECT id FROM (${flagged}) f) ORDER BY id ${OBJECT_LOCK}`,
+      `SELECT id FROM experiences WHERE id IN (SELECT id FROM (${flagged}) f) ORDER BY ${placeLockOrderSql('id')} ${OBJECT_LOCK}`,
       [sourceId, seenExternalIds],
     );
     // Only the places just locked: the next statement reads a newer snapshot,
