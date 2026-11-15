@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
 import { pool } from '../../db/index.js';
-import { editionUrl, getWikipediaEditions, wikiOfLanguage } from './wikipediaEditionsController.js';
+import { getWikipediaEditions } from './wikipediaEditionsController.js';
+import { editionHost, editionUrl, wikiOfHost, wikiOfLanguage } from '../../services/wikipediaEditionNames.js';
 import { wikipediaEditionsQuerySchema } from '../../types/index.js';
 
 const query = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -72,6 +73,10 @@ describe('the edition a language names', () => {
     expect(wikiOfLanguage('be-tarask')).toBe('be_x_oldwiki');
     expect(editionUrl('zh_classicalwiki', '長城')).toBe('https://zh-classical.wikipedia.org/wiki/%E9%95%B7%E5%9F%8E');
     expect(editionUrl('be_x_oldwiki', 'Мінск')).toBe('https://be-tarask.wikipedia.org/wiki/%D0%9C%D1%96%D0%BD%D1%81%D0%BA');
+    expect(editionHost('nowiki')).toBe('no');
+    expect(editionHost('ruwiki')).toBe('ru');
+    expect(wikiOfHost('be-tarask')).toBe('be_x_oldwiki');
+    expect(wikiOfHost('zh-classical')).toBe('zh_classicalwiki');
   });
 });
 

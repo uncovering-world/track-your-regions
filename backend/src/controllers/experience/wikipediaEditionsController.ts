@@ -19,25 +19,7 @@ import { pool } from '../../db/index.js';
 import { failure } from '../../middleware/errorHandler.js';
 import { articleOf } from '../../services/wikipediaCoordinate.js';
 import type { wikipediaEditionsQuerySchema } from '../../types/index.js';
-
-/**
- * The edition a language names, as Wikidata's sitelinks name it: `ru` →
- * `ruwiki`, `zh-classical` → `zh_classicalwiki`. Two languages are written
- * otherwise: Norwegian Bokmål's edition is `no`, and Belarusian in the
- * Taraškievica spelling is `be_x_old`.
- */
-export function wikiOfLanguage(language: string): string {
-  if (language === 'nb') return 'nowiki';
-  if (language === 'be-tarask') return 'be_x_oldwiki';
-  return `${language.replace(/-/g, '_')}wiki`;
-}
-
-/** The address of an edition's article: `ruwiki`, `Старый музей` → `https://ru.wikipedia.org/wiki/Старый_музей`, escaped. */
-export function editionUrl(wiki: string, title: string): string {
-  const site = wiki.replace(/wiki$/, '');
-  const host = site === 'be_x_old' ? 'be-tarask' : site.replace(/_/g, '-');
-  return `https://${host}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
-}
+import { editionUrl, wikiOfLanguage } from '../../services/wikipediaEditionNames.js';
 
 export async function getWikipediaEditions(
   { query: { articles, languages } }: { query: z.output<typeof wikipediaEditionsQuerySchema> },
