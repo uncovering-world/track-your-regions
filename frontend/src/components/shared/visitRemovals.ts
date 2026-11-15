@@ -49,10 +49,44 @@ export const UNDOES_REMOVAL = 'undoesRemoval';
 
 /**
  * Where the offer of a date keeps, in the tab's `sessionStorage`, until when it is
- * silenced and for whom (`dateOffer.ts`): never a place or the time of a
- * tick, which stay in the chunk's memory. Forgotten with the traveller.
+ * silenced and for whom (`dateOffer.ts`). Forgotten with the traveller.
  */
 export const OFFER_SILENCE_KEY = 'tyr.tripOfferSilence';
+
+/**
+ * Where the offer of a date keeps its session across a reload (#2536): the
+ * traveller's recent ticks, mode, followed answer, carried year and guessed
+ * trips, for whom, coordinates rounded to about a kilometre. A traveller's history,
+ * which `docs/security/SECURITY.md` § Data Classification lets into browser
+ * storage only so: the least the offer needs, the owner's, ended with the tab
+ * and forgotten with the traveller.
+ */
+export const OFFER_SESSION_KEY = 'tyr.tripOfferSession';
+
+const storedOwner = (raw: string): unknown => {
+  try {
+    return (JSON.parse(raw) as { owner?: unknown } | null)?.owner;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * What the offer stored for anyone but `owner` goes: a load of the tab holds
+ * no account in memory to compare with the one its refresh returns, while its
+ * storage may hold what the traveller before the reload left (#2536). `null`,
+ * no one signed in, takes all of it.
+ */
+export function forgetStoredOtherThan(owner: number | null): void {
+  try {
+    for (const key of [OFFER_SILENCE_KEY, OFFER_SESSION_KEY]) {
+      const raw = sessionStorage.getItem(key);
+      if (raw !== null && storedOwner(raw) !== owner) sessionStorage.removeItem(key);
+    }
+  } catch {
+    // A refused storage holds nothing to forget.
+  }
+}
 
 /**
  * Who started a visit write, in which sign-in, and, for a tick, when their
@@ -117,6 +151,7 @@ export function forgetTraveller(): void {
   forgetWholeAsks();
   try {
     sessionStorage.removeItem(OFFER_SILENCE_KEY);
+    sessionStorage.removeItem(OFFER_SESSION_KEY);
   } catch {
     // A refused storage holds nothing to forget.
   }

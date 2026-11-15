@@ -10,7 +10,7 @@
 import type { TripDateBody } from '../../../api/trips';
 import { formatApproximateDate } from '../../../utils/dateFormat';
 import { plural } from '../../../utils/plural';
-import { OFFER_SILENCE_KEY } from '../visitRemovals';
+import { OFFER_SESSION_KEY, OFFER_SILENCE_KEY } from '../visitRemovals';
 import { OFFER } from './offerThresholds';
 
 const HOUR = 3_600_000;
@@ -263,8 +263,64 @@ export function askYears(line: Extract<OfferLine, { kind: 'ask' }>, now: number)
   return line.first ? [{ year: line.first.year, label: `${line.first.year}, like ${line.first.label}` }, ...latest] : latest;
 }
 
-/** The session, in this tab's memory only: where and when the traveller ticked is never stored. */
+/** The session in this tab's memory, and in its `sessionStorage` so a reload keeps it (`storedSession`). */
 let held: { owner: number; session: OfferSession } | null = null;
+
+/** A place to about a kilometre: the offer's nearest distance is 50 km (`OFFER.NEARBY_KM`), and no more is stored. */
+const roughly = <T extends Spot>(spot: T): T => ({ ...spot, lat: Math.round(spot.lat * 100) / 100, lon: Math.round(spot.lon * 100) / 100 });
+
+/** The session as it is stored: its coordinates rounded. The names and ids stay, since the offer's question names the places. */
+function storable(session: OfferSession): OfferSession {
+  return {
+    ...session,
+    ticks: session.ticks.map(roughly),
+    follow: session.follow && roughly(session.follow),
+    carried: session.carried && roughly(session.carried),
+    guesses: session.guesses.map(roughly),
+  };
+}
+
+/** A stored place with the numbers `extra` names: what the offer reads of each stored element. */
+const isStoredSpot = (value: unknown, ...extra: string[]): boolean => {
+  const v = value as Record<string, unknown> | null;
+  return !!v && ['lat', 'lon', ...extra].every(key => typeof v[key] === 'number');
+};
+
+/** A stored date: a year, or none where the traveller does not remember (`NO_DATE`). */
+const isStoredDate = (value: unknown): boolean => {
+  const year = (value as { year?: unknown } | null)?.year;
+  return year === null || typeof year === 'number';
+};
+
+/** A session read back from storage, every element of it checked: anything else is not one, and the offer starts fresh. */
+const isSession = (value: unknown): value is OfferSession => {
+  const s = value as Partial<OfferSession> | null;
+  return !!s && (s.mode === 'trip' || s.mode === 'past')
+    && typeof s.saidToday === 'boolean' && typeof s.askedAboutToday === 'boolean'
+    && Array.isArray(s.ticks) && s.ticks.every(t => isStoredSpot(t, 'time'))
+    && Array.isArray(s.guesses) && s.guesses.every(g => isStoredSpot(g, 'trip', 'place', 'time') && isStoredDate(g.date))
+    && (s.follow == null || (isStoredSpot(s.follow) && isStoredDate(s.follow.date)))
+    && (s.carried == null || isStoredSpot(s.carried, 'year'));
+};
+
+/** The session the tab kept across a reload, with its owner, or none: one it cannot read. */
+function storedSession(): typeof held {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(OFFER_SESSION_KEY) ?? 'null') as { owner?: unknown; session?: unknown } | null;
+    return typeof stored?.owner === 'number' && isSession(stored.session) ? { owner: stored.owner, session: { ...FRESH_SESSION, ...stored.session } } : null;
+  } catch {
+    return null;
+  }
+}
+
+function keep(owner: number, session: OfferSession): void {
+  held = { owner, session };
+  try {
+    sessionStorage.setItem(OFFER_SESSION_KEY, JSON.stringify({ owner, session: storable(session) }));
+  } catch {
+    // A refused storage keeps the session in memory only, until a reload.
+  }
+}
 
 function storedSilence(owner: number): number {
   try {
@@ -276,17 +332,20 @@ function storedSilence(owner: number): number {
 }
 
 /**
- * The session of the traveller `owner` (#2120). Its ticks, mode, followed
- * answer, carried year and guessed trips live in this module's memory, so a
- * reload starts a fresh session and the tab's storage holds no place or time
- * of a tick (ASVS V14.3.3). Only "Don't ask in this session" is kept in
- * `sessionStorage`, as the time it lasts until and whose it is, so a reload
- * keeps it; the tab closing ends it. A session kept for another traveller is
- * not theirs, and every change of who is signed in forgets both
- * (`forgetSession`, `forgetTraveller`).
+ * The session of the traveller `owner` (#2120): its ticks, mode, followed
+ * answer, carried year and guessed trips, in this module's memory and in the
+ * tab's `sessionStorage` (`OFFER_SESSION_KEY`, #2536), so a reload or an
+ * address opened in the same tab keeps the session and the tab closing ends
+ * it. A traveller's history may be there under the rule of
+ * `docs/security/SECURITY.md` § Data Classification: the least the offer
+ * needs, its coordinates rounded to about a kilometre, keyed to its owner.
+ * "Don't ask in this session" is kept apart as the time it lasts until. A
+ * session kept for another traveller is not theirs, and every change of who is
+ * signed in forgets both (`forgetSession`, `forgetTraveller`).
  */
 export function readSession(owner: number): OfferSession {
-  const session = held?.owner === owner ? held.session : FRESH_SESSION;
+  const kept = held ?? storedSession();
+  const session = kept?.owner === owner ? kept.session : FRESH_SESSION;
   return { ...session, silencedUntil: Math.max(session.silencedUntil, storedSilence(owner)) };
 }
 
@@ -294,12 +353,14 @@ export function readSession(owner: number): OfferSession {
  * Trips the traveller dated on a place's card, or places they unticked: the
  * session no longer counts those trips as the offer's guesses.
  */
-export function dropHeldGuesses(keep: (guess: Guess) => boolean): void {
-  if (held) held = { ...held, session: dropGuesses(held.session, keep) };
+export function dropHeldGuesses(stays: (guess: Guess) => boolean): void {
+  // After a reload the session is in the tab's storage until the next write.
+  const kept = held ?? storedSession();
+  if (kept) keep(kept.owner, dropGuesses(kept.session, stays));
 }
 
 export function writeSession(session: OfferSession, owner: number): void {
-  held = { owner, session };
+  keep(owner, session);
   if (!session.silencedUntil) return;
   try {
     sessionStorage.setItem(OFFER_SILENCE_KEY, JSON.stringify({ owner, until: session.silencedUntil }));

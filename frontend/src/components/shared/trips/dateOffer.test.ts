@@ -3,8 +3,9 @@
  * the session's pure functions: what each tick saves and what its line says.
  * Today is 12 November 2026, as in the mock.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatApproximateDate } from '../../../utils/dateFormat';
+import { OFFER_SESSION_KEY } from '../visitRemovals';
 import {
   FRESH_SESSION, answerGuesses, answerOffer, askSentence, askYears, distanceKm, dropGuesses, guessedToday, guessesSentence,
   movedSentence, noteGuesses, offerForTick, savedSentence, signalsPast, silence,
@@ -239,5 +240,68 @@ describe('the date offered after a tick (#2120)', () => {
       expect(movedSentence(three.slice(0, 1), { year: null, month: null, day: null }))
         .toBe('Date not remembered for Museo del Prado');
     });
+  });
+});
+
+describe('the session across a reload (#2536)', () => {
+  afterEach(() => sessionStorage.clear());
+
+  it('keeps the Madrid ticks over a reload, so Kinkaku-ji a minute later reads as past travels', async () => {
+    const offer = await import('./dateOffer');
+    const prado = offer.offerForTick(FRESH_SESSION, tick(PRADO, at(14, 0)), null, null);
+    const reina = offer.offerForTick(prado.session, tick(REINA_SOFIA, at(14, 2)), null, null);
+    expect(reina.save).toEqual(day(2026, 11, 12));
+    offer.writeSession(reina.session, 7);
+
+    // A reload, or Kyoto opened by its address in the same tab: the module starts again.
+    vi.resetModules();
+    const reloaded = await import('./dateOffer');
+    const kept = reloaded.readSession(7);
+    expect(kept.ticks).toHaveLength(2);
+    const kinkakuji = reloaded.offerForTick(kept, tick(KINKAKUJI, at(14, 3)), null, null);
+    // About 10,700 km in a minute: nothing is saved as today, and the line asks when.
+    expect(kinkakuji.save).toBeNull();
+    expect(kinkakuji.line?.kind).toBe('ask');
+    expect(kinkakuji.session.mode).toBe('past');
+
+    // Another traveller on the same tab starts fresh.
+    expect(reloaded.readSession(8).ticks).toEqual([]);
+  });
+
+  it('starts fresh from a stored session whose elements are not what the offer wrote', async () => {
+    for (const broken of [{ guesses: [null] }, { ticks: [{ lat: 40.41 }] }, { follow: { lat: 40.41, lon: -3.69 } }]) {
+      sessionStorage.setItem(OFFER_SESSION_KEY, JSON.stringify({ owner: 7, session: { ...FRESH_SESSION, mode: 'past', ...broken } }));
+      vi.resetModules();
+      const reloaded = await import('./dateOffer');
+      expect(reloaded.readSession(7).mode).toBe('trip');
+      expect(() => reloaded.dropHeldGuesses(g => g.trip !== 1)).not.toThrow();
+    }
+  });
+
+  it("keeps a trip's session whose last answer was \"I don't remember\"", async () => {
+    const offer = await import('./dateOffer');
+    const pantheon = offer.offerForTick(FRESH_SESSION, tick(PANTHEON, at(14, 2)), null, null);
+    const forgotten = offer.answerOffer(pantheon.session, pantheon.line!, { year: null, month: null, day: null }, PANTHEON, at(14, 3));
+    offer.writeSession(forgotten.session, 7);
+
+    vi.resetModules();
+    const kept = (await import('./dateOffer')).readSession(7);
+    expect(kept.ticks).toHaveLength(1);
+    expect(kept.follow?.date).toEqual({ year: null, month: null, day: null });
+  });
+
+  it('forgets a guess unticked after a reload, so the question never names that place', async () => {
+    const offer = await import('./dateOffer');
+    const guess = (place: number, spot: typeof PRADO) => ({ ...spot, trip: place * 10, place, label: spot.label, time: at(14, 0), date: day(2026, 11, 12) });
+    offer.writeSession(offer.noteGuesses(FRESH_SESSION, [guess(1, PRADO), guess(2, REINA_SOFIA)]), 7);
+
+    vi.resetModules();
+    const reloaded = await import('./dateOffer');
+    // Museo del Prado unticked before anything else is ticked in the reloaded tab.
+    reloaded.dropHeldGuesses(g => g.place !== 1);
+    expect(reloaded.readSession(7).guesses.map(g => g.place)).toEqual([2]);
+
+    vi.resetModules();
+    expect((await import('./dateOffer')).readSession(7).guesses.map(g => g.place)).toEqual([2]);
   });
 });

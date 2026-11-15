@@ -27,7 +27,7 @@ import {
   setHeldAccount, setRefreshSuccessListener,
 } from '../api/fetchUtils';
 import { queryKeys } from '../api/queryKeys';
-import { forgetTraveller } from '../components/shared/visitRemovals';
+import { forgetStoredOtherThan, forgetTraveller } from '../components/shared/visitRemovals';
 
 // =============================================================================
 // JWT Payload Type
@@ -122,6 +122,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setGlobalAccessToken(null);
         tokenExpiresAt = null;
         if (getHeldAccount() !== null) window.dispatchEvent(new CustomEvent('auth:session-expired'));
+        // A load that finds the session over: what the traveller before the
+        // reload stored goes, as a sign-out takes it.
+        else forgetStoredOtherThan(null);
       }
       return false;
     }
@@ -192,6 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // other, and forgets what the last traveller left here.
       const held = getHeldAccount();
       const changed = held !== null && held !== data.user.id;
+      // A load holds no account to compare: what the tab stored is compared instead.
+      if (held === null) forgetStoredOtherThan(data.user.id);
       setHeldAccount(data.user.id);
       setUser(data.user);
       if (changed) {
