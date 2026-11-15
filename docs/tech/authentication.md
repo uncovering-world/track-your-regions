@@ -360,6 +360,8 @@ OAuth callbacks (Google, Apple) don't return tokens directly. Instead:
 
 This prevents tokens from appearing in URLs, browser history, or server logs.
 
+After a Google sign-in the web keeps the account's address as a sign-in hint (`tyr-last-google-email`, `setLastGoogleEmail` in `frontend/src/api/auth.ts`), so the next sign-in dialog offers that account first (`login_hint`) and *Use a different account* drops it. Signing out clears it (`clearLastGoogleEmail` in `useAuth`'s `logout`), so a traveller leaving a shared device leaves no address behind; a session that expires keeps it, which is what it is for. It is personal contact data, not a secret (`docs/security/SECURITY.md` § Data Classification, #2554).
+
 ## Rate Limiting
 
 Auth endpoints are rate-limited per IP via `express-rate-limit`:
