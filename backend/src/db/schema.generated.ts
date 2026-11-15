@@ -1383,6 +1383,14 @@ export interface WikipediaRedirectsRow {
   target: string;
 }
 
+/** The table `wikivoyage_articles`. */
+export interface WikivoyageArticlesRow {
+  item: string;
+  site: string;
+  page_id: number;
+  title: string;
+}
+
 /** The table `wikivoyage_pages`. */
 export interface WikivoyagePagesRow {
   title: string;
@@ -1551,6 +1559,7 @@ export const RELATION_SCHEMAS = {
   wikipedia_editions: "public",
   wikipedia_redirect_builds: "workbench",
   wikipedia_redirects: "workbench",
+  wikivoyage_articles: "public",
   wikivoyage_pages: "workbench",
   wikivoyage_pages_builds: "workbench",
   wikivoyage_usage: "workbench",

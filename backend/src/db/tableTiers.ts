@@ -139,6 +139,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   wikipedia_editions: 'serving',
   wikipedia_redirect_builds: 'workbench',
   wikipedia_redirects: 'workbench',
+  wikivoyage_articles: 'serving',
   wikivoyage_pages: 'workbench',
   wikivoyage_pages_builds: 'workbench',
   wikivoyage_usage: 'workbench',

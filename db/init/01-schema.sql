@@ -6395,6 +6395,18 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_usage (
 );
 COMMENT ON TABLE workbench.wikivoyage_usage IS 'A Wikidata item some article of one Wikivoyage edition uses (#1768, decided on #1718), from the edition''s wbc_entity_usage and page dump tables, with the edition''s database name (enwikivoyage): namespace 0, no redirect, no heritage register''s list. An article uses the item of a place it lists, so this is the travel-guide witness of whether a place is one a visitor goes to.';
 
+-- The Wikivoyage articles that use each item (#2520). See db/migrations/248.
+-- Serving (ADR-0124): a curator's read lists them, so the table is in public,
+-- though the usage build writes it and swaps it in with wikivoyage_usage.
+CREATE UNLOGGED TABLE IF NOT EXISTS wikivoyage_articles (
+    item TEXT NOT NULL CHECK (item ~ '^Q[0-9]+$'),
+    site TEXT NOT NULL,
+    page_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    PRIMARY KEY (item, site, page_id)
+);
+COMMENT ON TABLE wikivoyage_articles IS 'Each guide article of a Wikivoyage edition that uses a Wikidata item (#2520): the item, the edition''s database name (dewikivoyage), the article''s page id and its title as a reader reads it (spaces, not underscores). Kept by the Wikivoyage usage build beside wikivoyage_usage, from the same page and wbc_entity_usage tables and under the same exclusions (namespace 0, no redirect, no heritage register''s list), and swapped in with it. Empty until the first usage build that keeps articles. A curator''s read lists the articles behind a guide''s yes from here; the witness and fame read wikivoyage_usage.';
+
 -- English Wikivoyage's pages (#2089). See db/migrations/184.
 CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_pages_builds (
     build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
