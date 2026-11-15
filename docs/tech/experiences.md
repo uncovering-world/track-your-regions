@@ -6016,7 +6016,7 @@ states the rule, one basis per row:
 | `basis` | The place is in | Example |
 |---|---|---|
 | `area` | every leaf holding at least 1% of its outline, when the outline holds its point or lies within 1 km of it (`outline_reaches_place()`) | the Theban Necropolis in Luxor as well as Qina; not the Pergamon Altar in Izmir, whose outline is the ancient city's, 1,827 km from the altar |
-| `line` | every leaf holding at least 1% of its line (`experiences.path`, empty until bridges' lines are read from OpenStreetMap) | — |
+| `line` | every leaf holding at least 1% of its line (`experiences.path`, read from the OpenStreetMap layer for the places Bridges & engineering marvels offers, ADR-0212) | the Øresund Bridge in Hovedstaden and Skåne, the Channel Tunnel in England and Hauts-de-France, Itaipu in Paraná as well as Alto Paraná |
 | `nearest` | for a place none of whose own points a region holds and with no outline or line placing it, the leaf nearest each point within 25 km, when no other leaf lies within 1.5 times that distance | the Island of Gorée in Dakar, the Golden Gate Bridge in California; not the Øresund Bridge, 3.1 km from Copenhagen and 4.5 km from Skåne, nor Malpelo, 355 km from the nearest leaf |
 | `record` | for a place with no point of its own, the leaf holding the point its kind record reports (`reported_location`) | Wudang, once its own point goes |
 
@@ -6027,7 +6027,12 @@ join only in a world view where nothing else offers the place to a reader, and a
 the place's other rows becoming `scope`. A reader's list still composes a record the reader is
 offered, so a site whose record waits is listed nowhere. Placement places the geometry after the
 points, since `nearest` asks whether a region holds one, and the Archaeology site door names a site
-whose outline it re-traced among what moved. The checks `held-by-no-region` (what the nearest
+whose outline it re-traced among what moved. A bridge's line is written after each build of the
+OpenStreetMap layer (`writeLines`, `db/pathWriter.ts`, `dumps.md` § The OpenStreetMap layer), and
+the build then places every place a line decides, whose line changed or not (`placedByLines`). Only the objects that are the structure make it: a
+bridge relation names the river under the bridge, and a dam's reservoir carries the dam's item. A
+line is only as long as the objects carrying the item: the King Fahd Causeway's item is on two ways
+at its Bahraini end, so it stays in Bahrain. The checks `held-by-no-region` (what the nearest
 rule leaves: the open sea and the points between two leaves) and `outline-away-from-its-place`
 (the outlines that place nothing) follow it.
 
@@ -7989,7 +7994,8 @@ So a write issued before the lock, or on a path that never took it, does not com
 `lockSourcedExperience` is the run's form, found by source and external id.
 
 The table's writers are a closed list the backend lint names (`EXPERIENCE_WRITE_RULES`):
-that module; the run's upsert, missing detection and picture repair; and the seed. An
+that module; the run's upsert, missing detection and picture repair; the line a layer build reads
+for a bridge, a tunnel or a dam (`db/pathWriter.ts`, ADR-0212); and the seed. An
 `INSERT INTO` or `UPDATE` of `experiences` anywhere else is refused. Two writers live in the
 database, as an invariant: `part_site_components()` inserts a serial site's component parts. A
 part's name and coordinate are written by `followTheirPoints` (`db/partFieldsWriter.ts`), with the

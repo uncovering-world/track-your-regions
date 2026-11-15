@@ -1067,7 +1067,8 @@ Code: `backend/src/services/dumps/osm/`. A keeping build of `osm-planet`
 catalogue asks about into `osm_objects`, with every tag, the full geometry
 of what a kind draws, of the objects that carry an item `drawnItems`
 lists and of the lines of Squares & streets' candidates, and a point for
-everything else (ADR-0134, ADR-0136, ADR-0157, ADR-0194), and refills the store of region shapes from it. It runs in the dump worker, whose image carries osmium
+everything else (ADR-0134, ADR-0136, ADR-0157, ADR-0194, ADR-0212), refills the store of region shapes from it,
+and reads from it the line of each bridge, tunnel and dam that places it. It runs in the dump worker, whose image carries osmium
 and osm2pgsql (`tools.ts`: each runs as a child process with its arguments as
 a list, by its absolute path, killed on a cancel). The database password
 reaches osm2pgsql through libpq's environment (`databaseEnv`), never its
@@ -1177,7 +1178,9 @@ command line.
    imports name, which `region_import_state` holds regions under, and the other items each
    `{{mapshape|wikidata=…}}` on those regions' Wikivoyage pages lists, read
    with the mapshape match's own parser from the kept copy of English
-   Wikivoyage, none while no copy is kept; written as `drawn-items.txt`,
+   Wikivoyage, none while no copy is kept; and the items of the places
+   Bridges & engineering marvels offers, whose line step 8 reads, `lined`,
+   ADR-0212; all written as `drawn-items.txt`,
    ADR-0157, ADR-0158), and for a way that is a street item's line (step 4,
    ADR-0194): a point for a node; a
    closed way's area, or its line where the area is not valid; an open way's
@@ -1229,6 +1232,31 @@ command line.
    fails leaves the layer and the last build's shapes in place and is a note
    on the build, not a failure. An item an import names or a page lists for the first time
    has its shape from the next build.
+8. **The lines** (`writeLines`, `db/pathWriter.ts`, ADR-0212). Then one
+   statement writes the line (`experiences.path`) of each place Bridges &
+   engineering marvels offers, from the objects carrying its item within
+   5 km of its point (`LINE_REACH_M`) that draw the structure itself: a way
+   that is a highway, a railway, a dam or a bridge, an area relation that is
+   one of those, and a route or tunnel relation. A bridge relation is left
+   out, since its members include the river under the bridge; so are a site
+   relation, a reservoir and a pipeline on a bridge. An area gives its outer
+   ring, and the pieces are joined (`ST_UnaryUnion`, `ST_LineMerge`).
+   `path_source_ref` names the objects for the ODbL credit (ADR-0059), and
+   `path_updated_at` is the instant the layer is current to. The line is the
+   kind's source's (`path_source_id`, as an outline is, ADR-0146): a line
+   another source drew or a curator claimed is left, and a place whose objects
+   are gone, or that the kind no longer offers, loses its line. Then every
+   place a line decides is placed again in every world view with geometry
+   (`placedByLines`: each place holding a line, and each a line placed
+   before; `assignRegionsForExperiences`, `experiences.md` § Region
+   assignment), whether or not its line changed: the lines commit first, so a
+   build stopped before placing them leaves the next build to place them.
+   That costs about a second a build. The summary says how many hold a line,
+   how many lines changed and how many places were placed, or that they were
+   not; a failure to read the lines or to place them is a note too, and the
+   layer stays. Measured on build 74's objects on 2026-11-15: 194 of the 233
+   offered places take a line, from 687 objects of about 30 thousand points,
+   0.5 MB of geometry over a 12 GB layer.
 
 **The schedule** (`layerSchedule.ts`, ADR-0134 decision 6). The dump worker
 brings the layer forward by itself. Between builds, at most every ten minutes
