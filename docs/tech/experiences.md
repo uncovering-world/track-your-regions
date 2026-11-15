@@ -109,9 +109,46 @@ The inventory this section held — every reader of `category_id` on both stacks
 - `experiences`: the place (`location`, optional `boundary`, the curator's claims, whether its sources still list it as a derivation of its memberships)
 - `experience_kinds`: what a traveller browses by (ADR-0045 decision 1); five rows under the sources' ids
 - `source_records`: a place's membership in a kind (ADR-0045 decision 4, #822) — the source that brought it, the admission verdict and its reason, `admitted_for`, the must-see badge, the curator's pins on those, and the gate state of the arrival
+- `place_dates` and `record_dates`: a place's lifetime and each source's view of it (§ A place's lifetime)
 - `experience_regions`: the regions a place is in, its parts included, one row per region (`assignment_type = auto | manual`; `listing`, whether a reader finds it there, ADR-0197)
 - `user_visited_experiences`: per-user visit state
 - `experience_sync_logs`: sync audit log by source (`source_id`)
+
+### A place's lifetime (#1719, [ADR-0214](../decisions/0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md))
+
+A place holds up to four dates, one row of `place_dates` each, keyed by the place and the slot:
+
+| slot | what it says | example |
+|---|---|---|
+| `began` | the place first stood or was founded | Notre-Dame de Paris, 1163 |
+| `rebuilt` | what stands now was built again after an end | the Cathedral of Christ the Saviour in Moscow, 2000 |
+| `use_ended` | what it housed or was used for ended | Göbekli Tepe, abandoned about 7000 BC; Bath Abbey's monastery, dissolved in 1539 |
+| `ended` | the place itself stopped standing | the Arch of Reunification in Pyongyang, destroyed in January 2024 |
+
+Only `ended` says the place is gone; the end of a use never does. Each source's view of the same
+dates is a row of `record_dates`, keyed by its record, as its view of the name and the picture is
+its `reported_*` columns (ADR-0084).
+
+A date is not a Postgres `date`, which stops at 4713 BC. It is a year with a month and a day where
+known, a `span` (`decade`, `century`, `millennium`) where the source knows the year no closer, and
+`circa`. The year is numbered as the subset gives it from Wikidata's JSON: 250 BC is −250, and
+there is no year zero; a BC year read from the query service at a year's precision or finer is one
+higher there and is shifted back before it is written. A day is a day of the proleptic Gregorian
+calendar, which `isValidPlaceDate` counts in: Wikidata keeps a date to the day in its source's
+calendar, Julian for most dates before 1582, and `julianToGregorian` turns such a date into the
+Gregorian day it is (29 February 1500 Julian is 10 March 1500), or answers null for a day the Julian calendar does not have (30 February, 31 April). Only `ended` may hold no year, for a
+place known gone with no date. A place's date names the source it was taken from (`source_id`,
+Curators for a curator's, with `decided_by`) and the Wikidata property and statement it was read
+from; `ended` may say how (`destroyed`, `demolished`, `removed`, `collapsed`).
+
+The rule both sides apply is `@tyr/shared/lifetime`: the slots, spans and endings, which the
+schema's CHECK lists restate (`curationLogActions.test.ts` holds the two to each other), and
+`isValidPlaceDate` (a month only within a year, a day only within a month the month has, a BC leap
+year one later than an AD one, a year from 100,000 BC to this year) and `samePlaceDate`. The two
+tables are written by `db/placeDatesWriter.ts` alone (ADR-0069, `PLACE_DATE_WRITE_RULES`), under
+the place's `LockedExperience`: `writePlaceDate` and `clearPlaceDate` for the place's own dates,
+and `writeRecordDates` for a record's whole view, which replaces the slots it reports and clears
+the rest. Both are serving tables (ADR-0124). No run and no curator screen writes them yet.
 
 ### Location model
 
