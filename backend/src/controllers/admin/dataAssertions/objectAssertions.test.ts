@@ -441,8 +441,16 @@ describe('an archaeology site that is already a World Heritage row', () => {
   it('pairs a kind-5 site against a source-1 row, by distance on the ground', () => {
     // A site by its Archaeology membership's type (ADR-0084).
     expect(sql).toContain("m.type = 'site'");
-    expect(sql).toContain('ST_DWithin(e.location::geography, w.location::geography, 100)');
+    expect(sql).toContain('ST_DWithin(e.location::geography, wp.location::geography, 100)');
     expect(sql).toContain('w.source_id = 1');
+  });
+
+  it("measures to the World Heritage row's points, its parts' included, since a serial site holds none (ADR-0210)", () => {
+    expect(sql).toContain('JOIN experience_locations wp ON');
+    expect(sql).toContain('SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = wp.experience_id) pp');
+    expect(sql).toContain('JOIN experiences w ON w.id = pp.place_id');
+    // A site already the row's part is the merge done, not a pair waiting for it.
+    expect(sql).toContain('done.whole_id = w.id AND done.part_id = e.id');
   });
 
   it('prefilters on the geometry, which is the only test the index can serve', () => {
@@ -452,8 +460,8 @@ describe('an archaeology site that is already a World Heritage row', () => {
     // the same three rows. The prefilter is wider than 100 m everywhere the
     // catalogue has a row (0.01° is about 1.1 km of latitude, and the
     // northernmost row sits at 71.2°), so the exact test still decides.
-    expect(sql).toContain('ST_DWithin(e.location, w.location, 0.01)');
-    expect(sql.indexOf('ST_DWithin(e.location, w.location, 0.01)'))
+    expect(sql).toContain('ST_DWithin(e.location, wp.location, 0.01)');
+    expect(sql.indexOf('ST_DWithin(e.location, wp.location, 0.01)'))
       .toBeLessThan(sql.indexOf('ST_DWithin(e.location::geography'));
   });
 

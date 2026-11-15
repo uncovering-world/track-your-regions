@@ -201,9 +201,81 @@ const partsInALoopOrTooDeep: CatalogueAssertion = {
   },
 };
 
-/** The parts' rules: one line, one part; one item, one place; no loop, four places at most. */
+/**
+ * A whole whose shape is not the one its parts and records give it (ADR-0210).
+ *
+ * `whole_shape_follows_parts()` gives a place its shape when it gains its
+ * first part and takes it away with its last, so a row here is a writer that
+ * went around the trigger: a serial World Heritage site that is not dispersed,
+ * a place with no part that keeps a shape, a whole with none. A container is
+ * not shaped again as parts come, so one whose parts now lie more than a
+ * kilometre apart is listed too: it may be dispersed, and #2125's curator pin
+ * is what will settle it. The reverse, a dispersed whole whose parts came
+ * within a walk, stays dispersed and is not listed.
+ */
+const wholeShapeDrift: CatalogueAssertion = {
+  id: 'whole-shape-drift',
+  area: 'places',
+  title: 'A whole whose shape is not the one its parts give it',
+  kind: 'invariant',
+  meaning:
+    'A serial World Heritage site is its parts and has no point of its own, and only a place made of parts has a shape. '
+    + 'A row means a writer went around the database\'s rule, so tell the admin who runs it. '
+    + 'A container whose parts now lie more than a kilometre apart may be dispersed instead.',
+  sql: `SELECT e.id, e.name, e.whole_shape AS shape, expected.shape AS expected
+          FROM experiences e
+         CROSS JOIN LATERAL (
+           SELECT CASE WHEN EXISTS (SELECT 1 FROM experience_parts p WHERE p.whole_id = e.id)
+                       THEN whole_shape_of(e.id) END AS shape) expected
+         WHERE e.merged_into_id IS NULL
+           AND e.whole_shape IS DISTINCT FROM expected.shape
+           -- IS NOT TRUE, not NOT: a place made of parts with no shape, or a
+           -- dispersed one left with none, is a row too.
+           AND (e.whole_shape = 'dispersed' AND expected.shape = 'container') IS NOT TRUE
+         ORDER BY e.id`,
+  describe: (row: AssertionRow) =>
+    `${text(row, 'name')} (#${count(row, 'id')}) is ${text(row, 'shape') || 'not a whole'}, `
+    + `and its parts make it ${text(row, 'expected') || 'not a whole'}`,
+};
+
+/**
+ * A dispersed whole holding a standing point of its own (ADR-0210).
+ *
+ * Every line of a serial site is a part (`part_site_components()`), and the
+ * migration that took the wholes' points away left none standing. A point the
+ * run cannot part is one under the site's own reference, the export's site
+ * coordinate rather than a line, and stands on the map as a pin of its own.
+ */
+const wholeOwnPoint: CatalogueAssertion = {
+  id: 'whole-own-point',
+  area: 'places',
+  title: 'A serial site with a point of its own beside its parts',
+  kind: 'invariant',
+  meaning:
+    'A serial site is its parts, so its own point, the coordinate under the site\'s reference, is a pin no part stands for. '
+    + 'Where a merge folded another place\'s point into it, undoing that merge settles it. '
+    + 'Otherwise tell the admin who runs the World Heritage list.',
+  sql: `SELECT e.id, e.name, el.id AS point_id, el.external_ref AS reference
+          FROM experiences e
+          JOIN experience_locations el ON el.experience_id = e.id AND el.merged_into_id IS NULL
+         WHERE e.whole_shape = 'dispersed'
+           AND ${offeredLocationSql('el')} AND el.refused_at IS NULL
+         ORDER BY e.id, el.id`,
+  describe: (row: AssertionRow) => {
+    const under = text(row, 'reference') ? ` under ${text(row, 'reference')}` : '';
+    return `${text(row, 'name')} (#${count(row, 'id')}) holds point ${count(row, 'point_id')}${under}`;
+  },
+};
+
+/**
+ * The parts' rules: one line, one part; one item, one place; no loop, four
+ * places at most; a whole's shape as its parts give it, and no point of a
+ * dispersed whole's own.
+ */
 export const partAssertions: CatalogueAssertion[] = [
   partsOfOneWholeAtOneSpot,
   itemOnFarParts,
   partsInALoopOrTooDeep,
+  wholeShapeDrift,
+  wholeOwnPoint,
 ];

@@ -28,7 +28,7 @@ import { tidyLabelSql } from '../../../services/sync/labelFold.js';
 import { PROPOSAL_ROWS_SQL } from '../../../services/sync/mergeProposalFinder.js';
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
-import { publishedContentSql } from '../../../db/readerPredicates.js';
+import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 
 /**
  * One fact, stored twice, asked whether the two copies still agree.
@@ -839,6 +839,10 @@ const nameCarriesMarkup: CatalogueAssertion = {
  * rows. 0.01° is about 1.1 km of latitude and is wider than a hundred metres in
  * every direction up to 84° — the catalogue's northernmost row sits at 71.2° —
  * so it only ever lets through more than the exact test below, which decides.
+ *
+ * **Measured to the World Heritage row's points, its parts' included.** A
+ * serial site holds no point of its own (ADR-0210), so a site standing on any
+ * of its components is on its ground; one already its part is the merge done.
  */
 const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
   id: 'archaeology-site-twin-of-a-world-heritage-row',
@@ -855,7 +859,7 @@ const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
                e.name AS experience_name,
                w.id AS world_heritage_id,
                w.name AS world_heritage_name,
-               round(ST_Distance(e.location::geography, w.location::geography)::numeric)::int AS metres
+               round(min(ST_Distance(e.location::geography, wp.location::geography))::numeric)::int AS metres
           FROM experiences e
           -- Admitted on both sides, because the meaning says "the sites this
           -- kind admits": a site a curator turned down keeps its row and its
@@ -863,15 +867,21 @@ const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
           -- pair — and so would a World Heritage row the source withdrew.
           JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.kind_id = 5
                                AND ${membershipAdmittedSql('m')}
-          JOIN experiences w ON w.source_id = 1
-                            AND w.id <> e.id
+          -- The index-served prefilter first, in degrees, and then the metre
+          -- test that decides.
+          JOIN experience_locations wp ON ${offeredLocationSql('wp')}
+                                      AND ST_DWithin(e.location, wp.location, 0.01)
+                                      AND ST_DWithin(e.location::geography, wp.location::geography, 100)
+          -- The point's own place, and the whole it is a part of.
+          CROSS JOIN LATERAL (SELECT wp.experience_id AS place_id
+                              UNION ALL
+                              SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = wp.experience_id) pp
+          JOIN experiences w ON w.id = pp.place_id AND w.source_id = 1 AND w.id <> e.id
           JOIN ${MEMBERSHIPS} wm ON wm.experience_id = w.id AND wm.kind_id = 1
                                 AND ${membershipAdmittedSql('wm')}
-                            -- The index-served prefilter first, in degrees, and
-                            -- then the metre test that decides.
-                            AND ST_DWithin(e.location, w.location, 0.01)
-                            AND ST_DWithin(e.location::geography, w.location::geography, 100)
          WHERE m.type = 'site'
+           AND NOT EXISTS (SELECT 1 FROM experience_parts done WHERE done.whole_id = w.id AND done.part_id = e.id)
+         GROUP BY e.id, e.name, w.id, w.name
          ORDER BY metres, e.name`,
   describe: row =>
     `${text(row, 'experience_name')} sits ${count(row, 'metres')} m from the World Heritage row `
