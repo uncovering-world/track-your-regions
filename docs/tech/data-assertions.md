@@ -283,6 +283,16 @@ say should; a curator's manual row is never out of step. Region Assignment for
 the world view settles every row, and `SELECT refresh_place_regions(ARRAY[id])`
 one place.
 
+The fourth (`whole-leaves-out-of-step`, `unplacedAssertions.ts`) holds a whole's
+leaves to its parts (ADR-0206). Nothing writes `whole_leaves` but
+`refresh_whole_leaves()`, which the triggers on a part relation and a point
+call; a write that skipped them (a trigger disabled for a bulk load) leaves a
+whole counting a place no longer under it, missing one that is, or counting a
+place as shown to readers that is not, so its "k of N" is wrong. The check
+compares every held row with every row `whole_leaves_expected(NULL)` makes and
+names each difference in words, the whole and the place;
+`SELECT refresh_whole_leaves(ARRAY[id])` settles one whole.
+
 The five geometry rules exist because defects keep being found by a person
 looking at a map and by nothing else in the repository (#668): three regions
 framed as the whole world (#666), four continents holding a fraction of what
