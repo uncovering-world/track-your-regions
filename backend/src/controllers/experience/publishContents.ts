@@ -20,8 +20,8 @@ import { publishUnreadPoints, releaseDeferredWithdrawals } from './experienceLoc
 import { lockWorksToPublish, publishUnreadLinks, publishUnreadWorks } from './workWriter.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { pointMovedToSql } from './movedPoint.js';
-import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
-import { linkAnsweredBySql, pointAnsweredBySql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { offeredLinkSql } from '../../db/readerPredicates.js';
+import { linkAnsweredBySql, pointAnsweredBySql, pointAskedUnreadSql, unreadLinkSql } from './waitingCounts.js';
 import { shownBySql } from '../../db/placePoints.js';
 
 /**
@@ -46,7 +46,7 @@ export async function contentsReached(
 ): Promise<{ locationIds?: number[]; treasureIds?: number[] }> {
   const reached = await client.query<{ points: number[]; works: number[] }>(
     `SELECT COALESCE((SELECT array_agg(el.id) FROM experience_locations el
-                       WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND ${offeredLocationSql('el')} AND ${unreadPointSql('el')}
+                       WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND ${pointAskedUnreadSql('el')}
                          AND ${pointAnsweredBySql('el', '$2::int')}
                          AND ($3::int[] IS NULL OR el.id = ANY($3::int[]))), '{}') AS points,
             COALESCE((SELECT array_agg(DISTINCT et.treasure_id) FROM experience_treasures et

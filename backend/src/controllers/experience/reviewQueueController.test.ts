@@ -26,7 +26,7 @@ import {
   experienceOfferedToReaderSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, venuesSql,
 } from '../../db/readerPredicates.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
-import { contentsTakeableSql, contentsWaitingSql } from './waitingCounts.js';
+import { contentsTakeableSql, contentsWaitingSql, pointAskedUnreadSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
@@ -837,8 +837,10 @@ describe('getReviewQueue', () => {
     // in a file whose other guards say a safety check must not itself backtrack.
     const points = sql.slice(sql.indexOf(`FROM ${pointsShownSql('e.id', 'el')}`));
     const where = points.slice(0, points.indexOf(') el'));
-    expect(where).toContain("WHERE el.curation_state = 'pending'");
-    expect(where).toContain("AND el.missing_since IS NULL AND el.existence <> 'lost'");
+    // A part's line point by its part's record, every other point by its own state (ADR-0213).
+    expect(where).toContain(`WHERE ${pointAskedUnreadSql('el')}`);
+    expect(where).toContain("el.missing_since IS NULL AND el.existence <> 'lost'");
+    expect(where).toContain("el.curation_state = 'pending'");
   });
 
   it('does not count a withdrawn or lost pending point as unread', async () => {
@@ -892,7 +894,10 @@ describe('getReviewQueue', () => {
     // The points an object shows are read through `pointsShownSql` and
     // `somePointShownSql`, whose own joins reach the points of the place's
     // leaves, never a product.
+    // And the line points of the parts nobody has read (`pointAskedUnreadSql`),
+    // a set of point ids its own subquery reads, joined to nothing outside it.
     const outside = sql
+      .replace(/JOIN experience_locations upl ON upl\.experience_id = upr\.experience_id/g, '')
       .replace(/JOIN experience_locations (\w+)_of_leaf ON \1_of_leaf\.experience_id = \1_wl\.leaf_id/g, '')
       .replace(/JOIN experience_locations (\w+) ON \1\.experience_id = \1_leaf\.leaf_id/g, '');
     expect(outside).not.toContain('JOIN experience_locations');

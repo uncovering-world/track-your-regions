@@ -58,8 +58,8 @@ import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './re
 import { MEMBERSHIPS, claimsFacingSql, membershipOfferedSql, placeSourceIdsSql, kindRecordSql } from '../../db/membership.js';
 import { linkableFindSql, mayBeFindOriginSql } from './siteFinds.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
-import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
-import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { offeredLinkSql } from '../../db/readerPredicates.js';
+import { contentsWaitingSql, linkMembershipSql, pointAskedUnreadSql, pointMembershipSql, unreadLinkSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   approximatePointAskedSql, approximatePointsOpenSql, arrivalOpenSql, claimKeySql, componentItemsOpenSql,
@@ -271,8 +271,7 @@ function contentsKeysSql(membershipScopeFilter: string): string {
   return `
         SELECT e.id, e.name, m.source_id, NULL, GREATEST(
                  (SELECT max(el.created_at) FROM ${pointsShownSql('e.id', 'el')}
-                   WHERE ${unreadPointSql('el')}
-                     AND ${offeredLocationSql('el')}
+                   WHERE ${pointAskedUnreadSql('el')}
                      AND ${pointMembershipSql('el')} = m.id),
                  (SELECT max(et.created_at) FROM experience_treasures et
                     JOIN treasures t ON t.id = et.treasure_id
