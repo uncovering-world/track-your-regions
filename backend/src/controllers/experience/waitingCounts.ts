@@ -35,7 +35,9 @@
  */
 
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql } from '../../db/membership.js';
+import {
+  KINDS, MEMBERSHIPS, kindRecordSql, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql,
+} from '../../db/membership.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { answeringPlaceSql, somePointShownSql } from '../../db/placePoints.js';
@@ -43,11 +45,12 @@ import { answeringPlaceSql, somePointShownSql } from '../../db/placePoints.js';
 /**
  * A membership nobody has read yet, of a place the source still offers, that a
  * reader would be shown once it is passed: an arrival crowded out of a crowded
- * city asks nothing until it rises into the city's ten (ADR-0172).
+ * city asks nothing until it rises into the city's ten (ADR-0172). A record
+ * in a kind only, as `arrivalOpenSql`: a pending part record is no arrival.
  */
 export function arrivalWaitingSql(alias = 'e', membership = 'm'): string {
   return `${membership}.curation_state = 'pending' AND ${alias}.missing_since IS NULL AND ${membershipAdmittedSql(membership)}
-    AND NOT ${membershipCrowdedSql(membership)}`;
+    AND ${kindRecordSql(membership)} AND NOT ${membershipCrowdedSql(membership)}`;
 }
 
 /**

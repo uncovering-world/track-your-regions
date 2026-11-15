@@ -87,10 +87,11 @@ export function membershipMissingOpenSql(m = 'm', e = 'e'): string {
  * is always yes. Nothing is written for it: the refusal stays the rule's and
  * unanswered, a later run may still admit the place, and the card comes back
  * once the other kind stops offering it, when the refusal decides whether the
- * place stays at all.
+ * place stays at all. A record in a kind only: a part's record turned down by
+ * a curator (ADR-0213) is the curator's answer about the part, not a rule's.
  */
 export function refusedOpenSql(m = 'm'): string {
-  return `${m}.admission = 'refused' AND NOT ${admissionAnsweredSql(m)}
+  return `${m}.admission = 'refused' AND ${kindRecordSql(m)} AND NOT ${admissionAnsweredSql(m)}
     AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} offered_elsewhere WHERE ${offeredElsewhereSql(m, 'offered_elsewhere')})`;
 }
 
@@ -116,10 +117,12 @@ export function offeredElsewhereSql(m: string, other: string): string {
  * card under that heading either. Excludes an arrival crowded out of a crowded
  * city too (ADR-0172): passed, it would be shown to nobody, so it asks nothing
  * until a refusal or a loss nearby lifts it into the city's ten.
- * `arrivalWaitingSql` is the same set for the counts.
+ * `arrivalWaitingSql` is the same set for the counts. A record in a kind
+ * only: a part's record in its whole is pending while nobody has read the
+ * part (ADR-0213), which is its site's question, never an arrival.
  */
 export function arrivalOpenSql(e = 'e', m = 'm'): string {
-  return `${m}.curation_state = 'pending' AND ${membershipAdmittedSql(m)} AND ${e}.missing_since IS NULL
+  return `${m}.curation_state = 'pending' AND ${membershipAdmittedSql(m)} AND ${kindRecordSql(m)} AND ${e}.missing_since IS NULL
     AND NOT ${membershipCrowdedSql(m)}`;
 }
 

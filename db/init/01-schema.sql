@@ -3233,7 +3233,7 @@ CREATE INDEX IF NOT EXISTS idx_source_records_whole ON source_records (whole_id)
 -- site, and the site's own line in the site itself. See db/migrations/234.
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS listing_ordinal INTEGER;
 
-COMMENT ON TABLE source_records IS 'One source''s record of a place (ADR-0198): in a kind, a membership (ADR-0045 decision 4), one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival; or in a whole, a part record, one row per (source, place, whole), carrying how the source knows the part -- its reference, its item and its view. The place itself is the experiences row.';
+COMMENT ON TABLE source_records IS 'One source''s record of a place (ADR-0198): in a kind, a membership (ADR-0045 decision 4), one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival; or in a whole, a part record, one row per (source, place, whole), carrying how the source knows the part -- its reference, its item and its view -- and the part''s gate (ADR-0213). The place itself is the experiences row.';
 COMMENT ON COLUMN source_records.kind_id IS 'The kind the record places the place in, NULL on a record in a whole (source_records_kind_or_whole, ADR-0198).';
 COMMENT ON COLUMN source_records.whole_id IS 'The whole the record places the place in as a part -- the serial World Heritage site whose component the place is -- NULL on a record in a kind (ADR-0198). The part-of relation follows it (parts_follow_records, ADR-0198 decision 5). The place itself on a site''s record of its own list line (ADR-0200), which places it in no whole and makes no part.';
 COMMENT ON COLUMN source_records.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
@@ -3270,7 +3270,7 @@ COMMENT ON COLUMN source_records.admission_question_sync_log_id IS 'The run that
 COMMENT ON COLUMN source_records.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
 COMMENT ON COLUMN source_records.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
 COMMENT ON COLUMN source_records.curated_fields IS 'Field names a curator has pinned on this record -- admission (a confirmed or overridden refusal), is_iconic, type, and on a record of World Heritage components wikidata_items (a confirmed item, ADR-0200) -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
-COMMENT ON COLUMN source_records.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7).';
+COMMENT ON COLUMN source_records.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7). On a part''s record in its whole, whether a curator has read the part (ADR-0213).';
 COMMENT ON COLUMN source_records.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
 COMMENT ON COLUMN source_records.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';
 
@@ -5368,7 +5368,8 @@ BEGIN
   END IF;
 
   FOR component IN
-    SELECT el.id, el.name, el.external_ref, el.location, el.missing_since, el.withdrawal_deferred_for_location_id
+    SELECT el.id, el.name, el.external_ref, el.location, el.missing_since, el.withdrawal_deferred_for_location_id,
+           el.curation_state
       FROM experience_locations el
      WHERE el.experience_id = site AND el.merged_into_id IS NULL
        AND (EXISTS (SELECT 1 FROM experience_location_placements pl
@@ -5449,9 +5450,13 @@ BEGIN
     UPDATE source_records SET experience_id = part, updated_at = NOW()
      WHERE source_id = 10 AND whole_id = site AND experience_id = site
        AND lower(external_id) = lower(component.external_ref);
+    -- A new record arrives as its line did (ADR-0213): pending where the
+    -- site's source holds its new points for a curator, so the part waits
+    -- for one too. A record moves out of pending only (guard_curation_state_move).
     IF NOT FOUND THEN
-      INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
-      VALUES (part, site, 10, component.external_ref);
+      INSERT INTO source_records (experience_id, whole_id, source_id, external_id, curation_state)
+      VALUES (part, site, 10, component.external_ref,
+              CASE WHEN component.curation_state = 'pending' THEN 'pending' ELSE 'auto' END);
     END IF;
 
     UPDATE experience_locations SET experience_id = part WHERE id = component.id;
@@ -5537,6 +5542,153 @@ CREATE TRIGGER trg_parts_follow_records_update
                      AND (OLD.experience_id, OLD.whole_id, OLD.source_id, OLD.admission)
                          IS DISTINCT FROM (NEW.experience_id, NEW.whole_id, NEW.source_id, NEW.admission))
   EXECUTE FUNCTION parts_follow_records();
+
+-- A part's gate is its record in its whole (ADR-0213, #2123): World Heritage
+-- components' record of the part says whether a curator has read the part
+-- (curation_state), turned it down (admission, the shape of a curator's no to
+-- an arrival), and whether the list still gives its line (missing_since,
+-- source_membership). Until the writers write the record, it follows the
+-- points that are its list line, which the run, the review queue and the
+-- curator's verdicts still write.
+--
+-- A point is the line of the part's record in the whole `whole` when the
+-- whole's own record in a kind placed it, or nothing did (a point from before
+-- placements): another kind's point on a part merged with that kind's place
+-- (Ephesus's Archaeology point) is that kind's, never the line's. The rule
+-- recordOfPointSql (partFieldsWriter.ts) reads for the record's reference.
+CREATE OR REPLACE FUNCTION is_part_line_point(point INTEGER, whole INTEGER) RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+  SELECT NOT EXISTS (SELECT 1 FROM experience_location_placements pl WHERE pl.location_id = point)
+      OR EXISTS (SELECT 1 FROM experience_location_placements pl
+                   JOIN source_records site ON site.id = pl.membership_id
+                  WHERE pl.location_id = point AND site.experience_id = whole AND site.kind_id IS NOT NULL);
+$$;
+
+-- Write the gate of the parts' records of the places `places` from their line
+-- points, as the old gate reads them: read once one of them is published
+-- (verified before auto), turned down while none is and every one still
+-- asked about is refused, missing once all of them are (at the latest of
+-- their marks), former once all of them are. A folded point is no line. A
+-- move the guard refuses is not made (a new record a run wrote auto before its
+-- pending point reached it): the record keeps its state, and the catalogue
+-- check part-gate-out-of-step names it. A record with no line point keeps
+-- what it holds. Writes only what differs, so a statement that changes no
+-- gate writes no record.
+CREATE OR REPLACE FUNCTION refresh_part_record_gates(places INTEGER[]) RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF places IS NULL OR cardinality(places) = 0 THEN
+    RETURN;
+  END IF;
+  WITH line AS (
+    SELECT rec.id AS record_id, el.curation_state, el.refused_at, el.missing_since, el.source_membership
+      FROM source_records rec
+      JOIN experience_locations el ON el.experience_id = rec.experience_id AND el.merged_into_id IS NULL
+     WHERE rec.experience_id = ANY(places)
+       AND rec.source_id = 10 AND rec.whole_id IS NOT NULL AND rec.whole_id <> rec.experience_id
+       AND is_part_line_point(el.id, rec.whole_id)
+  ),
+  gate AS (
+    SELECT record_id,
+           CASE WHEN bool_or(curation_state = 'verified') THEN 'verified'
+                WHEN bool_or(curation_state = 'auto') THEN 'auto'
+                ELSE 'pending' END AS curation_state,
+           bool_and(curation_state = 'pending')
+             AND NOT bool_or(refused_at IS NULL AND missing_since IS NULL)
+             AND bool_or(refused_at IS NOT NULL) AS refused,
+           max(refused_at) AS refused_at,
+           CASE WHEN bool_and(missing_since IS NOT NULL) THEN max(missing_since) END AS missing_since,
+           CASE WHEN bool_and(source_membership = 'former') THEN 'former' ELSE 'present' END AS source_membership
+      FROM line GROUP BY record_id
+  ),
+  wanted AS (
+    SELECT rec.id,
+           CASE WHEN (rec.curation_state, gate.curation_state)
+                     IN (('pending', 'verified'), ('auto', 'verified'), ('verified', 'auto'))
+                THEN gate.curation_state ELSE rec.curation_state END AS curation_state,
+           CASE WHEN gate.refused THEN 'refused' ELSE 'admitted' END AS admission,
+           CASE WHEN gate.refused THEN 'kept out by a curator' END AS admission_reason,
+           CASE WHEN gate.refused THEN gate.refused_at END AS admission_answered_at,
+           gate.missing_since, gate.source_membership
+      FROM gate JOIN source_records rec ON rec.id = gate.record_id
+  )
+  UPDATE source_records rec
+     SET curation_state = wanted.curation_state,
+         admission = wanted.admission,
+         admission_reason = wanted.admission_reason,
+         admission_answered_at = wanted.admission_answered_at,
+         missing_since = wanted.missing_since,
+         source_membership = wanted.source_membership,
+         updated_at = NOW()
+    FROM wanted
+   WHERE rec.id = wanted.id
+     AND (rec.curation_state, rec.admission, rec.admission_reason, rec.admission_answered_at,
+          rec.missing_since, rec.source_membership)
+         IS DISTINCT FROM
+         (wanted.curation_state, wanted.admission, wanted.admission_reason, wanted.admission_answered_at,
+          wanted.missing_since, wanted.source_membership);
+END;
+$$;
+
+-- The points' side: a point added, deleted, moved to another place or folded,
+-- read or refused, withdrawn or judged former refreshes the records of the
+-- places it was and is on. One refresh per statement, never per row. A
+-- placement written later is not followed: the run writes a point's placement
+-- before it parts it, and parting moves the point, which is followed.
+CREATE OR REPLACE FUNCTION part_record_gates_follow_points() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    PERFORM refresh_part_record_gates(ARRAY(SELECT DISTINCT n.experience_id FROM new_points n));
+  ELSIF TG_OP = 'UPDATE' THEN
+    PERFORM refresh_part_record_gates(ARRAY(
+      SELECT o.experience_id FROM old_points o JOIN new_points n ON n.id = o.id
+       WHERE (o.experience_id, o.merged_into_id, o.curation_state, o.refused_at, o.missing_since, o.source_membership)
+             IS DISTINCT FROM
+             (n.experience_id, n.merged_into_id, n.curation_state, n.refused_at, n.missing_since, n.source_membership)
+      UNION
+      SELECT n.experience_id FROM old_points o JOIN new_points n ON n.id = o.id
+       WHERE n.experience_id IS DISTINCT FROM o.experience_id));
+  ELSE
+    PERFORM refresh_part_record_gates(ARRAY(SELECT DISTINCT o.experience_id FROM old_points o));
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_part_record_gates_point_insert ON experience_locations;
+CREATE TRIGGER trg_part_record_gates_point_insert
+  AFTER INSERT ON experience_locations
+  REFERENCING NEW TABLE AS new_points
+  FOR EACH STATEMENT EXECUTE FUNCTION part_record_gates_follow_points();
+DROP TRIGGER IF EXISTS trg_part_record_gates_point_update ON experience_locations;
+CREATE TRIGGER trg_part_record_gates_point_update
+  AFTER UPDATE ON experience_locations
+  REFERENCING OLD TABLE AS old_points NEW TABLE AS new_points
+  FOR EACH STATEMENT EXECUTE FUNCTION part_record_gates_follow_points();
+DROP TRIGGER IF EXISTS trg_part_record_gates_point_delete ON experience_locations;
+CREATE TRIGGER trg_part_record_gates_point_delete
+  AFTER DELETE ON experience_locations
+  REFERENCING OLD TABLE AS old_points
+  FOR EACH STATEMENT EXECUTE FUNCTION part_record_gates_follow_points();
+
+-- The record's side: a part's record that moves to another place or whole (a
+-- merge folding the part, the site's own line record taken by a new part)
+-- takes the gate of its new place's line points.
+CREATE OR REPLACE FUNCTION part_record_gate_follows_its_place() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM refresh_part_record_gates(ARRAY[NEW.experience_id]);
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_part_record_gate_follows_its_place ON source_records;
+CREATE TRIGGER trg_part_record_gate_follows_its_place
+  AFTER UPDATE OF experience_id, whole_id ON source_records
+  FOR EACH ROW WHEN (NEW.source_id = 10 AND NEW.whole_id IS NOT NULL
+                     AND (OLD.experience_id, OLD.whole_id) IS DISTINCT FROM (NEW.experience_id, NEW.whole_id))
+  EXECUTE FUNCTION part_record_gate_follows_its_place();
 
 -- A whole's shape (ADR-0210): dispersed, a place a traveller visits one part
 -- of at a time, which is its parts and holds no point of its own (Seville's
