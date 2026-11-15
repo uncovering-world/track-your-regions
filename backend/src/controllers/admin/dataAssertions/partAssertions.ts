@@ -6,9 +6,13 @@
  * that makes a place a part, rather than the relation derived from it.
  */
 
-import { MEMBERSHIPS, partRecordSql, placeOfferedSql } from '../../../db/membership.js';
-import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import {
+  MEMBERSHIPS, membershipAdmittedSql, partRecordSql, partRecordUnreadSql, partRecordWithdrawnSql, placeOfferedSql,
+} from '../../../db/membership.js';
+import { hideLostSql, offeredLocationSql, partRecordShownSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { MOST_LEVELS } from '../../experience/partRecordController.js';
+import { withdrawnPointOpenSql } from '../../experience/reviewQueuePredicates.js';
+import { unreadPointSql } from '../../experience/waitingCounts.js';
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
 
@@ -268,9 +272,58 @@ const wholeOwnPoint: CatalogueAssertion = {
 };
 
 /**
+ * A part whose record and line points say different things about its gate
+ * (ADR-0213, #2123).
+ *
+ * A part's gate moves from the points of its list line to its record in its
+ * whole. While it moves, the old reading (the points, by the predicates the
+ * review queue composes today) and the new one (the record) must agree on
+ * each part: shown to a reader, unread, turned down by a curator, withdrawn by
+ * the list and still to be judged, or none of these. One label per side, the
+ * first that holds in that order. The points go with #2124, and this check
+ * with them.
+ */
+const partGateOutOfStep: CatalogueAssertion = {
+  id: 'part-gate-out-of-step',
+  area: 'places',
+  title: 'A part whose record and points disagree about whether it is shown or asked about',
+  kind: 'invariant',
+  meaning:
+    'Until the points go, a part\'s record in its site follows the points of its list line. '
+    + 'A row means it did not, so a curator is asked about a part a reader does not see, or the other way round. '
+    + 'Tell the admin who runs the World Heritage list.',
+  sql: `SELECT whole.id AS whole_id, whole.name AS whole_name, part.id AS part_id, part.name AS part_name,
+               pts.state AS by_points, recd.state AS by_record
+          FROM ${MEMBERSHIPS} rec
+          JOIN experiences part ON part.id = rec.experience_id AND part.merged_into_id IS NULL
+          JOIN experiences whole ON whole.id = rec.whole_id
+          CROSS JOIN LATERAL (
+            SELECT CASE WHEN bool_or(${offeredLocationSql('el')} AND ${publishedContentSql('el')}) THEN 'shown'
+                        WHEN bool_or(${offeredLocationSql('el')} AND ${unreadPointSql('el')}) THEN 'unread'
+                        WHEN bool_or(el.refused_at IS NOT NULL) THEN 'turned down'
+                        WHEN bool_or(${withdrawnPointOpenSql('el')}) THEN 'withdrawn'
+                        ELSE 'hidden' END AS state
+              FROM experience_locations el
+             WHERE el.experience_id = rec.experience_id AND el.merged_into_id IS NULL
+               AND is_part_line_point(el.id, rec.whole_id)) pts
+          CROSS JOIN LATERAL (
+            SELECT CASE WHEN ${partRecordShownSql('rec', 'part')} THEN 'shown'
+                        WHEN ${partRecordUnreadSql('rec')} AND ${hideLostSql('part')} THEN 'unread'
+                        WHEN NOT ${membershipAdmittedSql('rec')} THEN 'turned down'
+                        WHEN ${partRecordWithdrawnSql('rec')} AND ${hideLostSql('part')} THEN 'withdrawn'
+                        ELSE 'hidden' END AS state) recd
+         WHERE ${partRecordSql('rec')}
+           AND pts.state <> recd.state
+         ORDER BY whole.name, part.id`,
+  describe: (row: AssertionRow) => `${text(row, 'whole_name')} (#${count(row, 'whole_id')}): `
+    + `${text(row, 'part_name')} (#${count(row, 'part_id')}) is ${text(row, 'by_points')} by its points `
+    + `and ${text(row, 'by_record')} by its record`,
+};
+
+/**
  * The parts' rules: one line, one part; one item, one place; no loop, four
- * places at most; a whole's shape as its parts give it, and no point of a
- * dispersed whole's own.
+ * places at most; a whole's shape as its parts give it, no point of a
+ * dispersed whole's own, and a part's record gating it as its points do.
  */
 export const partAssertions: CatalogueAssertion[] = [
   partsOfOneWholeAtOneSpot,
@@ -278,4 +331,5 @@ export const partAssertions: CatalogueAssertion[] = [
   partsInALoopOrTooDeep,
   wholeShapeDrift,
   wholeOwnPoint,
+  partGateOutOfStep,
 ];

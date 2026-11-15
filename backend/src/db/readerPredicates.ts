@@ -48,7 +48,7 @@
  * of the first three.
  */
 
-import { placeAdmittedSql, placeOfferedSql, placeShownSql, rowKindJoinSql } from './membership.js';
+import { membershipAdmittedSql, membershipVisibleSql, placeAdmittedSql, placeOfferedSql, placeShownSql, rowKindJoinSql } from './membership.js';
 import { pointsShownSql, wholeFocusSql } from './placePoints.js';
 
 /**
@@ -267,6 +267,17 @@ function partOfSql(alias: string, whole: (w: string) => string, point: (el: stri
  */
 export function partOfferedSql(alias = 'e'): string {
   return partOfSql(alias, placeOfferedSql, el => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`);
+}
+
+/**
+ * A part a reader may be shown, by its record in its whole (ADR-0213): read
+ * or published unread, not turned down, its line still listed, and the part
+ * still in the world. `rec` is a part's record (`partRecordSql`), `part` the
+ * part's `experiences` alias. What `partOfferedSql` asks of the part's point,
+ * asked of the record that becomes its gate.
+ */
+export function partRecordShownSql(rec: string, part: string): string {
+  return `${membershipAdmittedSql(rec)} AND ${membershipVisibleSql(rec)} AND ${rec}.missing_since IS NULL AND ${hideLostSql(part)}`;
 }
 
 /**
