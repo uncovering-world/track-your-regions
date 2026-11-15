@@ -112,9 +112,10 @@ describe('a point two listed objects show', () => {
   const cathedral = makeExperience(13223, {
     has_parts: false, kind_id: 4, type: 'cathedral', kinds: [kind(4, 'Places of worship', 4, 'cathedral')],
   });
+  // The site lists both points for its parts; the cathedral lists its own.
   const point = makeLocation(13546, { longitude: -5.9931, latitude: 37.3858 });
   const alcazar = makeLocation(12007, { longitude: -5.9910, latitude: 37.3833 });
-  const locations = { 1175: [point, alcazar], 13223: [point] };
+  const locations = { 1175: [point, alcazar], 13223: [{ ...point, own_point: true as const }] };
 
   it('is one pin, opening the place the point is its own, with both kinds', () => {
     for (const order of [[site, cathedral], [cathedral, site]]) {
@@ -132,6 +133,35 @@ describe('a point two listed objects show', () => {
   it('keeps one kind where the surface shows one', () => {
     const markers = buildExperienceMarkers([site, cathedral], locations, new Set(['Places of worship']));
     expect(markers.map(m => [m.experienceId, m.experienceIds])).toEqual([[13223, [13223]]]);
+  });
+});
+
+describe('a point a whole and a whole nested in it both list (#2534)', () => {
+  // A mountain (100) whose part, a spring group (200), is a whole too, with a
+  // point of its own and ponds inside it: both are made of parts, so whether
+  // each has parts cannot say whose the point is. The batch says it.
+  const mountain = makeExperience(100, { has_parts: true, longitude: null, latitude: null });
+  const springs = makeExperience(200, { has_parts: true, longitude: null, latitude: null });
+  const own = makeLocation(2001, { own_point: true });
+  const pond = makeLocation(3001, { longitude: 10.1 });
+
+  it("opens the place the point is its own, whichever row the region lists first", () => {
+    // The batch sends the key only on the row that owns the point.
+    const locations = { 100: [makeLocation(2001)], 200: [own] };
+    for (const order of [[mountain, springs], [springs, mountain]]) {
+      const atPoint = buildExperienceMarkers(order, locations, new Set()).filter(m => m.locationId === 2001);
+      expect(atPoint).toHaveLength(1);
+      expect(atPoint[0].experienceId).toBe(200);
+      expect([...atPoint[0].experienceIds].sort((a, b) => a - b)).toEqual([100, 200]);
+    }
+  });
+
+  it('keeps the place drawn first where neither row is the point\'s own: a pond the list names under both', () => {
+    const locations = { 100: [pond], 200: [pond] };
+    for (const order of [[mountain, springs], [springs, mountain]]) {
+      const atPoint = buildExperienceMarkers(order, locations, new Set()).filter(m => m.locationId === 3001);
+      expect(atPoint.map(m => [m.experienceId, m.experienceIds])).toEqual([[order[0].id, [order[0].id, order[1].id]]]);
+    }
   });
 });
 
