@@ -26,33 +26,6 @@
 import { BURIAL_CLASSES, KILL_CLASSES, type PublicArtTrees } from './classes.js';
 import type { PublicArtType } from './kindRules.js';
 
-/** The genres a street-art place is filed under (`P136`): street art and graffiti. */
-export const STREET_ART_GENRES = ['Q17516', 'Q17514'] as const;
-
-/**
- * The classes a street-art place is typed by (`P31`, through the class tree):
- * a wall of graffiti paintings, `Hall of Fame` in Wikidata's English label.
- * Of the items typed so, the East Side Gallery is the one the line passed,
- * measured on the subset on 2026-10-26: the others are halls of fame few read
- * about.
- */
-export const GRAFFITI_WALL_CLASSES = ['Q1541532'] as const;
-
-/**
- * The English Wikipedia categories the entrance reads: a title naming street
- * art, graffiti or urban art as a word of its own, read over the title as the
- * dump writes it (underscores for spaces), case aside.
- */
-export const STREET_ART_CATEGORY = '(^|_)(street_art|streetart|graffiti|urban_art)(_|$)';
-
-/**
- * The categories of those that file people, works and media rather than
- * places: `Street artists from Brazil`, `Graffiti and unauthorised signage`
- * stays — the Lennon Wall and Beco do Batman are filed there.
- */
-export const NOT_A_PLACE_CATEGORY = '(artists|crews|stubs|articles|games|media|video|images?$|people|archaeology|organizations'
-  + '|festivals|works_by|books|films|albums|songs|writers|painters|muralists|fresco|wikipedia|wikiproject|templates|^images)';
-
 /**
  * The classes a candidate the entrance named is refused by, with what it is:
  * a place of another kind, or a work rather than a place. Read through the
