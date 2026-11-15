@@ -85,6 +85,8 @@ Every password field, at sign-in, at registration and on the Account page, has a
 
 The registration form shows a "Check your email" confirmation state after submission, with the option to resend the verification email without leaving the dialog.
 
+A session that ends signs the tab out, so nothing that records a visit is offered once there is no account to record it against. In an open tab, a session the server could not renew for a moment, over a dropped connection or a busy server, is not taken for one that ended: you stay signed in, and a tick or an edit made then says "Your session could not be renewed just now, so nothing was done. Try again in a moment." rather than signing you out.
+
 ### Curator
 
 Everything an authenticated user can do, plus content quality controls scoped to their assigned regions or sources: a curator of one source curates every place that source holds, even a place another source brought first (the Ajanta Caves, brought by UNESCO, are a Places of worship curator's to edit because they are a place of worship too), and answers that source's own questions about a shared place.
