@@ -97,9 +97,9 @@ describe('the layer selection', () => {
       { item: 'Q1000001', source_url: null },
       { item: 'commons:Test_region.map', source_url: null },
       { item: null, source_url: null },
-    ] });
-    expect(await drawnItems()).toEqual({ named: ['Q1000001', 'Q1000002'], listed: [] });
-    const [sql] = query.mock.calls.at(-1) as [string];
+    ] }).mockResolvedValueOnce({ rows: [] });
+    expect(await drawnItems()).toEqual({ named: ['Q1000001', 'Q1000002'], listed: [], lined: [] });
+    const [sql] = query.mock.calls.at(-2) as [string];
     expect(sql).toMatch(/FROM region_import_state/);
   });
 
@@ -114,14 +114,24 @@ describe('the layer selection', () => {
     query.mockResolvedValueOnce({ rows: [
       { item: 'Q1000001', source_url: 'https://en.wikivoyage.org/wiki/Test_Land' },
       { item: 'Q1000002', source_url: 'https://en.wikivoyage.org/wiki/No_such_page' },
-    ] });
+    ] }).mockResolvedValueOnce({ rows: [] });
     // Q1000001 is listed too, and counted once, as the item an import names.
-    expect(await drawnItems()).toEqual({ named: ['Q1000001', 'Q1000002'], listed: ['Q1000003', 'Q1000004', 'Q1000005'] });
+    expect(await drawnItems()).toEqual({ named: ['Q1000001', 'Q1000002'], listed: ['Q1000003', 'Q1000004', 'Q1000005'], lined: [] });
   });
 
   it('draws the regions by their own items while no copy of Wikivoyage is kept', async () => {
     pages.wikitext = null;
-    query.mockResolvedValueOnce({ rows: [{ item: 'Q1000001', source_url: 'https://en.wikivoyage.org/wiki/Test_Land' }] });
-    expect(await drawnItems()).toEqual({ named: ['Q1000001'], listed: [] });
+    query.mockResolvedValueOnce({ rows: [{ item: 'Q1000001', source_url: 'https://en.wikivoyage.org/wiki/Test_Land' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    expect(await drawnItems()).toEqual({ named: ['Q1000001'], listed: [], lined: [] });
+  });
+
+  it('draws whole the objects of each bridge, tunnel or dam Bridges & engineering marvels offers, whose line places it (ADR-0212)', async () => {
+    pages.wikitext = null;
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ item: 'Q44440' }, { item: 'Q297871' }] });
+    expect(await drawnItems()).toEqual({ named: [], listed: [], lined: ['Q44440', 'Q297871'] });
+    const [sql, params] = query.mock.calls.at(-1) as [string, unknown[]];
+    expect(params).toEqual([8]);
+    expect(sql).toMatch(/m\.source_id = \$1 AND m\.admission <> 'refused' AND m\.curation_state <> 'pending'/);
   });
 });
