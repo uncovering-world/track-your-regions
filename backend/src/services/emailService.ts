@@ -45,7 +45,10 @@ if (isSmtpConfigured) {
 
 /**
  * Send a verification email with a clickable link.
- * In development (no SMTP), the email content is printed to the console.
+ * In development (no SMTP), the email content is printed to the console. A
+ * production server never gets here without SMTP: `validateEnv` refuses to
+ * start it, since the console would put the address and the link with its
+ * one-time token into the log (SECURITY.md § Data Classification).
  */
 export async function sendVerificationEmail(to: string, token: string): Promise<void> {
   const verificationUrl = `${FRONTEND_URL}/verify-email?token=${encodeURIComponent(token)}`;
