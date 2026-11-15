@@ -14,7 +14,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from './index.js';
-import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
+import { offeredLocationSql, placeStandsAtSql, publishedContentSql } from './readerPredicates.js';
 import { badRequest, notFound } from '../middleware/errorHandler.js';
 import { RESTORE_LIMITS, TOO_MUCH_TO_UNDO } from '../types/trips.js';
 
@@ -51,9 +51,9 @@ export function leafCountSql(place: string): string {
 
 /**
  * Whether the place `place` shows a point of its own a reader may see: on a
- * whole, a point that stands for the whole site, such as the one named for
- * the whole of the City of Graz beside its historic centre. A tick on that
- * point is a visit on the whole itself (#2120).
+ * whole, a point no part stands for, such as Baalbek's `294`, the site's
+ * coordinate under its own reference (ADR-0210). A tick on that point is a
+ * visit on the whole itself (#2120).
  */
 export function showsOwnPointSql(place: string): string {
   return `EXISTS (SELECT 1 FROM experience_locations so_el
@@ -202,10 +202,10 @@ export function ownVisitsAtWriteSql(user: string, places: string, columns: strin
  * The place `e` a tick gave a visit, as the answer's `TickedPlace` (#2120):
  * what the offer of a date after a tick reads. `at` is where the tick was, a
  * point geometry: the point ticked, or the place's own for a tick on the
- * place, since a point of a place such as the Struve Geodetic Arc can stand
- * hundreds of kilometres from the place's own.
+ * place (`placeStandsAtSql`), since a point of a place such as the Struve
+ * Geodetic Arc can stand hundreds of kilometres from the place's own.
  */
-export function tickedPlaceJsonSql(e: string, at = `${e}.location`): string {
+export function tickedPlaceJsonSql(e: string, at = placeStandsAtSql(e)): string {
   return `json_build_object('experienceId', ${e}.id, 'name', ${e}.name,
             'longitude', ST_X(${at}), 'latitude', ST_Y(${at}))`;
 }

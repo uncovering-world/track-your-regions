@@ -2693,8 +2693,8 @@ CREATE TABLE IF NOT EXISTS experiences (
     -- ADR-0084): the Pantheon is a church as a place of worship and a site as archaeology.
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
-    -- Location (required point - every experience must have a location)
-    location GEOMETRY(Point, 4326) NOT NULL,
+    -- The place's point; none on a dispersed whole, which is its parts (ADR-0210)
+    location GEOMETRY(Point, 4326),
 
     -- Optional boundary polygon (some sites have defined areas)
     boundary GEOMETRY(MultiPolygon, 4326),
@@ -2723,11 +2723,14 @@ CREATE TABLE IF NOT EXISTS experiences (
 );
 
 COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, museums, etc.)';
+-- A dispersed whole holds no point (ADR-0210): the CREATE TABLE above no longer
+-- declares NOT NULL, and a database made before it drops it here.
+ALTER TABLE experiences ALTER COLUMN location DROP NOT NULL;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS cast_points BOOLEAN NOT NULL DEFAULT FALSE;
 COMMENT ON COLUMN experiences.cast_points IS 'The points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5). Run-owned; other sources leave it unchanged.';
 COMMENT ON COLUMN experiences.external_id IS 'The id the source that first brought this row knows it by (e.g., a UNESCO id_no). Provenance only since ADR-0084: a run finds a place through its membership''s external_id, never through this.';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
-COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
+COMMENT ON COLUMN experiences.location IS 'The place''s point. NULL exactly on a dispersed whole, which is its parts and has no point of its own (whole_shape, ADR-0210).';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
 COMMENT ON COLUMN experiences.metadata IS 'The place''s own source data (website, Wikipedia article, picture credit, UNESCO page); a kind''s facts are on its membership (ADR-0153)';
@@ -5104,8 +5107,8 @@ $$ LANGUAGE sql IMMUTABLE;
 -- like the site, folded and no looser ("Historic Centre of Prague" of the
 -- Historic Centre of Prague; "Historic Centre of Siena (Cathedral)" is a
 -- component). Its item is the site's own and anything near it is a building
--- inside, so the component-item finder searches nothing for it, and it is not
--- parted as a place of its own (part_site_components).
+-- inside, so the component-item finder searches nothing for it. It is parted
+-- like every other line (part_site_components, ADR-0210).
 CREATE OR REPLACE FUNCTION stands_for_whole_site(point_name TEXT, point_ref TEXT, site_name TEXT, site_ref TEXT,
                                                  standing_points INTEGER) RETURNS BOOLEAN AS $$
   SELECT standing_points <= 1
@@ -5176,6 +5179,103 @@ RETURNS TEXT AS $$
                             point_ref, site_name) END
 $$ LANGUAGE sql IMMUTABLE;
 
+-- The GADM divisions that hold the point `at`, from its leaf (depth 0) up to
+-- the root: the leaf the point lies in, picked in id order so a point on the
+-- shared edge of two leaves reads one chain every time, then each division
+-- above it, named without GADM's qualifier ("Ilha De Mocambique (Cidade)" is
+-- Ilha De Mocambique). Nothing for a point no division holds (one offshore).
+CREATE OR REPLACE FUNCTION divisions_holding(at GEOMETRY)
+RETURNS TABLE (division_id INTEGER, division_name TEXT, depth INTEGER)
+LANGUAGE sql STABLE AS $$
+  WITH RECURSIVE up AS (
+    SELECT leaf.id, leaf.parent_id, leaf.name, 0 AS level
+      FROM (SELECT d.id, d.parent_id, d.name FROM administrative_divisions d
+             WHERE NOT d.has_children AND ST_Intersects(d.geom, at)
+             ORDER BY d.id LIMIT 1) leaf
+    UNION ALL
+    SELECT a.id, a.parent_id, a.name, up.level + 1
+      FROM administrative_divisions a JOIN up ON a.id = up.parent_id
+     WHERE up.level < 12
+  )
+  SELECT up.id, btrim(regexp_replace(up.name, '\s*\([^)]*\)\s*$', '')), up.level FROM up
+$$;
+
+-- What the component part shown by the point `point` reads as in its site
+-- `site`, from `base`, what its point names it (component_part_name). A part
+-- named like its site (name_match_key folds them equal: every line of a
+-- serial site is a part, the one named like the site too, ADR-0210) never
+-- reads with the site's name (#2122), since "1 of 2" over two places of one
+-- name tells a traveller nothing. It takes the site's spelling, so
+-- Białowieża's lines, which the list spells "Bialowieza Forest", keep the
+-- Polish letters, and where it stands in parentheses: the most general GADM
+-- division its point lies in (divisions_holding) that holds no other line
+-- named like the site and not the site's every other part, so a site across
+-- several countries reads by country, "Białowieża Forest (Poland)" beside
+-- "Białowieża Forest (Belarus)", and one in a single country by region,
+-- "Historic Centre of Prague (Praha 1)" beside Průhonice Park. Where every
+-- such division holds the site's other parts too and no other line is named
+-- like the site, the most local one: "Kakadu National Park (West Arnhem)"
+-- beside its two islands. Where no division tells it apart, it keeps the
+-- site's name: no reference or other id is ever a name. Every other part
+-- reads as its point names it, a sibling's namesake included. A line of the
+-- site counts here while its point stands and is no arrival waiting for a
+-- curator: a part readers see is not renamed for one nobody has read.
+CREATE OR REPLACE FUNCTION component_part_name_apart(base TEXT, point INTEGER, site INTEGER)
+RETURNS TEXT LANGUAGE plpgsql STABLE AS $$
+DECLARE
+  site_name TEXT;
+  site_key TEXT;
+  at GEOMETRY;
+  own_part INTEGER;
+  namesakes GEOMETRY[];
+  others GEOMETRY[];
+  hint TEXT;
+BEGIN
+  IF base IS NULL OR site IS NULL THEN
+    RETURN base;
+  END IF;
+  SELECT e.name INTO site_name FROM experiences e WHERE e.id = site;
+  site_key := name_match_key(site_name);
+  IF name_match_key(base) IS DISTINCT FROM site_key THEN
+    RETURN base;
+  END IF;
+  SELECT el.location, el.experience_id INTO at, own_part FROM experience_locations el WHERE el.id = point;
+
+  -- The site's other standing lines, and among them those named like it.
+  SELECT array_agg(sp.location) FILTER (WHERE name_match_key(sp.name) = site_key), array_agg(sp.location)
+    INTO namesakes, others
+    FROM experience_parts wp
+    JOIN experience_locations sp ON sp.experience_id = wp.part_id
+   WHERE wp.whole_id = site AND wp.reason = 'component' AND wp.part_id <> own_part
+     AND sp.merged_into_id IS NULL AND sp.missing_since IS NULL AND sp.existence <> 'lost' AND sp.refused_at IS NULL
+     AND sp.curation_state <> 'pending';
+
+  WITH own AS (
+    SELECT c.division_id, c.division_name, c.depth FROM divisions_holding(at) c
+     WHERE position(' ' || name_match_key(c.division_name) || ' ' IN ' ' || site_key || ' ') = 0
+  ), namesake_divisions AS (
+    SELECT n.ord, d.division_id FROM unnest(namesakes) WITH ORDINALITY AS n(location, ord)
+      LEFT JOIN LATERAL divisions_holding(n.location) d ON true
+  ), other_divisions AS (
+    SELECT o.ord, d.division_id FROM unnest(others) WITH ORDINALITY AS o(location, ord)
+      JOIN LATERAL divisions_holding(o.location) d ON true
+  )
+  SELECT COALESCE(
+    -- The most general division that tells it apart: no other line named like
+    -- the site in it (each such line in some division, or none can be told
+    -- apart), and some other part of the site outside it.
+    (SELECT own.division_name FROM own
+      WHERE NOT EXISTS (SELECT 1 FROM namesake_divisions nd WHERE nd.division_id IS NULL OR nd.division_id = own.division_id)
+        AND EXISTS (SELECT 1 FROM other_divisions od GROUP BY od.ord HAVING NOT bool_or(od.division_id = own.division_id))
+      ORDER BY own.depth DESC LIMIT 1),
+    -- The only line named like the site, whose divisions all hold its other
+    -- parts too: where it is, as locally as the divisions say.
+    (SELECT own.division_name FROM own WHERE namesakes IS NULL ORDER BY own.depth LIMIT 1))
+    INTO hint;
+  RETURN CASE WHEN hint IS NULL THEN site_name ELSE site_name || ' (' || hint || ')' END;
+END;
+$$;
+
 -- A serial site's components are places, part of the site (ADR-0100): the one
 -- statement of which of a site's points are its components and how each
 -- becomes a part. Called by migration 094 over every World Heritage site and
@@ -5193,12 +5293,13 @@ $$ LANGUAGE sql IMMUTABLE;
 -- It is named for its point (component_part_name) and stands where its point
 -- does, both written by the writers of the point (followTheirPoints); its
 -- picture, subtitle and article are the part row's (ADR-0156). A part with no kind of
--- its own is listed nowhere: lists find it through its site. A
--- component that stands for its whole site (stands_for_whole_site) is not
--- parted: it stays the site's own point, since a part named like the site
--- would show the site twice (#1899); one that stops standing for it is
--- parted again, reviving the part migration 161 folded. Answers how many
--- points it parted.
+-- its own is listed nowhere: lists find it through its site. Every line of a
+-- serial site is a part, the one named like the site too (ADR-0210): Prague's
+-- 616bis-001 is the part "Historic Centre of Prague" beside Průhonice Park,
+-- since a dispersed whole holds no point of its own. A part migration 161
+-- folded back into its site is revived. Only a point under the site's own
+-- reference (Baalbek's 294, the export's site coordinate before its list had
+-- lines) is no line and stays the site's. Answers how many points it parted.
 CREATE OR REPLACE FUNCTION part_site_components(site INTEGER, site_membership INTEGER)
 RETURNS INTEGER AS $$
 DECLARE
@@ -5230,9 +5331,10 @@ BEGIN
                      WHERE pl.location_id = el.id AND pl.membership_id = site_membership)
             OR NOT EXISTS (SELECT 1 FROM experience_location_placements pl
                             WHERE pl.location_id = el.id))
-       AND NOT stands_for_whole_site(el.name, el.external_ref,
-             (SELECT whole.name FROM experiences whole WHERE whole.id = site),
-             (SELECT m.external_id FROM source_records m WHERE m.id = site_membership), 2)
+       AND el.external_ref IS DISTINCT FROM (SELECT m.external_id FROM source_records m WHERE m.id = site_membership)
+       -- An arrival the list withdrew before anyone read it was never a
+       -- component a reader knew, and makes no part.
+       AND NOT (el.missing_since IS NOT NULL AND el.curation_state = 'pending')
      ORDER BY el.id
   LOOP
     -- A component that moved is the part it moved from (#2182): its point
@@ -5281,9 +5383,11 @@ BEGIN
     IF part IS NOT NULL THEN
       UPDATE experiences
          SET merged_into_id = NULL, location = component.location, updated_at = NOW(),
-             -- The revived part keeps its own article (ADR-0156 decision 3).
-             name = component_part_name(component.name, metadata->>'wikipediaUrl', component.external_ref,
-                                        (SELECT whole.name FROM experiences whole WHERE whole.id = site))
+             -- The revived part keeps its own article (ADR-0156 decision 3), and
+             -- a name a curator gave it (followTheirPoints leaves it too).
+             name = CASE WHEN COALESCE(curated_fields, '[]'::jsonb) ? 'name' THEN name
+                         ELSE component_part_name(component.name, metadata->>'wikipediaUrl', component.external_ref,
+                                                  (SELECT whole.name FROM experiences whole WHERE whole.id = site)) END
        WHERE id = part;
     ELSE
       INSERT INTO experiences (source_id, external_id, name, location)
@@ -5389,6 +5493,97 @@ CREATE TRIGGER trg_parts_follow_records_update
                      AND (OLD.experience_id, OLD.whole_id, OLD.source_id, OLD.admission)
                          IS DISTINCT FROM (NEW.experience_id, NEW.whole_id, NEW.source_id, NEW.admission))
   EXECUTE FUNCTION parts_follow_records();
+
+-- A whole's shape (ADR-0210): dispersed, a place a traveller visits one part
+-- of at a time, which is its parts and holds no point of its own (Seville's
+-- World Heritage site is its cathedral, its Alcázar and its Archivo de
+-- Indias); or container, one a traveller stands inside, which keeps its own
+-- point. NULL on a place that is not a whole. A serial World Heritage site is
+-- always dispersed, whatever the walk between its parts (Würzburg's two, 159 m
+-- apart).
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS whole_shape VARCHAR(10)
+    CHECK (whole_shape IN ('dispersed', 'container'));
+COMMENT ON COLUMN experiences.whole_shape IS 'A whole''s shape (ADR-0210): dispersed (its parts, no point of its own: a serial World Heritage site) or container (one place a traveller stands inside, keeping its point); NULL on a place that is not a whole. Written by whole_shape_follows_parts() when the place gains its first part or loses its last.';
+ALTER TABLE experiences DROP CONSTRAINT IF EXISTS experiences_location_iff_not_dispersed;
+ALTER TABLE experiences ADD CONSTRAINT experiences_location_iff_not_dispersed
+    CHECK ((location IS NULL) = (whole_shape IS NOT DISTINCT FROM 'dispersed'));
+
+-- The shape a place takes as it becomes a whole (ADR-0210): dispersed when it
+-- holds a World Heritage record, or its parts' standing points lie more than
+-- 1 km apart; container otherwise. Asked once, when the first parts arrive:
+-- a container's later parts do not move its shape (an outlier 44 km off would
+-- otherwise take a valley's point away), and the check whole-shape-drift
+-- names one they would.
+CREATE OR REPLACE FUNCTION whole_shape_of(place INTEGER) RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+  SELECT CASE
+    WHEN EXISTS (SELECT 1 FROM source_records r WHERE r.experience_id = place AND r.source_id = 1) THEN 'dispersed'
+    WHEN EXISTS (
+      SELECT 1
+        FROM experience_parts pa JOIN experience_locations a ON a.experience_id = pa.part_id
+        JOIN experience_parts pb ON pb.whole_id = pa.whole_id JOIN experience_locations b ON b.experience_id = pb.part_id
+       WHERE pa.whole_id = place
+         AND a.missing_since IS NULL AND a.existence <> 'lost' AND a.merged_into_id IS NULL AND a.refused_at IS NULL
+         AND b.missing_since IS NULL AND b.existence <> 'lost' AND b.merged_into_id IS NULL AND b.refused_at IS NULL
+         AND NOT ST_DWithin(a.location::geography, b.location::geography, 1000)) THEN 'dispersed'
+    ELSE 'container' END
+$$;
+COMMENT ON FUNCTION whole_shape_of(INTEGER) IS 'The shape a place takes as it becomes a whole (ADR-0210): dispersed with a World Heritage record or parts more than 1 km apart, else container.';
+
+-- Keeps every whole's shape and point in step with its parts (ADR-0210): a
+-- place that gains its first part takes its shape (whole_shape_of), and gives
+-- up its point when dispersed, with a curator's claim on it, which no answer
+-- could then write; a whole that loses its last part is a place of
+-- its own again, at the point its kind record reports (the World Heritage
+-- record's first), else at a standing point of its own; with neither it keeps
+-- its shape.
+CREATE OR REPLACE FUNCTION whole_shape_follows_parts() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE experiences e
+       SET whole_shape = shaped.shape,
+           location = CASE WHEN shaped.shape = 'dispersed' THEN NULL ELSE e.location END,
+           curated_fields = CASE WHEN shaped.shape = 'dispersed' THEN e.curated_fields - 'location' ELSE e.curated_fields END,
+           updated_at = NOW()
+      -- OFFSET 0 keeps the subquery whole, so whole_shape_of runs once per
+      -- whole rather than once for every column that reads its answer.
+      FROM (SELECT w.whole_id, whole_shape_of(w.whole_id) AS shape
+              FROM (SELECT DISTINCT n.whole_id FROM new_parts n) w OFFSET 0) shaped
+     WHERE e.id = shaped.whole_id AND e.whole_shape IS NULL;
+  ELSE
+    UPDATE experiences e
+       SET whole_shape = NULL, location = back.location, updated_at = NOW()
+      FROM (SELECT w.whole_id, COALESCE(held.location,
+              (SELECT r.reported_location FROM source_records r
+                WHERE r.experience_id = w.whole_id AND r.kind_id IS NOT NULL AND r.reported_location IS NOT NULL
+                ORDER BY r.source_id = 1 DESC, r.id LIMIT 1),
+              (SELECT el.location FROM experience_locations el
+                WHERE el.experience_id = w.whole_id AND el.missing_since IS NULL AND el.existence <> 'lost'
+                  AND el.merged_into_id IS NULL AND el.refused_at IS NULL
+                ORDER BY el.id LIMIT 1)) AS location
+              FROM (SELECT DISTINCT o.whole_id FROM old_parts o) w
+              JOIN experiences held ON held.id = w.whole_id) back
+     WHERE e.id = back.whole_id AND e.whole_shape IS NOT NULL
+       -- A place nothing gives a point keeps its shape, which the check
+       -- whole-shape-drift names, rather than refuse the delete.
+       AND back.location IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM experience_parts p WHERE p.whole_id = back.whole_id);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_whole_shape_part_insert ON experience_parts;
+CREATE TRIGGER trg_whole_shape_part_insert
+  AFTER INSERT ON experience_parts
+  REFERENCING NEW TABLE AS new_parts
+  FOR EACH STATEMENT EXECUTE FUNCTION whole_shape_follows_parts();
+DROP TRIGGER IF EXISTS trg_whole_shape_part_delete ON experience_parts;
+CREATE TRIGGER trg_whole_shape_part_delete
+  AFTER DELETE ON experience_parts
+  REFERENCING OLD TABLE AS old_parts
+  FOR EACH STATEMENT EXECUTE FUNCTION whole_shape_follows_parts();
 
 -- =============================================================================
 -- A place's regions (ADR-0197)

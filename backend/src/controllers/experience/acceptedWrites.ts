@@ -14,6 +14,8 @@
  * written by `acceptTypeOnSourceMembership`. Neither is a kind's own fact, which
  * lives on that membership too (ADR-0153) and no curator edit claims; one such
  * entry is released and left to the kind's next run, as every field was before.
+ * A dispersed whole's coordinate is released without a write as well: it holds
+ * none (ADR-0210, `releasedOnTheWhole`).
  *
  * A value no writer may store — a picture from a host this catalogue may not
  * show, a coordinate that is not a pair — is named as unwritable, and the
@@ -23,7 +25,7 @@
  */
 
 import {
-  assignmentFor, isKindFactField, isMetadataField, isNameLocalField, nextMetadata, nextNameLocal,
+  assignmentFor, isKindFactField, isMetadataField, isNameLocalField, nextMetadata, nextNameLocal, releasedOnTheWhole,
   type CreditPin, type ProposedField,
 } from './publishHeldFields.js';
 import { keepSubjectsOnOneLine } from './subjectLines.js';
@@ -41,7 +43,7 @@ export interface AcceptedWrites {
   assignments: string[];
   /** Fields written now, the type included. */
   written: string[];
-  /** Fields released only: the kind's next run writes them. */
+  /** Fields released only: a kind's fact, which the kind's next run writes, and a dispersed whole's coordinate. */
   released: string[];
   /** Fields whose proposed value no writer may store: the caller refuses the answer. */
   unwritable: string[];
@@ -50,7 +52,7 @@ export interface AcceptedWrites {
 /**
  * The assignments for the accepted entries, bound through `bind`.
  *
- * `stored` is the place's `metadata` and `name_local` as read under the lock, and
+ * `stored` is the place's `metadata`, `name_local` and `whole_shape` as read under the lock, and
  * `remainingClaims` the place's claims once the accepted ones are gone: a key a
  * curator still claims is put back over a merged entry, as a run would put it
  * back. `acceptedImage` says the picture is among the accepted fields, so the
@@ -63,7 +65,7 @@ export interface AcceptedWrites {
  */
 export function acceptedWrites(
   accepted: readonly ProposedField[],
-  stored: { metadata: unknown; name_local: unknown },
+  stored: { metadata: unknown; name_local: unknown; whole_shape?: unknown },
   remainingClaims: string[],
   acceptedImage: boolean,
   pictureCredit: PictureCredit | null,
@@ -74,7 +76,7 @@ export function acceptedWrites(
   for (const entry of accepted) {
     if (entry.field === 'type') {
       writes.written.push(entry.field);
-    } else if (isKindFactField(entry.field)) {
+    } else if (isKindFactField(entry.field) || releasedOnTheWhole(entry.field, stored.whole_shape)) {
       writes.released.push(entry.field);
     } else if (isMetadataField(entry.field) || isNameLocalField(entry.field)) {
       merged.push(entry);

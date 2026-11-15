@@ -4,7 +4,10 @@ import { pool } from '../../db/index.js';
 import { lockExperience, lockTwoExperiences } from '../../db/experienceWriter.js';
 import { writePartFields } from '../../db/partFieldsWriter.js';
 import { pointNameSql } from '../../db/placePoints.js';
+import { CURATOR_SOURCE_ID } from '../../db/membership.js';
 import { writeExperienceLocations, type LocationWriteRun } from './locationWriter.js';
+import { upsertExperienceRecord } from './experienceUpsert.js';
+import { partsBehind } from './componentListings.js';
 
 /**
  * A serial site's components become places, part of the site, as the World
@@ -21,6 +24,8 @@ const LUXOR = { name: 'Luxor Temple', externalRef: '87-002', lon: 32.6390, lat: 
 const NECROPOLIS = { name: 'Theban Necropolis', externalRef: '87-003', lon: 32.6060, lat: 25.7330 };
 
 const TRAVELLER = '00000000-0000-4000-8000-000000009950';
+/** The Temple of Karnak's two halves, when a curator makes it a whole: parts of a part, which clear() reaches by id. */
+const KARNAK_HALVES = [99960, 99961];
 
 let run: LocationWriteRun;
 
@@ -43,6 +48,7 @@ async function ownPoints(site: number) {
 }
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [KARNAK_HALVES]);
   await pool.query(
     'DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = ANY($1::int[])) OR merged_into_id = ANY($1::int[])',
     [[THEBES, GIZA]],
@@ -183,7 +189,7 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
   });
 });
 
-describe('a component that stands for its whole site is not parted (#1899)', () => {
+describe('every line of a serial site is a part, the one named like the site too (ADR-0210)', () => {
   const readsAsWholeSite = async (point: string | null, ref: string | null, site: string, siteRef: string, standing: number) =>
     (await pool.query<{ whole: boolean }>(
       'SELECT stands_for_whole_site($1, $2, $3, $4, $5) AS whole', [point, ref, site, siteRef, standing],
@@ -201,13 +207,30 @@ describe('a component that stands for its whole site is not parted (#1899)', () 
     expect(await readsAsWholeSite('Historic Centre of Siena (Cathedral)', '717-002', 'Historic Centre of Siena', '717', 3)).toBe(false);
   });
 
-  it('keeps a point named like the site, or carrying its reference, as the site\'s own, and parts the rest', async () => {
+  it("parts a line named like the site, and keeps only a point under the site's own reference", async () => {
+    // Prague's 616bis-001 is the part "Historic Centre of Prague" beside Průhonice Park.
     const own = { name: 'Ancient Thebes (parts fixture)', externalRef: '87-000', lon: 32.65, lat: 25.71 };
     const siteRef = { name: null, externalRef: `${THEBES}`, lon: 32.651, lat: 25.711 };
     await writeExperienceLocations(THEBES, [own, siteRef, KARNAK], run);
 
-    expect((await parts(THEBES)).map(p => p.external_ref)).toEqual(['87-001']);
-    expect(await ownPoints(THEBES)).toHaveLength(2);
+    const made = await parts(THEBES);
+    expect(made.map(p => p.external_ref)).toEqual(['87-000', '87-001']);
+    // No division holds the fixture, so nothing tells it apart: it keeps the site's name (#2122).
+    expect(made[0].name).toBe('Ancient Thebes (parts fixture)');
+    expect(await ownPoints(THEBES)).toHaveLength(1);
+  });
+
+  it('parts no arrival the list withdrew before anyone read it', async () => {
+    await writeExperienceLocations(THEBES, [KARNAK], run);
+    await pool.query(
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state, missing_since)
+       VALUES ($1, 'Luxor Temple', '87-002', ST_SetSRID(ST_MakePoint(32.639, 25.6995), 4326), 'pending', NOW())`,
+      [THEBES],
+    );
+    await writeExperienceLocations(THEBES, [KARNAK, NECROPOLIS], run);
+
+    expect((await parts(THEBES)).map(p => p.external_ref)).toEqual(['87-001', '87-003']);
+    expect(await ownPoints(THEBES)).toHaveLength(1);
   });
 
   it('revives a part migration 161 folded once its point stops standing for the site', async () => {
@@ -227,6 +250,122 @@ describe('a component that stands for its whole site is not parted (#1899)', () 
     const revived = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
     expect(revived.part_id).toBe(karnak.part_id);
     expect((await pool.query('SELECT merged_into_id FROM experiences WHERE id = $1', [karnak.part_id])).rows[0].merged_into_id).toBeNull();
+  });
+
+  it('revives a folded part under the name a curator gave it', async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    const karnak = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
+    await pool.query(
+      `UPDATE experiences SET name = 'Karnak Temple Complex', curated_fields = '["name"]' WHERE id = $1`, [karnak.part_id],
+    );
+    await pool.query('UPDATE experience_locations SET experience_id = $1 WHERE id = $2', [THEBES, karnak.location_id]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2', [karnak.part_id, THEBES]);
+    await pool.query('UPDATE experiences SET merged_into_id = $1 WHERE id = $2', [THEBES, karnak.part_id]);
+
+    const membership = (await pool.query<{ id: number }>(
+      'SELECT id FROM source_records WHERE experience_id = $1', [THEBES],
+    )).rows[0].id;
+    await pool.query('SELECT part_site_components($1, $2)', [THEBES, membership]);
+
+    expect((await parts(THEBES)).find(p => p.external_ref === '87-001')?.name).toBe('Karnak Temple Complex');
+  });
+});
+
+describe("a whole's shape and point follow its parts (ADR-0210)", () => {
+  const shapeOf = async (id: number) => (await pool.query<{ whole_shape: string | null; lon: number | null }>(
+    'SELECT whole_shape, ST_X(location) AS lon FROM experiences WHERE id = $1', [id],
+  )).rows[0];
+
+  it('makes a new serial site dispersed with no point, in the write that parts it', async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    expect(await shapeOf(THEBES)).toEqual({ whole_shape: 'dispersed', lon: null });
+    // A site of one component stays a place, at its point.
+    await writeExperienceLocations(GIZA, [{ name: 'Great Pyramid', externalRef: '86-001', lon: 31.1342, lat: 29.9792 }], run);
+    expect(await shapeOf(GIZA)).toEqual({ whole_shape: null, lon: 32.65 });
+  });
+
+  it("writes the run's anchor to its record alone, and no point to the site or move of one", async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    const sent = {
+      sourceId: run.sourceId, externalId: `${THEBES}`, name: 'Ancient Thebes (parts fixture)', nameLocal: {},
+      subtitle: null, description: null, type: null, tags: [], lon: 32.6573, lat: 25.7188, locationIsAnchor: true,
+      countryCodes: ['EG'], countryNames: ['Egypt'], imageUrl: null, metadata: {},
+    };
+    const written = await upsertExperienceRecord(sent);
+
+    expect([...written.changeSet.changedFields, ...written.changeSet.heldFields].map(f => f.field)).not.toContain('location');
+    expect((await pool.query(
+      `SELECT ST_X(e.location) AS lon, ST_X(m.reported_location) AS reported
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2 WHERE e.id = $1`,
+      [THEBES, run.sourceId],
+    )).rows[0]).toEqual({ lon: null, reported: 32.6573 });
+  });
+
+  it('refuses a point on a dispersed whole, and a shape on a place that keeps one', async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    await expect(pool.query(
+      'UPDATE experiences SET location = ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326) WHERE id = $1', [THEBES],
+    )).rejects.toThrow(/experiences_location_iff_not_dispersed/);
+    await expect(pool.query("UPDATE experiences SET whole_shape = 'dispersed' WHERE id = $1", [GIZA]))
+      .rejects.toThrow(/experiences_location_iff_not_dispersed/);
+  });
+
+  it("puts a whole that loses its last part back at its record's point", async () => {
+    await pool.query(
+      'UPDATE source_records SET reported_location = ST_SetSRID(ST_MakePoint(32.6511, 25.7111), 4326) WHERE experience_id = $1',
+      [THEBES],
+    );
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    const made = (await parts(THEBES)).map(p => p.part_id);
+    await pool.query('DELETE FROM source_records WHERE whole_id = $1 AND experience_id <> $1', [THEBES]);
+
+    expect(await shapeOf(THEBES)).toEqual({ whole_shape: null, lon: 32.6511 });
+    // No longer parts, so clear() would not find them.
+    await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [made]);
+  });
+
+  it("leaves the site's run its fast path when a part of it is a dispersed whole, which holds no point", async () => {
+    // The Temple of Karnak made, by a curator, a whole of two places 2 km apart.
+    const [north, south] = KARNAK_HALVES;
+    try {
+      await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+      const karnak = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
+      await pool.query(
+        `INSERT INTO experiences (id, source_id, external_id, name, location)
+         VALUES ($1, 11, 'curator-1-99960', 'Karnak north (parts fixture)', ST_SetSRID(ST_MakePoint(32.6573, 25.7300), 4326)),
+                ($2, 11, 'curator-1-99961', 'Karnak south (parts fixture)', ST_SetSRID(ST_MakePoint(32.6573, 25.7120), 4326))`,
+        [north, south],
+      );
+      await pool.query(
+        `INSERT INTO experience_locations (experience_id, name, location)
+         SELECT id, name, location FROM experiences WHERE id = ANY($1::int[])`, [[north, south]],
+      );
+      await pool.query(
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission)
+         VALUES ($1, $3, ${CURATOR_SOURCE_ID}, 'curator-1-99962', 'admitted'),
+                ($2, $3, ${CURATOR_SOURCE_ID}, 'curator-1-99963', 'admitted')`,
+        [north, south, karnak.part_id],
+      );
+      // Shaped by its first part, a container; dispersed, as the check whole-shape-drift asks of parts 2 km apart.
+      await pool.query(`UPDATE experiences SET whole_shape = 'dispersed', location = NULL WHERE id = $1`, [karnak.part_id]);
+
+      await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+
+      expect(await shapeOf(karnak.part_id)).toEqual({ whole_shape: 'dispersed', lon: null });
+      expect(await partsBehind(THEBES)).toBe(false);
+    } finally {
+      await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[north, south]]);
+    }
+  });
+
+  it('keeps the point of a container, a whole of no World Heritage record whose parts lie within a walk', async () => {
+    // A curator makes one place a part of another that holds no World Heritage record.
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1', [GIZA]);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission)
+       VALUES ($1, $2, ${CURATOR_SOURCE_ID}, $3, 'admitted')`, [THEBES, GIZA, `curator-1-${THEBES}`],
+    );
+    expect(await shapeOf(GIZA)).toEqual({ whole_shape: 'container', lon: 32.65 });
   });
 });
 
@@ -306,6 +445,75 @@ describe('a component the list names nothing is named for what it is (#2065)', (
     for (const name of [null, '', '  ', 'The ', 'THE']) expect(await namesNothing(name)).toBe(true);
     // Die in the Drôme and Å in Lofoten are places.
     for (const name of ['The Hague', 'Port', 'Ular', 'Die', 'Å']) expect(await namesNothing(name)).toBe(false);
+  });
+});
+
+describe("a part named like its site never reads with the site's name (#2122)", () => {
+  // Białowieża Forest's two lines, which the list spells without the Polish
+  // letters, one either side of the border; the divisions are the fixture's own.
+  const [EUROPE, POLAND, PODLASKIE, BELARUS, BREST] = [99950, 99951, 99952, 99953, 99954];
+  const SITE_NAME = 'Białowieża Forest (parts fixture)';
+  const box = (west: number) => `POLYGON((${west} 52.6, ${west + 0.2} 52.6, ${west + 0.2} 52.8, ${west} 52.8, ${west} 52.6))`;
+  const polish = { name: 'Bialowieza Forest (parts fixture)', externalRef: '87-010', lon: 23.80, lat: 52.70 };
+  const belarusian = { name: 'Bialowieza Forest (parts fixture)', externalRef: '87-011', lon: 24.10, lat: 52.70 };
+
+  const divisions = async () => {
+    await pool.query('DELETE FROM administrative_divisions WHERE id = ANY($1::int[])', [[BREST, BELARUS, PODLASKIE, POLAND, EUROPE]]);
+    await pool.query(
+      `INSERT INTO administrative_divisions (id, name, parent_id, has_children, geom) VALUES
+         ($1, 'Europe', NULL, true, NULL), ($2, 'Poland', $1, true, NULL),
+         ($3, 'Podlaskie', $2, false, ST_Multi(ST_GeomFromText($6, 4326))),
+         ($4, 'Belarus', $1, true, NULL), ($5, 'Brest', $4, false, ST_Multi(ST_GeomFromText($7, 4326)))`,
+      [EUROPE, POLAND, PODLASKIE, BELARUS, BREST, box(23.7), box(24.0)],
+    );
+  };
+
+  beforeEach(async () => {
+    await divisions();
+    await pool.query('UPDATE experiences SET name = $2 WHERE id = $1', [THEBES, SITE_NAME]);
+  });
+
+  afterAll(async () => {
+    await pool.query('DELETE FROM administrative_divisions WHERE id = ANY($1::int[])', [[BREST, BELARUS, PODLASKIE, POLAND, EUROPE]]);
+  });
+
+  it("names two lines named like their site by their countries, in the site's spelling", async () => {
+    await writeExperienceLocations(THEBES, [polish, belarusian], run);
+
+    expect((await parts(THEBES)).map(p => [p.external_ref, p.name])).toEqual([
+      ['87-010', `${SITE_NAME} (Poland)`],
+      ['87-011', `${SITE_NAME} (Belarus)`],
+    ]);
+  });
+
+  it("keeps the site's name, in its spelling, where no division tells two lines named like it apart", async () => {
+    await writeExperienceLocations(THEBES, [polish, { ...belarusian, lon: 23.85 }], run);
+
+    expect((await parts(THEBES)).map(p => p.name)).toEqual([SITE_NAME, SITE_NAME]);
+  });
+
+  it('leaves two siblings of one name, and every part not named like its site, as their points name them', async () => {
+    const caravanserai = { name: 'Mansaf Caravanserai', lon: 23.81, lat: 52.71 };
+    await writeExperienceLocations(THEBES, [
+      { ...caravanserai, externalRef: '87-012' }, { ...caravanserai, externalRef: '87-013', lon: 24.11 }, KARNAK,
+    ], run);
+
+    expect((await parts(THEBES)).map(p => [p.external_ref, p.name])).toEqual([
+      ['87-001', 'Temple of Karnak'],
+      ['87-012', 'Mansaf Caravanserai'],
+      ['87-013', 'Mansaf Caravanserai'],
+    ]);
+  });
+
+  it('names the one line named like its site by the most general division its other parts lie outside', async () => {
+    await writeExperienceLocations(THEBES, [polish, { name: 'Kamieniuki', externalRef: '87-015', lon: 24.10, lat: 52.70 }], run);
+    expect((await parts(THEBES)).map(p => p.name)).toEqual([`${SITE_NAME} (Poland)`, 'Kamieniuki']);
+  });
+
+  it('names the one line named like its site by its most local division where none lies outside its other parts', async () => {
+    // Kakadu's line beside its two islands; Karnak stands in no division of the fixture.
+    await writeExperienceLocations(THEBES, [polish, KARNAK], run);
+    expect((await parts(THEBES)).map(p => p.name)).toEqual(['Temple of Karnak', `${SITE_NAME} (Podlaskie)`]);
   });
 });
 

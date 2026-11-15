@@ -155,35 +155,30 @@ describe("a site's own list line (ADR-0200)", () => {
 });
 
 
-describe('a site that shows two lines of its own, as Ohrid does (ADR-0200)', () => {
-  // Both points named as the site stand for the whole site and are parted from
-  // nothing; the line the site shows is the first the list gives.
+describe("a site whose lines all carry its name, as Ohrid's do, is a whole of them (ADR-0210)", () => {
+  // One line in North Macedonia and one in Albania, each named as the site.
   const NORTH = { ...LINE, name: 'Lake Ohrid (site line fixture)' };
   const SOUTH = { ...SECOND, name: 'Lake Ohrid (site line fixture)' };
 
   beforeEach(async () => {
     await pool.query(`UPDATE experiences SET name = 'Lake Ohrid (site line fixture)' WHERE id = $1`, [SITE]);
     await writeExperienceLocations(SITE, [NORTH, SOUTH], run);
-    expect(await records()).toEqual([expect.objectContaining({ experience_id: SITE, external_id: NORTH.externalRef })]);
   });
 
-  it('moves the record to the other line without the first line\'s item when the list gives that line first', async () => {
-    expect(await recordComponentItems(SITE, [{ ref: NORTH.externalRef, item: ITEM }], run.sourceId)).toBe(1);
-
-    await writeExperienceLocations(SITE, [SOUTH, NORTH], run);
-
-    expect(await records()).toEqual([expect.objectContaining({ external_id: SOUTH.externalRef, items: null })]);
-    expect(await line(NORTH.externalRef)).toMatchObject({ item: null, claimed: false });
-    expect(await line(SOUTH.externalRef)).toMatchObject({ item: null, claimed: false });
+  it('parts both lines, each record on its part, and leaves the site no point', async () => {
+    expect((await records()).map(rec => [rec.external_id, rec.experience_id === SITE])).toEqual([
+      [NORTH.externalRef, false], [SOUTH.externalRef, false],
+    ]);
+    expect((await pool.query('SELECT whole_shape, location FROM experiences WHERE id = $1', [SITE])).rows[0])
+      .toEqual({ whole_shape: 'dispersed', location: null });
   });
 
-  it("keeps a curator's item on the line it was chosen for, and moves it to no other", async () => {
+  it("keeps a curator's item on the line it was chosen for when the list gives the other line first", async () => {
     const north = await line(NORTH.externalRef);
     await underLock((client, lock) => claimPointItem(client, lock, north.id, CHOSEN, NOTHING));
 
     await writeExperienceLocations(SITE, [SOUTH, NORTH], run);
 
-    expect(await records()).toEqual([expect.objectContaining({ external_id: NORTH.externalRef, items: [CHOSEN] })]);
     expect(await line(NORTH.externalRef)).toMatchObject({ item: CHOSEN, claimed: true });
     expect(await line(SOUTH.externalRef)).toMatchObject({ item: null, claimed: false });
   });

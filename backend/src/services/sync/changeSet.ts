@@ -42,11 +42,17 @@ export interface ExperienceSnapshot {
   lon: number;
   lat: number;
   /**
-   * On an incoming record: `lon`/`lat` is the anchor of a place of several
-   * points, not a coordinate of its own (ADR-0095), so a move is written past
-   * the gate. Absent on a stored row, which says nothing either way.
+   * On an incoming record: `lon`/`lat` is derived from the place's points, a
+   * serial site's components or an edition's casts, not a coordinate of its
+   * own (ADR-0095), so a move is written past the gate. A dispersed whole
+   * holds none to move (`noCoordinate`). Absent on a stored row.
    */
   locationIsAnchor?: boolean;
+  /**
+   * On a stored row: the place holds no coordinate, a dispersed whole
+   * (ADR-0210), so the run's coordinate is no change of it.
+   */
+  noCoordinate?: boolean;
   /**
    * On an incoming record: the move from the stored coordinate is a short move
    * (`shortMovePassesSql`, ADR-0140), which the upsert asks the database under
@@ -682,14 +688,16 @@ export function passingMetadataKeys(
 }
 
 /**
- * The place's coordinate as a diff, or none within `LOCATION_UNCHANGED_METERS`.
- * A place of several points has no coordinate of its own (ADR-0095): its
- * anchor moving says nothing a reader sees, so it is minor and written past
- * the gate, recorded rather than asked. A short move (`shortMovePasses`,
+ * The place's coordinate as a diff, or none within `LOCATION_UNCHANGED_METERS`,
+ * and none for a dispersed whole, which holds no coordinate (ADR-0210). A
+ * coordinate derived from a place's points (an edition's casts, ADR-0145)
+ * moving says nothing a reader sees, so it is minor and written past the
+ * gate, recorded rather than asked. A short move (`shortMovePasses`,
  * ADR-0140) passes the gate as `short-move`; the distance is checked here too,
  * so the write, which follows this diff (`passingColumns`), and the record agree.
  */
 function locationDiff(before: ExperienceSnapshot, incoming: ExperienceSnapshot): RawDiff | null {
+  if (before.noCoordinate) return null;
   const moved = distanceMeters(before.lon, before.lat, incoming.lon, incoming.lat);
   if (moved < LOCATION_UNCHANGED_METERS) return null;
   return {

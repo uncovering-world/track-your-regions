@@ -122,11 +122,14 @@ export function assignmentFor(field: string, value: unknown, bind: (value: unkno
     case 'tags':
       return `${column} = ${bind(JSON.stringify(value ?? null))}::jsonb`;
     case 'location': {
-      // Checked rather than asserted: `location` is NOT NULL, so an
-      // `ST_MakePoint(NULL, NULL)` from a value that is not a pair of numbers
-      // would fail the transaction with an error naming neither the field nor
+      // Checked rather than asserted: an `ST_MakePoint(NULL, NULL)` from a
+      // value that is not a pair of numbers would empty the coordinate of a
+      // place that must hold one (`experiences_location_iff_not_dispersed`)
+      // and fail the transaction with an error naming neither the field nor
       // the reason. Returning null routes it to the caller's refusal instead,
       // which names the field and leaves the proposal intact to be looked at.
+      // A dispersed whole, which holds none, never gets here
+      // (`releasedOnTheWhole`).
       const point = asCoordinate(value);
       if (!point) return null;
       return `${column} = ST_SetSRID(ST_MakePoint(${bind(point.lon)}, ${bind(point.lat)}), 4326)`;
@@ -160,6 +163,18 @@ export function assignmentFor(field: string, value: unknown, bind: (value: unkno
       // and `VARCHAR(255)[]` without this code having to know their widths.
       return `${column} = ${bind(value ?? null)}`;
   }
+}
+
+/**
+ * Whether a proposed field is answered without a write on a place whose
+ * `whole_shape` is `wholeShape`: a dispersed whole holds no point of its own
+ * (ADR-0210), so a coordinate a run proposed for it before it became one,
+ * held or kept against a curator's claim, is answered, its claim released,
+ * and nothing written. Asked by both writers of a proposal: publishing a held
+ * one and taking the source's value (`acceptedWrites.ts`).
+ */
+export function releasedOnTheWhole(field: string, wholeShape: unknown): boolean {
+  return field === 'location' && wholeShape === 'dispersed';
 }
 
 /**
@@ -513,6 +528,8 @@ export interface HeldFieldWrites {
   /** `$1` is the experience id; the rest is whatever the assignments bound. */
   params: unknown[];
   applied: string[];
+  /** Held fields answered without a write: a dispersed whole's coordinate (`releasedOnTheWhole`). */
+  released: string[];
   claimedFieldsSkipped: string[];
   /** Held fields this writer cannot produce. Any at all refuses the whole call. */
   unwritable: string[];
@@ -587,6 +604,43 @@ function openLines(open: ProposedField[], selected: ProposedField[], claimed: st
 }
 
 /**
+ * One held field of a column of its own into `writes`: the membership's type,
+ * a dispersed whole's coordinate released (`releasedOnTheWhole`), or the
+ * field's assignment, else unwritable.
+ */
+function writeOneHeld(
+  writes: HeldFieldWrites, field: ProposedField, before: HeldBefore, bind: (value: unknown) => string,
+): void {
+  // The type within the kind is the membership's (ADR-0084): it rides out
+  // beside the place's assignments, for the membership being published.
+  if (field.field === 'type') {
+    writes.membershipType = { value: field.new ?? null };
+    writes.applied.push(field.field);
+    return;
+  }
+  if (releasedOnTheWhole(field.field, before.whole_shape)) {
+    writes.released.push(field.field);
+    return;
+  }
+  const assignment = assignmentFor(field.field, field.new, bind);
+  if (assignment === null) writes.unwritable.push(field.field);
+  else {
+    writes.assignments.push(assignment);
+    writes.applied.push(field.field);
+  }
+}
+
+/** What `heldFieldWrites` reads of the place and of the membership being published, under the lock. */
+export interface HeldBefore {
+  metadata?: unknown;
+  image_url?: unknown;
+  name_local?: unknown;
+  membership_facts?: unknown;
+  /** The place's shape as a whole (ADR-0210). */
+  whole_shape?: unknown;
+}
+
+/**
  * Turn the run's held proposal into assignments, deciding what to skip.
  *
  * Reads the changeset inside the caller's transaction, under the lock the caller
@@ -603,14 +657,14 @@ export async function heldFieldWrites(
   client: PoolClient,
   experienceId: number,
   pointer: number | null,
-  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown; membership_facts?: unknown },
+  before: HeldBefore,
   claimed: string[],
   selection: HeldSelection | null = null,
 ): Promise<HeldFieldWrites> {
   const params: unknown[] = [experienceId];
   const bind = (value: unknown) => `$${params.push(value)}`;
   const writes: HeldFieldWrites = {
-    assignments: [], params, applied: [], claimedFieldsSkipped: [], unwritable: [],
+    assignments: [], params, applied: [], released: [], claimedFieldsSkipped: [], unwritable: [],
     proposalMissing: false, contents: null, answered: new Map(), written: [],
     leftOpen: [], unmatched: [],
   };
@@ -679,20 +733,7 @@ export async function heldFieldWrites(
   const writable = selected.filter(field => !writes.claimedFieldsSkipped.includes(field.field));
 
   for (const field of writable) {
-    if (isMergedColumn(field.field)) continue;
-    // The type within the kind is the membership's (ADR-0084): it rides out
-    // beside the place's assignments, for the membership being published.
-    if (field.field === 'type') {
-      writes.membershipType = { value: field.new ?? null };
-      writes.applied.push(field.field);
-      continue;
-    }
-    const assignment = assignmentFor(field.field, field.new, bind);
-    if (assignment === null) writes.unwritable.push(field.field);
-    else {
-      writes.assignments.push(assignment);
-      writes.applied.push(field.field);
-    }
+    if (!isMergedColumn(field.field)) writeOneHeld(writes, field, before, bind);
   }
 
   // Both halves read off the *whole* held set rather than off what this call
@@ -733,7 +774,9 @@ export async function heldFieldWrites(
   // The answer record, keyed on what the run proposed rather than on what landed
   // in the column: the readers compare against the proposal, and the two merged
   // columns are each written as a whole object no single entry describes.
-  writes.written = writes.applied.map(name => ({
+  // A released field is answered too, so a card that keeps its pointer stops
+  // offering it.
+  writes.written = [...writes.applied, ...writes.released].map(name => ({
     row: objectRow(name),
     value: writable.find(field => field.field === name)?.new,
   }));

@@ -25,7 +25,7 @@
 import type { PoolClient } from 'pg';
 import { OBJECT_LOCK, placeLockOrderSql } from './locks.js';
 import { DESCRIPTION_SOURCE_ID, MEMBERSHIPS } from './membership.js';
-import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
+import { offeredLocationSql, placeStandsAtSql, publishedContentSql } from './readerPredicates.js';
 import { madeOfSql, shownBySql } from './placePoints.js';
 
 declare const locked: unique symbol;
@@ -275,7 +275,8 @@ export async function lockIdentifiedPlace(
 /**
  * The object's own coordinate follows the one point a reader is positioned
  * over, and is claimed there (ADR-0028 decision 2, #550): what a curator's
- * correction of that point does to the object. Answers whether it moved.
+ * correction of that point does to the object. Answers whether it moved. A
+ * dispersed whole holds no coordinate to follow its point (ADR-0210).
  *
  * The statement decides whether this point is that one — the count and the
  * `EXISTS` below — so a caller hands over the edit and reads the answer rather
@@ -302,6 +303,8 @@ export async function anchorToItsPoint(
             -- coordinate moved.
             updated_at = NOW()
       WHERE e.id = $1
+        -- A dispersed whole holds no point to follow (ADR-0210).
+        AND e.whole_shape IS DISTINCT FROM 'dispersed'
         -- Of every point the object shows, its parts' included (ADR-0100).
         AND (SELECT COUNT(*) FROM experience_locations el
               WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
@@ -509,14 +512,17 @@ export async function releaseUnescoText(client: PoolClient, place: LockedExperie
  * membership is on. UNESCO's text goes the same way (ADR-0149): the
  * description, its mark and the curator's word on it go with the UNESCO
  * membership, and the original keeps only a description a curator claimed as
- * their own. Answers with the object's token: the
- * insert's own row lock is the object lock, as for a curator's created place.
+ * their own. The point is the membership's view of it, else where the
+ * original stands (`placeStandsAtSql`). Answers with the object's token: the
+ * insert's own row lock is the object lock, as for a curator's created place;
+ * null, inserting nothing, where no point is to be had: a place that is not a
+ * dispersed whole holds one.
  */
 export async function insertSeparatedExperience(
   client: PoolClient,
   original: LockedExperience,
   membershipId: number,
-): Promise<LockedExperience> {
+): Promise<LockedExperience | null> {
   const inserted = await client.query(`
     WITH next AS (SELECT nextval(pg_get_serial_sequence('experiences', 'id')) AS id)
     INSERT INTO experiences (
@@ -536,7 +542,7 @@ export async function insertSeparatedExperience(
                 THEN 'separated-' || next.id ELSE m.external_id END,
            COALESCE(m.reported_name, e.name), e.name_local,
            CASE WHEN m.reported_name IS NULL THEN e.subtitle ELSE m.reported_subtitle END,
-           CASE WHEN m.source_id = $3 AND NOT (COALESCE(e.curated_fields, '[]'::jsonb) ? 'description' AND e.metadata->>'descriptionAdaptedFrom' IS NULL) THEN e.description END, e.tags, COALESCE(m.reported_location, e.location),
+           CASE WHEN m.source_id = $3 AND NOT (COALESCE(e.curated_fields, '[]'::jsonb) ? 'description' AND e.metadata->>'descriptionAdaptedFrom' IS NULL) THEN e.description END, e.tags, stands.location,
            e.country_codes, e.country_names,
            CASE WHEN m.reported_name IS NULL THEN e.image_url ELSE m.reported_image_url END,
            -- What OpenStreetMap said goes only with the outline it is about;
@@ -561,9 +567,13 @@ export async function insertSeparatedExperience(
                 THEN '["description"]'::jsonb ELSE '[]'::jsonb END
       FROM next, experiences e
       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.id = $2
-     WHERE e.id = $1
+      -- The membership's view of the point, else where the original stands: a
+      -- dispersed whole holds no point of its own (ADR-0210).
+      CROSS JOIN LATERAL (SELECT COALESCE(m.reported_location, ${placeStandsAtSql('e')}) AS location) stands
+     WHERE e.id = $1 AND stands.location IS NOT NULL
     RETURNING id, source_id
   `, [original.id, membershipId, DESCRIPTION_SOURCE_ID]);
+  if (inserted.rows.length === 0) return null;
   if (inserted.rows[0].source_id === DESCRIPTION_SOURCE_ID) await releaseUnescoText(client, original);
   await client.query(
     `UPDATE experiences e SET boundary = NULL, area_km2 = NULL, boundary_source_id = NULL,

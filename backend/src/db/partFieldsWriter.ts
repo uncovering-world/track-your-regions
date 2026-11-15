@@ -124,9 +124,12 @@ export async function writePartFields(
  * `(part_id, name, location, external_ref, point_id)` of what each is to hold (ADR-0100,
  * ADR-0156): the name the part is called for its point (`component_part_name`:
  * the list's name; where that names nothing, the part's own English article,
- * then its site's name with the reference), unless a curator named the part
- * (`name` in its claims); its point's coordinate, since a place of one point
- * stands where its point does (ADR-0095); and its point's reference, for its
+ * then its site's name with the reference), named apart from its site where
+ * the two read the same (`component_part_name_apart`: "Białowieża Forest
+ * (Poland)" beside "Białowieża Forest (Belarus)", #2122), unless a
+ * curator named the part (`name` in its claims); its point's coordinate, since a place of one point
+ * stands where its point does (ADR-0095), or none for a part a curator made a
+ * dispersed whole, which holds no point (ADR-0210); and its point's reference, for its
  * record. A part whose component moved holds the point it moved from beside
  * the one it moved to until the old one goes (#2182), and follows the one a
  * reader sees: a standing point before a withdrawn one, a published one
@@ -141,18 +144,21 @@ export async function writePartFields(
 export function partFollowsSql(pointFilter: string): string {
   return `SELECT part.id AS part_id,
                  CASE WHEN part.curated_fields ? 'name' THEN part.name
-                      ELSE COALESCE(component_part_name(pt.name, part.metadata->>'wikipediaUrl', pt.external_ref,
-                                      (SELECT whole.name FROM experience_parts wp JOIN experiences whole ON whole.id = wp.whole_id
-                                        WHERE wp.part_id = part.id AND wp.reason = 'component'
-                                        ORDER BY wp.whole_id LIMIT 1)),
+                      ELSE COALESCE(component_part_name_apart(
+                                      component_part_name(pt.name, part.metadata->>'wikipediaUrl', pt.external_ref, whole.name),
+                                      pt.id, whole.id),
                                     part.name) END AS name,
-                 pt.location, pt.external_ref, pt.id AS point_id
+                 CASE WHEN part.whole_shape = 'dispersed' THEN NULL ELSE pt.location END AS location,
+                 pt.external_ref, pt.id AS point_id
             FROM (SELECT DISTINCT ON (el.experience_id) el.id, el.experience_id, el.name, el.location, el.external_ref
                     FROM experience_locations el
                    WHERE el.merged_into_id IS NULL AND ${pointOfComponentSql('el')} AND ${pointFilter}
                    ORDER BY el.experience_id, el.missing_since IS NULL DESC,
                             ${publishedContentSql('el')} DESC, el.id) pt
             JOIN experiences part ON part.id = pt.experience_id
+            LEFT JOIN LATERAL (SELECT whole.id, whole.name FROM experience_parts wp JOIN experiences whole ON whole.id = wp.whole_id
+                                WHERE wp.part_id = part.id AND wp.reason = 'component'
+                                ORDER BY wp.whole_id LIMIT 1) whole ON true
            WHERE NOT ${placeHoldsKindSql('part.id')}`;
 }
 
@@ -221,7 +227,7 @@ export async function followTheirPoints(
 /**
  * The site `$1`'s own list line, as rows `(external_ref)`: the reference of
  * the point of its own the site shows, whose line no part holds (a site of one
- * component, or one that stands for the whole site, #1899), placed by the
+ * component: a serial site's every line is a part, ADR-0210), placed by the
  * site's World Heritage membership or by none, in a component's shape; the
  * point a reader sees first, standing before withdrawn and published before an
  * arrival. No row where the site shows no such point. The one statement of

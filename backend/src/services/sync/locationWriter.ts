@@ -155,10 +155,10 @@ export type LocationWriteRun = WriteRun & {
   sourceId: number;
   /**
    * The points are a serial site's components (ADR-0100): the World Heritage
-   * run's. The write ends by parting those that do not stand for the whole
-   * site (`part_site_components`, `stands_for_whole_site`), so a component
-   * that arrived is a part before the site's lock is let go, and a point
-   * named like the site or carrying its reference stays the site's own.
+   * run's. The write ends by parting them (`part_site_components`), so a
+   * component that arrived is a part before the site's lock is let go; every
+   * line is a part, the one named like the site too, and only a point carrying
+   * the site's own reference stays the site's (ADR-0210).
    */
   components?: boolean;
 };
