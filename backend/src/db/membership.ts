@@ -130,6 +130,26 @@ export function partRecordSql(alias = 'rec'): string {
 }
 
 /**
+ * A part nobody has read, by its record (ADR-0213): its record in its whole is
+ * pending, not turned down, and its line is still listed. `rec` is a part's
+ * record (`partRecordSql`). Whether the part is still in the world is the
+ * part's own (`hideLostSql` on its row), which a caller asks beside this.
+ */
+export function partRecordUnreadSql(rec = 'rec'): string {
+  return `${rec}.curation_state = 'pending' AND ${membershipAdmittedSql(rec)} AND ${rec}.missing_since IS NULL`;
+}
+
+/**
+ * A part whose line the list withdrew, still to be judged, by its record
+ * (ADR-0213): a part a reader was shown, missing from its source's list, and
+ * not yet judged former. An arrival the list withdrew before anyone read it
+ * asks nothing, as a point's does (`withdrawnPointOpenSql`).
+ */
+export function partRecordWithdrawnSql(rec = 'rec'): string {
+  return `${rec}.missing_since IS NOT NULL AND ${rec}.source_membership = 'present' AND ${membershipVisibleSql(rec)}`;
+}
+
+/**
  * The World Heritage membership `membership` of the site a part is a component
  * of, as a join condition over `wholeOf`, an alias with the site's `whole_id`
  * (a part's record or its relation, ADR-0198): the membership the part's
