@@ -20,21 +20,17 @@ import { RESTORE_LIMITS, TOO_MUCH_TO_UNDO } from '../types/trips.js';
 
 /**
  * Whether the place `place` is a whole a reader is shown by its parts: one of
- * its direct parts has a point a reader is shown. Such a place is ticked by
- * its parts, so its row shows its state and ticks nothing (#2120). A part
- * whose points are all unread or withdrawn does not count, so a reader never
- * learns from the row that unread parts exist. One level down, as the card
- * lists a whole's points (`pointsShownSql`): a whole whose places sit inside a
- * whole nested in it keeps its checkbox, since its card has no place to tick.
- * It moves to the whole's offered leaves (`whole_leaves`) together with the
- * card in the slice of #2121 that shows and places a nested whole by its
- * leaves.
+ * its offered leaves (`whole_leaves`, ADR-0206), the places at the bottom of
+ * its parts at any depth, has a point a reader is shown. Such a place is
+ * ticked by its places, so its row shows its state and ticks nothing (#2120).
+ * A leaf whose points are all unread or withdrawn does not count, so a reader
+ * never learns from the row that unread parts exist. Read over the leaves, as
+ * the card lists a whole's points (`pointsShownSql`, ADR-0211): a whole whose
+ * parts are wholes with no point of their own is shown by the places inside
+ * them, and its row has no checkbox whose tick would land on no place.
  */
 export function showsPartsSql(place: string): string {
-  return `EXISTS (SELECT 1 FROM experience_parts sp_prt
-                   JOIN experience_locations sp_el ON sp_el.experience_id = sp_prt.part_id
-                  WHERE sp_prt.whole_id = ${place}
-                    AND ${offeredLocationSql('sp_el')} AND ${publishedContentSql('sp_el')})`;
+  return `EXISTS (SELECT 1 FROM whole_leaves sp_wl WHERE sp_wl.whole_id = ${place} AND sp_wl.offered)`;
 }
 
 /**

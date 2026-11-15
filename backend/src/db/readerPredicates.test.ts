@@ -246,7 +246,7 @@ describe('readerPositionSql', () => {
 
   it('takes the alias it is given, so a query with another name for the table is not silently wrong', () => {
     expect(readerPositionSql('x')).toContain('WHERE el_own.experience_id = x.id');
-    expect(readerPositionSql('x')).toContain('WHERE el_prt.whole_id = x.id');
+    expect(readerPositionSql('x')).toContain('WHERE el_wl.whole_id = x.id');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
     expect(readerPositionSql('x')).toContain('CASE WHEN x.location IS NULL THEN');
   });
@@ -264,9 +264,10 @@ describe('readerPositionSql', () => {
   it("frames a whole by the rule a region is framed by, over the places this caller is shown", () => {
     const focus = readerPositionSql('e', '$2').split('THEN (SELECT json_build_object')[1];
     expect(focus).toContain('FROM geometry_focus((SELECT ST_Collect(wf_el.location)');
-    // Its own points and its parts', gated as the nearest point is.
+    // Its own points and its leaves', gated as the nearest point is (ADR-0211).
     expect(focus).toContain('WHERE wf_el_own.experience_id = e.id');
-    expect(focus).toContain('WHERE wf_el_prt.whole_id = e.id');
+    expect(focus).toContain('FROM whole_leaves wf_el_wl');
+    expect(focus).toContain('WHERE wf_el_wl.whole_id = e.id');
     expect(focus).toContain("wf_el.missing_since IS NULL");
     expect(focus).toContain("wf_el.existence <> 'lost'");
     expect(focus).toContain("($2::boolean OR wf_el.curation_state <> 'pending')");

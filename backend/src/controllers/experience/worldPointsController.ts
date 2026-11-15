@@ -115,7 +115,7 @@ interface PointRow {
   lng: number;
   lat: number;
   location_id: number;
-  /** Which arm of `PLACE_POINT_ARMS` read the row, on the markers: 0 the place's own points, 1 a whole's parts'. */
+  /** Which arm of `PLACE_POINT_ARMS` read the row, on the markers: 0 the place's own points, 1 a whole's leaves' (ADR-0211). */
   arm?: number;
   experience_id?: number;
   location_name?: string | null;
@@ -130,7 +130,7 @@ interface PointRow {
  * The columns a tier selects from one arm of the points (`PLACE_POINT_ARMS`).
  *
  * Every row carries the point's id, and a marker the arm that read it (0, the
- * place's own points; 1, a whole's parts' points), because one point is read
+ * place's own points; 1, a whole's leaves' points), because one point is read
  * by both arms where a part is a place of another kind as well (Seville
  * Cathedral, a place of worship and a part of its World Heritage site), and the
  * answer draws it once (`onePerPoint`). `kindsJoined` says the place's kinds
@@ -234,7 +234,14 @@ export async function getWorldPoints(
       FROM ${from}
       ${kindJoin}
       ${kindsJoined(wholes) ? `LEFT JOIN ${shownKindsByPlaceSql(wholes!)} wk ON wk.experience_id = e.id` : ''}
-      WHERE ${where}`;
+      WHERE ${where}
+      LIMIT ${MAX_POINTS + 1}`;
+  // Each arm is capped as the read is, and the cap is what keeps the arms out
+  // of parallel workers: Postgres runs no subquery with a LIMIT in a worker,
+  // and planned without it the overview's two arms went to two workers per
+  // request (a Parallel Append under a Gather), whose start-up a client pays
+  // and EXPLAIN ANALYZE hides (ADR-0211 has the measurement). The cap never
+  // binds an arm before it binds the read.
   const query = `${overPlacePoints(arm)}
       LIMIT ${MAX_POINTS + 1}`;
 

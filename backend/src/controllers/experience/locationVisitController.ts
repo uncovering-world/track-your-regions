@@ -309,7 +309,7 @@ export async function unmarkAllLocationsVisited(
 
   // The places whose points are cleared, as *Mark all* finds them: in one
   // region, the places of the points there; everywhere, the place itself and
-  // its direct parts, so no part it shows keeps the site visited. Only places
+  // its leaves, so no place it shows keeps the site visited. Only places
   // with a point the traveller is shown: a visit on a part whose points were
   // withdrawn or are unread is one they cannot see, and a click never clears
   // it (#2120). One client, so the count reads what the delete left.

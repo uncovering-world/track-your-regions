@@ -891,10 +891,10 @@ describe('getReviewQueue', () => {
     // inside its own lateral — so the strings themselves must be absent.
     // The points an object shows are read through `pointsShownSql` and
     // `somePointShownSql`, whose own joins reach the points of the place's
-    // parts, never a product.
+    // leaves, never a product.
     const outside = sql
-      .replace(/JOIN experience_locations (\w+)_of_part ON \1_of_part\.experience_id = \1_prt\.part_id/g, '')
-      .replace(/JOIN experience_locations (\w+) ON \1\.experience_id = \1_part\.part_id/g, '');
+      .replace(/JOIN experience_locations (\w+)_of_leaf ON \1_of_leaf\.experience_id = \1_wl\.leaf_id/g, '')
+      .replace(/JOIN experience_locations (\w+) ON \1\.experience_id = \1_leaf\.leaf_id/g, '');
     expect(outside).not.toContain('JOIN experience_locations');
     expect(outside).not.toContain('JOIN experience_treasures');
     // Three laterals: the points, the works, and the one point the held

@@ -154,7 +154,7 @@ describe('getWorldPoints', () => {
       const [own, parts] = (await ask({ detail: 'markers' })).sql.split('UNION ALL');
       expect(own).toContain(placeKindsSql('e', true));
       expect(parts).not.toContain(placeKindsSql('e', true));
-      expect(parts).toContain(`LEFT JOIN ${shownKindsByPlaceSql('SELECT whole_id FROM experience_parts')} wk ON wk.experience_id = e.id`);
+      expect(parts).toContain(`LEFT JOIN ${shownKindsByPlaceSql('SELECT whole_id FROM whole_leaves')} wk ON wk.experience_id = e.id`);
       expect(parts).toContain(`COALESCE(wk.kinds, '[]'::json) AS kinds`);
       expect((await ask()).sql).not.toContain(' wk ');
     });
@@ -278,6 +278,17 @@ describe('getWorldPoints', () => {
       // often a stranger may ask, not how much each ask costs.
       expect((await ask()).sql).toMatch(/LIMIT 20001$/);
       expect((await ask({ detail: 'markers' })).sql).toMatch(/LIMIT 20001$/);
+    });
+
+    it('caps each arm as it caps the read, which keeps the arms out of parallel workers', async () => {
+      // Postgres hands no subquery with a LIMIT to a worker. Uncapped, the
+      // overview's arms were run by two workers per request, slower through a
+      // client than the serial plan.
+      for (const detail of ['overview', 'markers']) {
+        const [own, leaves] = (await ask({ detail })).sql.split('UNION ALL');
+        expect(own).toMatch(/LIMIT 20001\)\s*$/);
+        expect(leaves).toMatch(/LIMIT 20001\)\s+LIMIT 20001$/);
+      }
     });
 
     it('asks for one more than the cap, so hitting it is not mistaken for filling it', async () => {

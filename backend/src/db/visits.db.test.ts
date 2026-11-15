@@ -245,17 +245,20 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
     expect(await states()).toEqual([SITE, PART_A, GRAND]);
   });
 
-  it("reads a whole above the site visited in its own read, though none of the points it shows is", async () => {
-    // Fujisan after a pond of Oshino Hakkai, which shows a point of its own:
-    // that is the one point Fujisan shows one level down, and it is not ticked.
+  it("reads a whole above the site by the site's places, never by the site's own point (ADR-0211)", async () => {
+    // Fujisan after a pond of Oshino Hakkai, which holds a point of its own:
+    // Fujisan's own read lists the ponds, the places its count counts, and
+    // the springs' own point only on the springs' card.
     await nestSite();
     await point(SITE, 44.69);
     expect(await getExperienceVisitedStatus({ params: { id: GRAND }, caller: traveller() }))
-      .toMatchObject({ visitedStatus: 'not_visited', visitedLocations: 0, totalLocations: 1 });
+      .toMatchObject({ visitedStatus: 'not_visited', visitedLocations: 0, totalLocations: 3 });
 
     await visit(PART_A);
     expect(await getExperienceVisitedStatus({ params: { id: GRAND }, caller: traveller() }))
-      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 0, totalLocations: 1 });
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 1, totalLocations: 3 });
+    expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 1, totalLocations: 4 });
   });
 
   it('reads a whole ticked as a whole, or through a whole inside it, as ? of N', async () => {
@@ -299,16 +302,17 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
     expect((await getExperience({ params: { id: SITE }, caller: undefined })).leaf_count).toBe(3);
   });
 
-  it('keeps the checkbox on a whole whose places all sit inside a whole nested in it, and still counts them', async () => {
-    // Its card lists its places one level down, and the site nested in it
-    // holds no point of its own, so its row has nothing to read a state from.
+  it('reads a whole whose places all sit inside a whole nested in it by those places, with no checkbox (ADR-0211)', async () => {
+    // The site nested in it holds no point of its own. Its card lists the
+    // places inside, so its row reads their state: a checkbox there would
+    // send an untick that takes back no visit, after a visit two levels down.
     await nestSite();
     const shownByParts = async (id: number) => (await pool.query<{ has_parts: boolean }>(
       `SELECT ${showsPartsSql('$1::int')} AS has_parts`, [id],
     )).rows[0].has_parts;
 
     expect(await shownByParts(SITE)).toBe(true);
-    expect(await shownByParts(GRAND)).toBe(false);
+    expect(await shownByParts(GRAND)).toBe(true);
     expect((await getExperience({ params: { id: GRAND }, caller: undefined })).leaf_count).toBe(3);
   });
 

@@ -1,14 +1,20 @@
 /**
- * The points a place shows: its own, and the points of the places that are
- * its parts (ADR-0100). A component of a serial site is a part place with one
- * point, and the site shows it on its map, in its count of places and in a
- * traveller's progress through it, as it shows its own.
+ * The points a place shows: its own, and the points of its leaves, the places
+ * at the bottom of its parts (ADR-0100, ADR-0211). A component of a serial
+ * site is a part place with one point, and the site shows it on its map, in
+ * its count of places and in a traveller's progress through it, as it shows
+ * its own. A whole nested in another is shown by its leaves too: Fujisan, once
+ * a curator nests the Oshino Hakkai ponds under an Oshino Hakkai of their own,
+ * shows the eight ponds, the places its count counts (`whole_leaves`,
+ * ADR-0206), and the springs' own point only on the springs' own card. For a
+ * whole none of whose parts is a whole, its leaves are its parts.
  *
  * Every reader of "the points of a place" composes this module and never
  * reads `experience_locations` by `experience_id` alone, so a component moving
  * into a part place changes nothing a reader sees. A place shows its own
- * points and its parts' points: this module is the one statement of that rule,
- * in the three shapes a read takes.
+ * points and its leaves' points: this module is the one statement of that
+ * rule, in the three shapes a read takes, and `place_shown_points()` in the
+ * schema is its statement for a place's regions.
  *
  * - `overPlacePoints` writes a reader's query once per arm and unions the arms
  *   at the top of the statement, for a read over many places (a region's
@@ -44,22 +50,31 @@ export interface PlacePointArm {
   from: string;
   /** The id of the place that shows the point, as a column expression. */
   placeId: string;
-  /** The places this arm shows points for, as a `SELECT` of ids: wholes for the parts' arm, whose rows repeat their whole. */
+  /**
+   * The places this arm shows points for, as a `SELECT` of ids: wholes for the
+   * leaves' arm, whose rows repeat their whole. Absent on the place's own arm,
+   * which is how a read tells a point the place owns from one it shows for a
+   * place below it.
+   */
   wholes?: string;
 }
 
-/** The place's own points, and its parts' points shown by the whole. */
+/**
+ * The place's own points, and its leaves' points shown by the whole: a
+ * whole's leaves are read from `whole_leaves`, at any depth, never from its
+ * direct parts, so a nested whole is shown by the places its count counts.
+ */
 export const PLACE_POINT_ARMS: readonly PlacePointArm[] = [
   {
     from: 'experience_locations el JOIN experiences e ON e.id = el.experience_id',
     placeId: 'el.experience_id',
   },
   {
-    from: `experience_parts prt
-           JOIN experience_locations el ON el.experience_id = prt.part_id
-           JOIN experiences e ON e.id = prt.whole_id`,
-    placeId: 'prt.whole_id',
-    wholes: 'SELECT whole_id FROM experience_parts',
+    from: `whole_leaves wl
+           JOIN experience_locations el ON el.experience_id = wl.leaf_id
+           JOIN experiences e ON e.id = wl.whole_id`,
+    placeId: 'wl.whole_id',
+    wholes: 'SELECT whole_id FROM whole_leaves',
   },
 ];
 
@@ -81,18 +96,27 @@ export function placePointsSql(): string {
 }
 
 /**
- * The places a place is made of, itself among them: the place and the places
- * that are its parts, as an int[] for `= ANY(...)`. `places` is an int[]
- * expression, `ARRAY[e.id]` for one place.
+ * The places a place is made of, itself among them: the place, the places
+ * that are its parts and its leaves, as an int[] for `= ANY(...)`. `places`
+ * is an int[] expression, `ARRAY[e.id]` for one place.
+ *
+ * The leaves, because a reader is shown a nested whole's leaves' points
+ * (`PLACE_POINT_ARMS`), and a read or write about one of them from the whole
+ * (its picture on a pin, placing the whole) has to find it. The direct parts
+ * too, because a site's run and a curator's write find the site's lines on
+ * them: a part that is a whole holds its line as its own point, which no
+ * reader shows on the site. For a whole none of whose parts is a whole the
+ * two are the same places.
  */
 export function madeOfSql(places: string): string {
   return `ARRAY(SELECT unnest(${places})
-    UNION ALL SELECT prt.part_id FROM experience_parts prt WHERE prt.whole_id = ANY(${places}))`;
+    UNION ALL SELECT prt.part_id FROM experience_parts prt WHERE prt.whole_id = ANY(${places})
+    UNION ALL SELECT wl.leaf_id FROM whole_leaves wl WHERE wl.whole_id = ANY(${places}))`;
 }
 
 /**
  * Whether the point `point` is one the places `places` show, their own or
- * their parts': the predicate of a read about given places, `places` an int[]
+ * their parts' and leaves': the predicate of a read about given places, `places` an int[]
  * expression (`ARRAY[e.id]` in a correlated read). Kept to an index probe on
  * the point's own place, which a semi-join against the arms is not: on 1,472
  * places a correlated count took 9 ms this way and 23 ms through the arms.
@@ -129,13 +153,13 @@ export function foldedPointsSql(places: string): string {
 }
 
 /**
- * The places given and the places they are parts of, as an int[]: the places
- * whose own answer moves when the given places' points move — Ancient Thebes
- * is placed again when the Temple of Karnak's point is.
+ * The places given and every whole above them, as an int[]: the places whose
+ * own answer moves when the given places' points move — Ancient Thebes is
+ * placed again when the Temple of Karnak's point is, and Fujisan when a pond
+ * of an Oshino Hakkai nested in it is (ADR-0211).
  */
 export function withWholesSql(places: string): string {
-  return `ARRAY(SELECT unnest(${places})
-    UNION SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = ANY(${places}))`;
+  return `ARRAY(SELECT unnest(${places}) UNION SELECT place_ancestors(${places}))`;
 }
 
 /**
@@ -207,7 +231,7 @@ export function answeringPlaceOfSql(place: string): string {
 
 /**
  * The points one place shows, as a FROM item binding `point` to every column
- * of `experience_locations`: the place's own points and its parts', one arm
+ * of `experience_locations`: the place's own points and its leaves', one arm
  * each by an equality on `place`, so each arm is an index probe for the outer
  * row it is asked about. The shape for a read that comes from an outer row (a
  * region list's count, a card's points); joined beside that row it needs
@@ -218,14 +242,14 @@ export function answeringPlaceOfSql(place: string): string {
  */
 export function pointsShownSql(place: string, point = 'el'): string {
   // The arms' own aliases are named after `point`, so a `place` that names an
-  // outer alias (the finder's `prt.whole_id`) is never captured inside them.
+  // outer alias (the finder's `wl.whole_id`) is never captured inside them.
   const own = `${point}_own`;
-  const link = `${point}_prt`;
-  const ofPart = `${point}_of_part`;
+  const link = `${point}_wl`;
+  const ofLeaf = `${point}_of_leaf`;
   return `(SELECT ${own}.* FROM experience_locations ${own} WHERE ${own}.experience_id = ${place}
         UNION ALL
-        SELECT ${ofPart}.* FROM experience_parts ${link}
-          JOIN experience_locations ${ofPart} ON ${ofPart}.experience_id = ${link}.part_id
+        SELECT ${ofLeaf}.* FROM whole_leaves ${link}
+          JOIN experience_locations ${ofLeaf} ON ${ofLeaf}.experience_id = ${link}.leaf_id
          WHERE ${link}.whole_id = ${place}) AS ${point}`;
 }
 
@@ -258,15 +282,15 @@ export function wholeFocusSql(place: string, shown: (point: string) => string): 
  * `joins` from it: an EXISTS per arm, joined by OR, so the own arm is the
  * question as it was asked before parts, which the planner can answer from
  * either side (from a region's placements, from the open candidates), and the
- * parts arm a probe of a table that holds only parts. `point` is bound to the
- * point in both, and `where` reads it.
+ * leaves' arm a probe of a table that holds only wholes' leaves. `point` is
+ * bound to the point in both, and `where` reads it.
  */
 export function somePointShownSql(place: string, point: string, where: string, joins = ''): string {
   return `(EXISTS (SELECT 1 FROM experience_locations ${point} ${joins}
                   WHERE ${point}.experience_id = ${place} AND ${where})
-       OR EXISTS (SELECT 1 FROM experience_parts ${point}_part
-                    JOIN experience_locations ${point} ON ${point}.experience_id = ${point}_part.part_id ${joins}
-                   WHERE ${point}_part.whole_id = ${place} AND ${where}))`;
+       OR EXISTS (SELECT 1 FROM whole_leaves ${point}_leaf
+                    JOIN experience_locations ${point} ON ${point}.experience_id = ${point}_leaf.leaf_id ${joins}
+                   WHERE ${point}_leaf.whole_id = ${place} AND ${where}))`;
 }
 
 /**
