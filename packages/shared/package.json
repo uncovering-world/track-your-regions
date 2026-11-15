@@ -17,6 +17,7 @@
     "./identifiers": "./src/identifiers.ts",
     "./labels": "./src/labels.ts",
     "./lifecycle": "./src/lifecycle.ts",
+    "./lifetime": "./src/lifetime.ts",
     "./links": "./src/links.ts",
     "./moves": "./src/moves.ts",
     "./openapi": "./src/openapi.generated.json",
