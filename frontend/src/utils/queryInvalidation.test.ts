@@ -128,6 +128,17 @@ describe('invalidateExperiences', () => {
     expect(client.getQueryState(['region-locations', 8, false])?.isInvalidated).toBe(false);
   });
 
+  it("refreshes the traveller's count of a whole, whose N a curator's write can change", () => {
+    const client = new QueryClient();
+    const visits = queryKeys.visited.experiences(7, undefined);
+    client.setQueryData(visits, { wholeProgress: [{ experienceId: 847, visited: 1, total: 34 }] });
+
+    invalidateExperiences(client, { experienceId: 847 });
+
+    expect(client.getQueryState(visits)?.isInvalidated).toBe(true);
+    client.clear();
+  });
+
   it('leaves it alone when nothing is named', () => {
     // Not `{ experienceId: 3 }`, which would be the bug written down as a rule:
     // an object whose points just changed invalidates pins in regions the caller
@@ -216,6 +227,17 @@ describe('invalidateAfterBatchPublication', () => {
 
     expect(client.getQueryState(overview)?.isInvalidated).toBe(true);
     expect(client.getQueryState(boxed)?.isInvalidated).toBe(true);
+  });
+
+  it("refreshes every traveller's count of a whole, since a batch can publish a whole's leaves", () => {
+    const client = new QueryClient();
+    const visits = queryKeys.visited.experiences(7, 1);
+    client.setQueryData(visits, { wholeProgress: [] });
+
+    invalidateAfterBatchPublication(client);
+
+    expect(client.getQueryState(visits)?.isInvalidated).toBe(true);
+    client.clear();
   });
 
   it('clears it for a write that names nothing at all, since a batch changes it too', () => {
