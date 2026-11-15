@@ -22,7 +22,7 @@ export interface AuthenticatedRequest extends Request {
  * browser's included. What sits behind this middleware is one reader's data:
  * their visited regions and experiences, their profile with its email, an
  * admin's or a curator's screen — what `docs/security/asvs-checklist.yaml`
- * V14.2.1 classifies as sensitive. A shared cache is already kept out of most
+ * V14.1.1 classifies as sensitive. A shared cache is already kept out of most
  * of it by RFC 9111 § 3.5, which excludes the answer to a request that carried
  * `Authorization` — though not from everything this middleware fronts: it
  * takes the token from the query string too (below), for the one caller that
@@ -281,7 +281,7 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
  *
  * It matches nothing else `curator_assignments.scope_type` may hold. That is a
  * property, not an omission: a legacy `source` row (#452) yields *no* scope
- * rather than wrong scope, which `docs/security/asvs-checklist.yaml` V8.3.2
+ * rather than wrong scope, which `docs/security/asvs-checklist.yaml` V8.2.2
  * asserts. Kept here in one piece so the two queries that ask this question
  * cannot drift apart when the scope set changes.
  *

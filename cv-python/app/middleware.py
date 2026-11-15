@@ -1,8 +1,8 @@
 """ASVS L2 hardening middleware for the cv-python service.
 
-- BodySizeLimitMiddleware enforces a max request body (V4.1.1 / V5.1.1).
+- BodySizeLimitMiddleware enforces a max request body (V5.2.1).
 - install_exception_handlers() sanitises exception responses so internal
-  details (paths, stack frames) don't leak to callers (V13.4).
+  details (paths, stack frames) don't leak to callers (V16.5).
 
 The service is internal-only (Docker bridge), but L2 expects defence-in-depth
 controls regardless of network topology.
@@ -71,7 +71,7 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
 def install_exception_handlers(app: FastAPI) -> None:
     """Install exception handlers that log internally but return generic messages.
 
-    Avoids V13.4 information leakage: callers see {"detail":"..."} with a short
+    Avoids V16.5 information leakage: callers see {"detail":"..."} with a short
     safe string; the full traceback goes to container stdout where operators
     can collect it.
     """
