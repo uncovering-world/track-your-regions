@@ -74,10 +74,12 @@
  *   does reach the contents: its INSERT into `experience_location_regions`
  *   key-shares the point rows themselves. Nothing but a place's own delete
  *   waits for those key shares, since a point's only key column is its id,
- *   which no writer changes. Its order is point rows, then keys, then place
- *   rows: its last step, `refresh_place_regions()`, may wait for a place's
- *   keys, and no key holder waits for what placement holds by then, since
- *   none writes `experience_location_regions`. Its own reach into
+ *   which no writer changes. Its order is point rows, then keys, then the
+ *   places' geometry rows and place rows: its last two steps,
+ *   `refresh_place_shape_regions()` and `refresh_place_regions()`, may wait for
+ *   a place's keys, and no key holder waits for what placement holds by then,
+ *   since none writes `experience_location_regions`, and only placement writes
+ *   `experience_shape_regions`, under the keys (ADR-0207). Its own reach into
  *   `experiences` is another key share, compatible with the mode below.
  *   Placement is also always post-commit on the curator routes.
  * - `assignExperiencesToRegions` — the admin's full rebuild of a world view —
@@ -85,8 +87,10 @@
  *   in one transaction (#1152), so the key shares its inserts take on the
  *   points, and the row locks of the point rows it deleted, are held until it
  *   commits, seconds on the largest world view. Its statements run in
- *   placement's order: the point rows cleared and placed, then every place's
- *   keys and rows in one refresh. So it and a run's placement of the same
+ *   placement's order: the point rows cleared and placed, then, under every
+ *   place's keys, its geometry rows (`refresh_place_shape_regions()`) and then
+ *   its `experience_regions` rows (`refresh_place_regions()`), over the same
+ *   reach. So it and a run's placement of the same
  *   objects wait for each other in one direction only.
  * - `refresh_place_regions()` writes a place's rows of `experience_regions`,
  *   and those of the wholes it is a part of, from inside the writers above: placement

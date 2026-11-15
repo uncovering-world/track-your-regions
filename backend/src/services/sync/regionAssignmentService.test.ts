@@ -172,13 +172,15 @@ describe('assignExperiencesToRegions', () => {
 
     const progress = await assignExperiencesToRegions(4250);
 
-    // The places' rows are the database's to write from the point rows
-    // (`refresh_place_regions()`, ADR-0197), every place for a whole world view.
+    // The places' rows are the database's to write from the point rows and
+    // the regions their own geometry gives (`refresh_place_shape_regions()`,
+    // `refresh_place_regions()`, ADR-0197, ADR-0207), every place for a whole world view.
     expect(statements.map(head)).toEqual([
       'BEGIN',
       'DELETE FROM experience_location_regions',
       'WITH offered AS',
       'WITH RECURSIVE ancestors',
+      'SELECT refresh_place_shape_regions(NULL, $1)',
       'SELECT refresh_place_regions(NULL, $1)',
       'UPDATE world_views SET',
       'COMMIT',
@@ -360,5 +362,23 @@ describe('regionsHoldingPoints — where a proposed point would be placed (#2203
   it('asks nothing for no points', async () => {
     expect(await regionsHoldingPoints([])).toEqual([]);
     expect(poolQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("a moved place's own geometry (ADR-0207)", () => {
+  it('is placed after its points and before its rows, over the places the refresh rewrites', async () => {
+    const { client, calls } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await assignRegionsForExperiences([42], 1);
+
+    const shapes = calls.findIndex(c => /^SELECT refresh_place_shape_regions\(/.test(c.sql.trim()));
+    const rows = calls.findIndex(c => /^SELECT refresh_place_regions\(/.test(c.sql.trim()));
+    // The nearest leaf is asked only of a place none of whose points a region holds.
+    expect(shapes).toBeGreaterThan(calls.findIndex(c => isDirect(c.sql)));
+    expect(rows).toBe(shapes + 1);
+    const places = (sql: string) => sql.slice(sql.indexOf('(') + 1, sql.lastIndexOf(', $1'));
+    expect(places(calls[shapes].sql)).toBe(places(calls[rows].sql));
+    expect(calls[shapes].params).toEqual([1, [42]]);
   });
 });

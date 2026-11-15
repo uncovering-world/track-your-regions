@@ -582,6 +582,13 @@ export interface ExperienceSeparationsRow {
   merge_id: number | null;
 }
 
+/** The table `experience_shape_regions`. */
+export interface ExperienceShapeRegionsRow {
+  experience_id: number;
+  region_id: number;
+  basis: string;
+}
+
 /** The table `experience_sources`. */
 export interface ExperienceSourcesRow {
   id: number;
@@ -752,6 +759,10 @@ export interface ExperiencesRow {
   updated_at: Date | null;
   cast_points: boolean;
   boundary_source_id: number | null;
+  path: string | null;
+  path_source_id: number | null;
+  path_source_ref: string | null;
+  path_updated_at: Date | null;
   missing_since: Date | null;
   source_membership: string;
   existence: string;
@@ -1476,6 +1487,7 @@ export const RELATION_SCHEMAS = {
   experience_regions: "public",
   experience_rejections: "public",
   experience_separations: "public",
+  experience_shape_regions: "public",
   experience_sources: "public",
   experience_sync_changes: "public",
   experience_sync_logs: "public",
@@ -1709,6 +1721,9 @@ export const COLUMN_WIDTHS = {
     scheme: 12,
     value: 64,
   },
+  experience_shape_regions: {
+    basis: 8,
+  },
   experience_sources: {
     name: 255,
     api_endpoint: 1000,
@@ -1903,6 +1918,9 @@ export const CHECK_VALUES = {
   },
   experience_regions: {
     listing: ["offered", "fallback", "scope"],
+  },
+  experience_shape_regions: {
+    basis: ["area", "line", "nearest", "record"],
   },
   experience_sources: {
     id_scheme: ["whc-site", "whc-component", "wikidata", "wikidata-statement", "curator"],

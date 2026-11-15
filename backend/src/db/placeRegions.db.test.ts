@@ -22,8 +22,9 @@ import { experiencesByRegionQuerySchema, regionLocationsQuerySchema } from '../t
  * serial site (9646) is made of two parts with no kind of their own, one in A
  * (9647) and one in B (9648) whose point is still unread, as a gated run left
  * a seventh temple of Malta's Megalithic Temples in Ċentrali. A frontier
- * (9649) is there to hold the site as a part of its own. Everything is deleted
- * before and after; the dependants cascade.
+ * (9649) is there to hold the site as a part of its own. The places a
+ * scenario of their geometry adds (9650–9653) are named there (ADR-0207).
+ * Everything is deleted before and after; the dependants cascade.
  */
 
 const WORLD_VIEW = 9640;
@@ -35,7 +36,11 @@ const SITE = 9646;
 const PART_A = 9647;
 const PART_B = 9648;
 const FRONTIER = 9649;
-const PLACES = [MUSEUM, SITE, PART_A, PART_B, FRONTIER];
+const ISLAND = 9650;
+const BRIDGE = 9651;
+const OUTLINED = 9652;
+const ALTAR = 9653;
+const PLACES = [MUSEUM, SITE, PART_A, PART_B, FRONTIER, ISLAND, BRIDGE, OUTLINED, ALTAR];
 const CURATOR = '00000000-0000-4000-8000-000000009640';
 
 const points: Record<number, number> = {};
@@ -175,7 +180,7 @@ describe("a place's regions (ADR-0197)", () => {
     expect(await listed(LEAF_B)).toEqual([SITE]);
   });
 
-  it('holds a site none of whose parts a reader may see as fallback, listed for nobody', async () => {
+  it('holds a site none of whose parts a reader may see, and with no point on record, as fallback, listed for nobody', async () => {
     // The read temple's point goes; the unread one is all the site shows.
     await pool.query('DELETE FROM experience_locations WHERE id = $1', [points[PART_A]]);
 
@@ -558,3 +563,68 @@ describe("a place's regions (ADR-0197)", () => {
     })]);
   });
 });
+
+describe("a place's regions from its own geometry (ADR-0207)", () => {
+  /** A place a reader is shown, with one point. */
+  async function shownPlace(id: number, name: string, lon: number, lat: number): Promise<void> {
+    await place(id, name, lon, lat);
+    await offeredMembership(id);
+    await point(id, lon, lat, 'auto');
+  }
+
+  const outline = (id: number, west: number, south: number, east: number, north: number) => pool.query(
+    'UPDATE experiences SET boundary = ST_Multi(ST_MakeEnvelope($2, $3, $4, $5, 4326)) WHERE id = $1',
+    [id, west, south, east, north],
+  );
+
+  it('puts a point no region holds in its nearest leaf, as the Island of Gorée is in Dakar', async () => {
+    // 3.6 km off A's western edge; B is 75 km away.
+    await shownPlace(ISLAND, 'An island off A (place regions fixture)', 9.45, 50.0);
+    await assignRegionsForExperiences([ISLAND], WORLD_VIEW);
+
+    expect(await rows(ISLAND)).toEqual(offered(ROOT, LEAF_A));
+    expect(await listed(LEAF_A)).toContain(ISLAND);
+  });
+
+  it('leaves a point nearly as near two leaves in neither, as the Øresund Bridge waits for its line', async () => {
+    // 2.2 km north of the corner A and B share.
+    await shownPlace(BRIDGE, 'A bridge between A and B (place regions fixture)', 10.5, 50.52);
+    await assignRegionsForExperiences([BRIDGE], WORLD_VIEW);
+
+    expect(await rows(BRIDGE)).toEqual([]);
+  });
+
+  it('puts a place in every leaf holding a share of its outline, as the Theban Necropolis is in Luxor and Qina', async () => {
+    await shownPlace(OUTLINED, 'A necropolis across A and B (place regions fixture)', 10.4, 50.0);
+    await outline(OUTLINED, 10.3, 49.9, 10.7, 50.1);
+    await assignRegionsForExperiences([OUTLINED], WORLD_VIEW);
+
+    expect(await rows(OUTLINED)).toEqual(offered(ROOT, LEAF_A, LEAF_B));
+  });
+
+  it("places nothing by an outline away from the place's point, as the Pergamon Altar's in Izmir", async () => {
+    await shownPlace(ALTAR, 'An altar in A (place regions fixture)', 9.8, 50.0);
+    await outline(ALTAR, 10.8, 49.9, 10.9, 50.1);
+    await assignRegionsForExperiences([ALTAR], WORLD_VIEW);
+
+    expect(await rows(ALTAR)).toEqual(offered(ROOT, LEAF_A));
+  });
+
+  it("offers a site none of whose parts a reader may see in the leaf of its record's point, as Wudang", async () => {
+    await pool.query(
+      `UPDATE ${MEMBERSHIPS} SET reported_location = ST_SetSRID(ST_MakePoint(10.0, 50.0), 4326) WHERE experience_id = $1`,
+      [SITE],
+    );
+    await pool.query('DELETE FROM experience_locations WHERE id = $1', [points[PART_A]]);
+    await assignRegionsForExperiences([SITE], WORLD_VIEW);
+
+    // The unread temple's region stays the curators'.
+    expect(await rows(SITE)).toEqual([...offered(ROOT, LEAF_A), [LEAF_B, 'scope', 'auto']]);
+    expect(await listed(LEAF_A)).toContain(SITE);
+
+    // Once a part is read, its point places the site, and the record's no longer does.
+    await setPoint(PART_B, "curation_state = 'verified'");
+    expect(await rows(SITE)).toEqual(offered(ROOT, LEAF_B));
+  });
+});
+
