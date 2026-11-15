@@ -1,7 +1,7 @@
 # ADR-0197: A place's regions are one row per region, written by one function from the points it shows
 
 **Date:** 2026-11-11
-**Status:** Accepted
+**Status:** Accepted — decisions 2 and 3 narrowed by [ADR-0207](0207-a-places-regions-come-from-its-own-geometry-and-a-point-no-region-holds-takes-its-nearest.md)
 
 ---
 
