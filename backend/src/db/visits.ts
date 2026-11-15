@@ -203,11 +203,16 @@ export function ownVisitsAtWriteSql(user: string, places: string, columns: strin
  * what the offer of a date after a tick reads. `at` is where the tick was, a
  * point geometry: the point ticked, or the place's own for a tick on the
  * place (`placeStandsAtSql`), since a point of a place such as the Struve
- * Geodetic Arc can stand hundreds of kilometres from the place's own.
+ * Geodetic Arc can stand hundreds of kilometres from the place's own. NULL
+ * where the place stands nowhere, a dispersed whole none of whose places is
+ * shown yet and whose record gives no point (ADR-0210): the visit is kept,
+ * and no date is offered for a tick with no place to read a trip from.
  */
 export function tickedPlaceJsonSql(e: string, at = placeStandsAtSql(e)): string {
-  return `json_build_object('experienceId', ${e}.id, 'name', ${e}.name,
-            'longitude', ST_X(${at}), 'latitude', ST_Y(${at}))`;
+  return `(SELECT CASE WHEN ticked_at.at IS NOT NULL
+                       THEN json_build_object('experienceId', ${e}.id, 'name', ${e}.name,
+                                              'longitude', ST_X(ticked_at.at), 'latitude', ST_Y(ticked_at.at)) END
+             FROM (SELECT ${at} AS at) ticked_at)`;
 }
 
 /**

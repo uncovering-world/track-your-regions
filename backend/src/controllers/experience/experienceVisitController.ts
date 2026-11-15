@@ -52,7 +52,7 @@ export async function markVisited(
   //
   // A part of a serial site is a place a traveller visits (ADR-0100 decision
   // 5): offered where its whole is. The whole reads it from the part (#2120).
-  const expResult = await pool.query<Pick<ExperiencesRow, 'name'> & { ticked: TickedPlace }>(
+  const expResult = await pool.query<Pick<ExperiencesRow, 'name'> & { ticked: TickedPlace | null }>(
     `SELECT e.id, e.name, ${tickedPlaceJsonSql('e')} AS ticked FROM experiences e WHERE e.id = $1 AND ${claimablePlaceSql()}`,
     [experienceId],
   );
@@ -83,7 +83,8 @@ export async function markVisited(
     marked_at: visit.marked_at?.toISOString() ?? null,
     notes: visit.notes,
     rating: visit.rating,
-    ticked: visit.inserted ? [expResult.rows[0].ticked] : [],
+    // A place that stands nowhere offers no date (`tickedPlaceJsonSql`).
+    ticked: visit.inserted && expResult.rows[0].ticked ? [expResult.rows[0].ticked] : [],
   };
 }
 

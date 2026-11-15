@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
 import { setPointVerdict } from '../controllers/experience/experienceLocationWriter.js';
-import { isWholeSql, pointsShownSql } from './placePoints.js';
+import { pointsShownSql } from './placePoints.js';
 import { someoneVisitedPointSql } from './visits.js';
 import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
 import { editLocation } from '../controllers/experience/locationEditController.js';
@@ -309,6 +309,19 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       .toEqual([expect.objectContaining({ experienceId: SITE, longitude: 32.6396, latitude: 25.7188 })]);
   });
 
+  it('keeps a tick on a serial site that stands nowhere yet, and offers no date for it (ADR-0210)', async () => {
+    // Wudang before a curator reads one of its parts: no record point, no point it shows.
+    await pool.query(
+      `UPDATE experience_locations SET missing_since = NOW()
+        WHERE experience_id = $1 OR experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)`,
+      [SITE],
+    );
+    await pool.query('UPDATE source_records SET reported_location = NULL WHERE experience_id = $1', [SITE]);
+
+    expect((await markVisited({ params: { experienceId: SITE }, body: {}, caller: traveller() })).ticked).toEqual([]);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }]);
+  });
+
   it("raises the site's card for its part's unread point (#1428)", async () => {
     // A second point of the part, unread: the Hypostyle Hall as the source now lists it.
     await pool.query(
@@ -361,9 +374,9 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       await client.query('BEGIN');
       const locked = await lockExperience(client, SITE);
       expect(await anchorToItsPoint(client, locked!.lock, 32.64, 25.70, luxorPoint)).toBe(false);
-      await client.query('ROLLBACK');
     } finally {
-      client.release();
+      // Rolled back on every exit, a failed expectation's included; a client whose rollback fails is discarded.
+      await client.query('ROLLBACK').then(() => client.release(), (err: Error) => client.release(err));
     }
   });
 
@@ -376,9 +389,9 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       const locked = await lockExperience(client, SITE);
       expect(await anchorToItsPoint(client, locked!.lock, 32.66, 25.72, karnakPoint)).toBe(false);
       expect((await client.query('SELECT location FROM experiences WHERE id = $1', [SITE])).rows[0].location).toBeNull();
-      await client.query('ROLLBACK');
     } finally {
-      client.release();
+      // Rolled back on every exit, a failed expectation's included; a client whose rollback fails is discarded.
+      await client.query('ROLLBACK').then(() => client.release(), (err: Error) => client.release(err));
     }
   });
 
@@ -857,16 +870,6 @@ describe('a whole is framed by its places, and stands at none of them (#2122)', 
     });
     return [...reads, list.experiences.find(e => e.id === SITE)];
   }
-
-  it('asks whether a place is a whole as place_is_whole() answers it', async () => {
-    // The site is made of the two temples; the Temple of Karnak is made of nothing.
-    const { rows } = await pool.query<{ id: number; inline: boolean; called: boolean }>(
-      `SELECT e.id, ${isWholeSql('e.id')} AS inline, place_is_whole(e.id) AS called
-         FROM experiences e WHERE e.id = ANY($1::int[]) ORDER BY e.id`,
-      [[SITE, KARNAK]],
-    );
-    expect(rows).toEqual([{ id: SITE, inline: true, called: true }, { id: KARNAK, inline: false, called: false }]);
-  });
 
   it('answers the site with no coordinate and the frame of the Luxor Temple and the Temple of Karnak', async () => {
     const reads = await readsOfSite(true);

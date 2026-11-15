@@ -497,4 +497,93 @@ describe('what the sections read', () => {
     const wholes = await findPartCandidates({ params: { id: GIRALDA }, query: { role: 'whole' }, caller: admin() });
     expect(wholes.candidates.map(row => row.place.id)).toEqual([SITE]);
   });
+
+  it('offers a dispersed whole the wholes near its parts, by name too, measured from the parts', async () => {
+    // The Seville site holds no point (ADR-0210): it stands where its cathedral does.
+    const at = await pool.query<{ location: unknown }>('SELECT location FROM experiences WHERE id = $1', [SITE]);
+    expect(at.rows[0].location).toBeNull();
+    const [quarter, itsPart] = CHAIN;
+    await place(quarter, 'Barrio de Santa Cruz (fixture)', 5, 5, -5.9905, 37.3850);
+    await place(itsPart, 'Plaza de Doña Elvira (fixture)', 5, 5, -5.9908, 37.3853);
+    await add(quarter, itsPart, { makesWhole: true });
+
+    const near = await findPartCandidates({ params: { id: SITE }, query: { role: 'whole' }, caller: admin() });
+    const found = near.candidates.find(row => row.place.id === quarter);
+    expect(found).toMatchObject({ near_name: null, taken: null });
+    // From the cathedral, 0.0026° east at 37.38°N.
+    expect(found!.distance_m).toBeGreaterThan(200);
+    expect(found!.distance_m).toBeLessThan(260);
+    const named = await findPartCandidates({ params: { id: SITE }, query: { role: 'whole', q: 'Santa Cruz' }, caller: admin() });
+    expect(named.candidates.map(row => row.place.id)).toEqual([quarter]);
+  });
+
+  it('offers a whole a dispersed whole as a part by its places near it, as a serial site nests under another', async () => {
+    // A group of ponds by the cathedral, dispersed by its World Heritage record, holds no point of its own.
+    const [group, pond] = CHAIN;
+    await place(group, 'A group of ponds (fixture)', 1, 1);
+    await place(pond, 'A pond (fixture)', 5, 5, -5.9925, 37.3846);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
+       VALUES ($1, $2, 11, $3, 'admitted', 'verified', NOW())`, [pond, group, `curator-1-${group}${pond}`],
+    );
+    const at = await pool.query<{ location: unknown }>('SELECT location FROM experiences WHERE id = $1', [group]);
+    expect(at.rows[0].location).toBeNull();
+
+    const near = await findPartCandidates({ params: { id: SITE }, query: { role: 'part' }, caller: admin() });
+    const found = near.candidates.find(row => row.place.id === group);
+    expect(found).toMatchObject({ near_name: 'Seville Cathedral (fixture)', taken: null });
+    // The pond, 0.0006° east of the cathedral at 37.38°N.
+    expect(found!.distance_m).toBeGreaterThan(45);
+    expect(found!.distance_m).toBeLessThan(60);
+  });
+
+  it('measures a container from its own point when its one shown part is a dispersed whole, which has none', async () => {
+    const [container, serial, itsPart] = CHAIN;
+    await place(serial, 'A serial site (fixture)', 1, 1);
+    await place(itsPart, 'A place of the serial site (fixture)', 5, 5, -5.95, 37.40);
+    await place(container, 'A precinct by the cathedral (fixture)', 5, 5, -5.9927, 37.3846);
+    for (const [w, p] of [[serial, itsPart], [container, serial]]) {
+      await pool.query(
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
+         VALUES ($1, $2, 11, $3, 'admitted', 'verified', NOW())`, [p, w, `curator-1-${w}${p}`],
+      );
+    }
+    const shapes = await pool.query<{ id: number; whole_shape: string }>(
+      'SELECT id, whole_shape FROM experiences WHERE id = ANY($1::int[]) ORDER BY id', [[container, serial]],
+    );
+    expect(shapes.rows).toEqual([{ id: container, whole_shape: 'container' }, { id: serial, whole_shape: 'dispersed' }]);
+
+    const near = await findPartCandidates({ params: { id: container }, query: { role: 'part' }, caller: admin() });
+    expect(near.candidates.find(row => row.place.id === GIRALDA)).toMatchObject({ near_name: null, taken: null });
+  });
+
+  it("offers no container by a part of it near the place, when the container's own point is far", async () => {
+    // A container's distance is from its own point: one 21 km east, its part beside the cathedral.
+    const [container, itsPart] = CHAIN;
+    await place(container, 'A valley east of Seville (fixture)', 5, 5, -5.75, 37.3846);
+    await place(itsPart, 'A chapel by the cathedral (fixture)', 5, 5, -5.9925, 37.3846);
+    await add(container, itsPart, { makesWhole: true });
+
+    const wholes = await findPartCandidates({ params: { id: GIRALDA }, query: { role: 'whole' }, caller: admin() });
+    expect(wholes.candidates.map(row => row.place.id)).not.toContain(container);
+  });
+
+  it('names a place for a dispersed whole that stands at no point, with no distance', async () => {
+    // A serial site whose one part is itself a serial site with no point: nothing to measure from.
+    const [outer, inner, innermost] = CHAIN;
+    await place(outer, 'An outer site (fixture)', 1, 1);
+    await place(inner, 'An inner site (fixture)', 1, 1);
+    await place(innermost, 'An innermost place (fixture)', 5, 5);
+    for (const [w, p] of [[inner, innermost], [outer, inner]]) {
+      await pool.query(
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
+         VALUES ($1, $2, 11, $3, 'admitted', 'verified', NOW())`, [p, w, `curator-1-${w}${p}`],
+      );
+    }
+    const at = await pool.query<{ location: unknown }>('SELECT location FROM experiences WHERE id = $1', [outer]);
+    expect(at.rows[0].location).toBeNull();
+
+    const named = await findPartCandidates({ params: { id: outer }, query: { role: 'part', q: 'Giralda' }, caller: admin() });
+    expect(named.candidates.find(row => row.place.id === GIRALDA)).toMatchObject({ distance_m: null, near_name: null });
+  });
 });

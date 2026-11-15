@@ -16,8 +16,12 @@
  *
  * **No page.** Measured on the development catalogue (2026-11-13): 15,709 open
  * questions on about 15,300 places, read in 1.0 s. The point is the place's
- * `experiences.location`, which the schema requires, so `unplaced` counts a key
- * whose place row is gone by the time the statement reads it, and is 0 there.
+ * `experiences.location`. A dispersed whole holds none (ADR-0210), so its
+ * questions stand at the centre of the frame of its standing points, unread
+ * ones included, the `anchorPoint` a reader's map frames it by (ADR-0205):
+ * Wudang's 45 parts waiting for a curator are one marker among them.
+ * `unplaced` counts a key whose place row is gone by the time the statement
+ * reads it, or a whole with no point standing, and is 0 there.
  *
  * **No names** (#2501). A name on every place would roughly double what the map
  * costs on the wire (measured on the development catalogue on 2026-11-15:
@@ -32,6 +36,8 @@ import type {
   QueueMapName, QueueMapPlace, ReviewQueueMap, ReviewQueueMapNames,
 } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
+import { pointsShownSql } from '../../db/placePoints.js';
+import { offeredLocationSql } from '../../db/readerPredicates.js';
 import type { reviewQueueMapNamesQuerySchema, reviewQueueMapQuerySchema } from '../../types/index.js';
 import { queueSelection } from './reviewQueueController.js';
 import { scopedQuestionsSql, selectedSql, type QueueSelection } from './reviewQueueKeys.js';
@@ -58,13 +64,22 @@ export async function queryQueueMap(
     SELECT k.kind, k.rank, k.id, k.subs FROM scoped k
     WHERE ${selectedSql(scoped.selected)}
   )
-, placed AS (
-    SELECT e.id, round(ST_X(e.location)::numeric, 5) AS lon, round(ST_Y(e.location)::numeric, 5) AS lat,
-           json_agg(json_build_object('kind', s.kind, 'subs', s.subs) ORDER BY s.rank) AS questions
+, grouped AS (
+    SELECT s.id, json_agg(json_build_object('kind', s.kind, 'subs', s.subs) ORDER BY s.rank) AS questions
     FROM selected s
-    JOIN experiences e ON e.id = s.id
-    WHERE e.location IS NOT NULL
-    GROUP BY e.id
+    GROUP BY s.id
+  )
+, placed AS (
+    SELECT g.id, round(ST_X(pt.at)::numeric, 5) AS lon, round(ST_Y(pt.at)::numeric, 5) AS lat, g.questions
+    FROM grouped g
+    JOIN experiences e ON e.id = g.id
+    CROSS JOIN LATERAL (
+      SELECT COALESCE(e.location, (
+        SELECT ST_SetSRID(ST_MakePoint(wf.center_lng, wf.center_lat), 4326)
+          FROM geometry_focus((SELECT ST_Collect(wp.location) FROM ${pointsShownSql('e.id', 'wp')}
+                                WHERE ${offeredLocationSql('wp')})) wf)) AS at
+    ) pt
+    WHERE pt.at IS NOT NULL
   )
 SELECT COALESCE((SELECT json_agg(json_build_object('placeId', p.id, 'lon', p.lon, 'lat', p.lat,
                                                    'questions', p.questions) ORDER BY p.id)

@@ -248,16 +248,17 @@ describe('readerPositionSql', () => {
     expect(readerPositionSql('x')).toContain('WHERE el_own.experience_id = x.id');
     expect(readerPositionSql('x')).toContain('WHERE el_prt.whole_id = x.id');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
-    expect(readerPositionSql('x')).toContain('WHERE made_of.whole_id = x.id)');
+    expect(readerPositionSql('x')).toContain('CASE WHEN x.location IS NULL THEN');
   });
 
-  it('answers a whole with no coordinate, and with the frame of its places (#2122)', () => {
+  it('answers a dispersed whole with no coordinate, and with the frame of its places (#2122)', () => {
     // Seville's site is its three places, and no point of it stands for the
-    // other two: both axes are null on a whole, and only a whole has a frame.
+    // other two: a dispersed whole is the one place with no location (ADR-0210),
+    // both axes are null on it, and only it has a frame.
     const sql = readerPositionSql('e');
-    expect(sql).toMatch(/CASE WHEN NOT EXISTS \(SELECT 1 FROM experience_parts made_of WHERE made_of\.whole_id = e\.id\) THEN ST_X\([\s\S]*?END as longitude/);
-    expect(sql).toMatch(/CASE WHEN NOT EXISTS \(SELECT 1 FROM experience_parts made_of WHERE made_of\.whole_id = e\.id\) THEN ST_Y\([\s\S]*?END as latitude/);
-    expect(sql).toMatch(/CASE WHEN EXISTS \(SELECT 1 FROM experience_parts made_of WHERE made_of\.whole_id = e\.id\) THEN \(SELECT json_build_object[\s\S]*?END as focus$/);
+    expect(sql).toMatch(/CASE WHEN e\.location IS NOT NULL THEN ST_X\([\s\S]*?END as longitude/);
+    expect(sql).toMatch(/CASE WHEN e\.location IS NOT NULL THEN ST_Y\([\s\S]*?END as latitude/);
+    expect(sql).toMatch(/CASE WHEN e\.location IS NULL THEN \(SELECT json_build_object[\s\S]*?END as focus$/);
   });
 
   it("frames a whole by the rule a region is framed by, over the places this caller is shown", () => {

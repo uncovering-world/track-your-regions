@@ -81,6 +81,8 @@ const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
                 CASE WHEN f = 'location' THEN ${POINTS_APART} END AS metres
            FROM unnest(${FIELD_ORDER}) AS f
           WHERE NOT f = ANY(${openViewFieldsSql('e.id')}::text[])
+            -- A dispersed whole holds no point, asked or not (ADR-0210).
+            AND (f <> 'location' OR e.location IS NOT NULL)
        ) q
       WHERE q.reporting > 0)`;
 
