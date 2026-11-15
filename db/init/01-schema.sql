@@ -6559,7 +6559,7 @@ CREATE TABLE IF NOT EXISTS workbench.lead_dedication_readings (
     read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (wiki, title, model)
 );
-COMMENT ON TABLE workbench.lead_dedication_readings IS 'What one language model read from the lead of one article as the dedication of the place it describes (#2472, ADR-0201): the wiki (enwiki), the article''s title as the run asked it, the model, the revision of the lead it read, and the linked article it named (null for none). The commemorates reading (places/leadDedication.ts) asks a model again only where the lead''s current revision is not the one kept, and replaces the row; a failed call keeps none. Read by the run alone, never by a reader route.';
+COMMENT ON TABLE workbench.lead_dedication_readings IS 'What one language model read from the lead of one article as the dedication of the place it describes (#2472, ADR-0201): the wiki (enwiki, or the edition of the place''s country''s language where its English lead names none, #2491, ADR-0208), the article''s title as the run asked it on that wiki, the model, the revision of the lead it read, and the linked article it named (null for none). The commemorates reading (places/leadDedication.ts) asks a model again only where the lead''s current revision is not the one kept, and replaces the row; a failed call keeps none. Read by the run alone, never by a reader route.';
 
 -- Where the place pass's famous works lie (#1821). See db/migrations/216.
 CREATE TABLE IF NOT EXISTS workbench.gathered_work_venues (

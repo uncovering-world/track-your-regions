@@ -1,6 +1,7 @@
 /**
  * The two language models that read a monument's dedication from the lead of
- * its English Wikipedia article (#2472, ADR-0201): Claude Haiku through
+ * its Wikipedia article (#2472, ADR-0201), English or, where that names none,
+ * its country's language (#2491, ADR-0208): Claude Haiku through
  * Anthropic's API and an OpenAI model (`lead_dedication` in AI Settings,
  * gpt-5-mini unless an admin picks another), each asked alone and answering in
  * a fixed JSON shape (structured outputs). Two providers, so that an answer

@@ -20,6 +20,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../wikipediaCategories.js', async (actual) => ({ ...(await actual<object>()), askWikipediaOnce: vi.fn() }));
 
 import { askWikipediaOnce } from '../wikipediaCategories.js';
+import { RobotsRefusal } from '../../robots/robotsSignals.js';
 import type { SubjectKind } from './commemorates.js';
 import {
   BIOGRAPHY_CATEGORY, dedicationLinks, fetchLeads, leadLinks, markedLead, narrowWars, overlaps, within, type WarEvidence,
@@ -216,6 +217,17 @@ describe('reading the leads', () => {
       .mockResolvedValueOnce(page('It commemorates those who fell in the [[Battle of Berlin]].'));
     const leads = await fetchLeads(['Basra Memorial', 'Soviet War Memorial (Treptower Park)'], { userAgent: 'test' });
     expect([...leads.keys()]).toEqual(['Soviet War Memorial (Treptower Park)']);
+    // Named as failed, so the lead step does not take it for a place with no lead (#2491).
+    expect([...leads.failed]).toEqual(['Basra Memorial']);
+  });
+
+  it('names no lead a host refused as failed: that lead is none, and asking again changes nothing (#2491)', async () => {
+    vi.mocked(askWikipediaOnce).mockReset()
+      .mockRejectedValueOnce(new RobotsRefusal('xx.wikipedia.org', 'ai-input=no'))
+      .mockResolvedValueOnce({ query: { pages: [{ title: 'Dunkirk Memorial', missing: true }] } });
+    const leads = await fetchLeads(['Basra Memorial', 'Dunkirk Memorial'], { userAgent: 'test' });
+    expect(leads.size).toBe(0);
+    expect(leads.failed.size).toBe(0);
   });
 
   it('stops a cancelled run rather than reading on', async () => {
@@ -262,5 +274,14 @@ describe('a lead marked for a model to read (#2472)', () => {
     expect(markedLead('[[Pipe (trick)|]] and [[#History|its history]]').text).toBe('⟦Pipe (trick)→Pipe (trick)⟧ and its history');
     // A tag nested in a broken one leaves no bracket behind.
     expect(markedLead('A <<small>small>tower</small> in [[Paris]].').text).toBe('A smalltower in ⟦Paris→Paris⟧.');
+  });
+
+  it('drops a file link in another edition\'s words with its caption and the links in it (#2491)', () => {
+    // German, Russian and Thai file namespaces, written for the test in the shape of a lead.
+    const lead = '[[Datei:Ehrenmal Schönholzer Heide.jpg|mini|Das [[Ehrenmal]] im Park]]Das Ehrenmal ist eine [[Gedenkstätte]].\n\n'
+      + '[[Файл:Памятник.JPG|thumb|[[Пётр I]]]] Памятник [[Пётр I|Петру I]].\n\n[[ไฟล์:Monument.png]]อนุสาวรีย์';
+    const { text, titles } = markedLead(lead);
+    expect(text).toBe('Das Ehrenmal ist eine ⟦Gedenkstätte→Gedenkstätte⟧.\nПамятник ⟦Петру I→Пётр I⟧.\nอนุสาวรีย์');
+    expect(titles).toEqual(['Gedenkstätte', 'Пётр I']);
   });
 });
