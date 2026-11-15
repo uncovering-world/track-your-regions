@@ -206,10 +206,10 @@ describe("a place's regions (ADR-0197)", () => {
     expect(await rows(PART_A)).toEqual([]);
   });
 
-  it("places a whole by its own and its direct parts' points, as its region list and map show it", async () => {
+  it("places a whole by its own and its leaves' points, as its region list and map show it (ADR-0211)", async () => {
     // A frontier whose one part is the site: the site has no point of its
-    // own, and its temples are the site's parts, not the frontier's. No reader
-    // shows the frontier a point, so no region lists it.
+    // own, and its temples are the frontier's leaves. The frontier is placed
+    // where they are, as the site is, the unread temple's region for curators.
     await place(FRONTIER, 'A frontier (place regions fixture)', 10.2, 50.1);
     await offeredMembership(FRONTIER);
     await pool.query(`INSERT INTO experience_parts (whole_id, part_id, reason) VALUES ($1, $2, 'curator')`, [FRONTIER, SITE]);
@@ -226,14 +226,14 @@ describe("a place's regions (ADR-0197)", () => {
         points: (locationsByExperience[FRONTIER] ?? []).map(l => l.id),
       };
     };
-    expect(await rows(FRONTIER)).toEqual([]);
-    expect(await shownIn(LEAF_A)).toEqual({ count: null, points: [] });
+    expect(await rows(FRONTIER)).toEqual([...offered(ROOT, LEAF_A), [LEAF_B, 'scope', 'auto']]);
+    expect(await shownIn(LEAF_A)).toEqual({ count: 1, points: [points[PART_A]] });
 
-    // A point of the site's own is the frontier's to show, so it lists it there.
+    // A point of the site's own is the site's to show, not the frontier's,
+    // whose count counts the temples alone.
     await point(SITE, 10.3, 50.2, 'auto');
     await assignRegionsForExperiences([SITE], WORLD_VIEW);
-    expect(await rows(FRONTIER)).toEqual(offered(ROOT, LEAF_A));
-    expect(await shownIn(LEAF_A)).toEqual({ count: 1, points: [points[SITE]] });
+    expect(await shownIn(LEAF_A)).toEqual({ count: 1, points: [points[PART_A]] });
 
     await pool.query('DELETE FROM experience_parts WHERE whole_id = $1', [FRONTIER]);
     expect(await rows(FRONTIER)).toEqual([]);

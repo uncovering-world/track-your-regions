@@ -162,8 +162,8 @@ describe('one entry per place', () => {
     const [sql] = call(0);
     expect(sql).toMatch(/COALESCE\(e\.location, \(\s+SELECT ST_SetSRID\(ST_MakePoint\(wf\.center_lng, wf\.center_lat\), 4326\)/);
     expect(sql).toContain('FROM geometry_focus((SELECT ST_Collect(wp.location)');
-    // Its parts' points, unread ones included: a curator is asked about those.
-    expect(sql).toContain('WHERE wp_prt.whole_id = e.id');
+    // Its leaves' points, unread ones included: a curator is asked about those.
+    expect(sql).toContain('WHERE wp_wl.whole_id = e.id');
     expect(sql).not.toContain("wp.curation_state <> 'pending'");
   });
 
