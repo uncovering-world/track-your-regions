@@ -216,7 +216,9 @@ the Mediterranean Basin (758 leaves) that changes nothing takes about 26 ms, and
 Arc about 8 ms; writing the Rock Art's 758 relations one statement each, from none, takes 16 s,
 and in one statement it refreshes the site once. The catalogue check `whole-leaves-out-of-step`
 compares the rows with what the function makes, and `SELECT refresh_whole_leaves(ARRAY[id])`
-settles one whole. No reader reads the table yet.
+settles one whole. Two reads read it, each a probe of `idx_whole_leaves_offered`: a place's N
+(`leafCountSql`, `leaf_count` on the list, tail and detail rows), and a traveller's count of every
+whole they have been to (§ User visits).
 
 **A part reads as a place** (ADR-0100 decisions 2 and 5, #1425). A part carries no membership of its
 own for its site's kind, so the membership predicates never offer it; `partOfferedSql`
@@ -6765,16 +6767,34 @@ What a traveller has visited is read one way, in `db/visits.ts`, for Map mode an
   parts shows a checkbox, ticked or not. An edition's casts are
   its own points, so one tick marks them all (ADR-0145 decision 5);
 - `GET /visited-experiences/ids` answers `visitedIds` (visited wholly or in part) and
-  `partialIds` (in part), over the places visited and the wholes they are direct parts of
-  (`visitStatesSql`); the row (`ExperienceListItem`), the card (`ExperienceExpandedDetails`), and
-  Discover's list and panel take the state from it (`useVisitedExperiences().visitedStatusOf`), so
-  the state is the place's own in every region's list;
+  `partialIds` (in part), over the places visited and every whole above them at any depth
+  (`visitStatesSql`, `place_ancestors()`); the row (`ExperienceListItem`), the card
+  (`ExperienceExpandedDetails`), and Discover's list and panel take the state from it
+  (`useVisitedExperiences().visitedStatusOf`), so the state is the place's own in every region's
+  list;
+- a whole's count is "k of N" over its offered leaves (ADR-0206): N is its rows of `whole_leaves`
+  a reader is shown, k those whose place the traveller visited, and `wholeProgress`
+  (`@tyr/shared/visits`) turns the two into the count, with k shown as "?" (null) when the whole is
+  visited and none of its offered leaves is: a tick on the whole, a tick on a whole nested in it, or
+  a visit to a leaf since withdrawn. The same answer carries `wholeProgress`, one entry per whole
+  the traveller has been to with N of one or more: the Struve Geodetic Arc after one station reads
+  1 of 34, in every region's list it is in. A whole with no offered leaf (Wudang's 45 parts all
+  wait for a curator) has no entry, and neither has an edition, whose casts are its own points. The
+  region list's rows, a region's tail and the detail read carry the same N as `leaf_count`
+  (`leafCountSql`), null on a place with none, for a whole the traveller has not been to;
+- a whole shown visited never marks a region visited (ADR-0206 decision 7): a region's visit is
+  the traveller's own row in `user_visited_regions`, written only by
+  `controllers/user/visitedRegions.ts`, and nothing reads a place's visits into it. A station of
+  the Arc ticked in Finland leaves Finland and Moldova both unmarked (`visits.db.test.ts`);
 - a visit on a place a merge folded is kept for the undo (ADR-0046 decision 5) and never read.
 
 A click never clears a visit the traveller cannot see (ADR-0199 decision 5). A place of no parts
 is ticked and unticked from its row's checkbox in both modes (`markVisited`, `unmarkVisited`). A
 whole, a place the list row marks `has_parts` (a direct part with a point a reader is shown,
-`showsPartsSql` in `db/visits.ts`, so a part still unread tells a reader nothing), shows its state on its row as a mark that is not a
+`showsPartsSql` in `db/visits.ts`, so a part still unread tells a reader nothing; one level down,
+as its card lists its points, so a whole whose places all sit inside a whole nested in it keeps
+its checkbox until the slice of #2121 that shows and places a nested whole by its leaves moves
+both to `whole_leaves`), shows its state on its row as a mark that is not a
 control, and its parts are ticked one by one on its card or expanded row. On its card in Map
 mode, beside the count of its places in the region, *Mark all in region* and *Unmark all in region* (`markAllLocationsVisited` and
 `unmarkAllLocationsVisited` with the region) reach only the places with a point in that region,
