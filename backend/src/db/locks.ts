@@ -11,6 +11,23 @@
  * that took a point first and logged afterwards was holding one row and waiting
  * for the other.
  *
+ * **Two places or more: a whole before its parts, the rest by id.** A writer
+ * that locks more than one place locks them in one order
+ * (`placeLockOrderSql`): the fewer wholes a place stands under, at any depth,
+ * the earlier, and among places under as many wholes the lower id first. A
+ * whole stands under fewer wholes than its parts, a loop of records aside
+ * (`place_ancestors()`), so a site comes
+ * before its parts whatever their ids, which is the order the site's run
+ * needs (below); and since the order is one sort key, two writers locking
+ * overlapping sets never take two of them the other way round. A part's id is
+ * often lower than its site's: a place adopted as a component, or nested by a
+ * curator, existed first. `lockTwoExperiences` (a curator's word on a part, a
+ * merge, its undo and a merge proposal's answer), `lockPartsAndRegionKeys` and
+ * missing detection's marks (`markMemberships`) read it. The wholes above a place are read before the locks are taken, so a
+ * part relation committed in between can leave two writers ordered by a
+ * relation one of them no longer sees; Postgres ends such a cycle by aborting
+ * one.
+ *
  * Who it binds, exactly: **a transaction that locks a row of an existing object's
  * contents** — `experience_locations` or `experience_treasures`. Those are the
  * rows a lock-holder waits for, so they are the ones that can be the far side of
@@ -87,11 +104,44 @@
  *   (`placeMerge.ts`, after both object locks). A key held is taken again at
  *   no wait. A refresh never waits for an object lock, since every writer
  *   takes its object locks before the writes that fire the triggers and
- *   placement takes none. Once its keys are held it reads the places it
+ *   placement takes none; a writer that writes a part's row after such a
+ *   write takes the part's lock before it too (`lockPartsAndRegionKeys`,
+ *   below). Once its keys are held it reads the places it
  *   reaches again, and takes the keys a part relation committed meanwhile
  *   adds. Two transactions that take keys out of order that way, or that each
  *   refresh twice with keys in different orders, can still meet in a cycle;
  *   Postgres aborts one, as with the identity registry's keys (ADR-0143).
+ * - `refresh_whole_leaves()` writes the `whole_leaves` rows of a whole
+ *   (ADR-0206) under the same keys: those of the places changed and of every
+ *   whole above them at any depth, in key order, read again until the reach
+ *   holds still, before it computes and writes its rows. So the order is the
+ *   region refresh's, objects, then keys, then `whole_leaves` rows, and only
+ *   it writes those rows. Its triggers fire before the region triggers on
+ *   the same statement, and its keys are a superset of theirs, so the region
+ *   refresh after it takes none out of order. Unlike the region refresh it
+ *   follows a point's INSERT too (`trg_place_leaves_point_insert`), so every
+ *   point insert takes its place's keys, and its wholes', inside the
+ *   inserting writer's transaction. `createManualExperience` takes only its
+ *   new place's key, which another place's refresh may hold; it can wait for
+ *   it and never be half of a cycle, since nothing waits for a place that did
+ *   not exist. The site's run (`writeExperienceLocations`) is the longest such
+ *   transaction, and after its point writes it names each part for its point,
+ *   writing the parts' `experiences` rows (`followTheirPoints`); a curator
+ *   holding a part and writing its point asks for the site's key. So the run
+ *   takes its parts' locks, in the order above, and then in one ordered pass the
+ *   keys of the site, its parts and every whole above any of them, before its
+ *   first point write (`lockPartsAndRegionKeys`, `db/experienceWriter.ts`). A
+ *   merge or its undo takes the same pair for both places, after both object
+ *   locks, since its undo names their parts after moving their points. A
+ *   merge never takes a whole (ADR-0203), and it cannot cycle with a site's
+ *   run: asked to merge a site with its own part, it locks the site first, as
+ *   the run does, and refuses; merging a part with another place, it waits
+ *   only for region keys, and the run takes those, and the part's rows, only
+ *   once it has the part's lock, which the merge holds until it commits. A
+ *   place the same transaction makes a part, after those locks, is written
+ *   unlocked after keys; that cycle is the out-of-order one above, which
+ *   Postgres ends by aborting one, and a run so aborted writes the site again
+ *   at its next run.
  * - `parts_follow_records()` writes `experience_parts` from inside a write of
  *   a record in a whole (ADR-0198), so the refresh a part relation sets off
  *   runs in that record writer's transaction, after its object locks: the
@@ -99,7 +149,7 @@
  *   which writes no `experience_regions` row before it, and a merge or its
  *   undo, whose record moves remake relations of both places, of the parts of
  *   either and of the wholes either is a part of. The merge takes the keys of
- *   all of those in one ordered pass before its first row (`lockRegionKeys`),
+ *   all of those in one ordered pass before its first row (`lockPartsAndRegionKeys`),
  *   so every refresh its moves set off takes keys it already holds. The
  *   derivation itself takes no lock and writes a relation only under the
  *   object locks of the record's writer.
@@ -157,6 +207,15 @@
  * alike, so the order above is one the curator's writes cannot break.
  */
 export const OBJECT_LOCK = 'FOR NO KEY UPDATE';
+
+/**
+ * The order places are locked in, as `ORDER BY` terms over the place id `id`:
+ * the fewer wholes above it the earlier, then the lower id. The rule above,
+ * § Two places or more.
+ */
+export function placeLockOrderSql(id: string): string {
+  return `(SELECT count(*) FROM place_ancestors(ARRAY[${id}])), ${id}`;
+}
 
 /**
  * The transaction-level advisory key every curator's word on a part takes

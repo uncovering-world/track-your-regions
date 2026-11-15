@@ -142,10 +142,11 @@ export async function holdPartWords(client: PoolClient): Promise<void> {
 }
 
 /**
- * One transaction: both object locks in id order, then the key curators'
- * words take in turn (`holdPartWords`), then the region keys the relation's
- * refresh reaches, then the pair read in a statement of its own (`db/locks.ts`
- * § the snapshot), then the write and both histories.
+ * One transaction: both object locks in the place order
+ * (`lockTwoExperiences`), the whole first when the relation stands, then the
+ * key curators' words take in turn (`holdPartWords`), then the region keys
+ * the relation's refresh reaches, then the pair read in a statement of its
+ * own (`db/locks.ts` § the snapshot), then the write and both histories.
  */
 async function underLocks(
   wholeId: number,

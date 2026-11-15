@@ -15,6 +15,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
+import { placeLockOrderSql } from '../../db/locks.js';
 import {
   missingDetectionSkipReason,
   flagMissingExperiences,
@@ -163,9 +164,9 @@ describe('flagMissingExperiences', () => {
     const mark = statements.find(sql => /^UPDATE/.test(sql.trim())) as string;
     expect(mark).toContain('UPDATE source_records m SET missing_since = NOW()');
     expect(statements.some(sql => /UPDATE experiences/.test(sql))).toBe(false);
-    // The places are locked first, in id order, the order a curator's write
-    // takes them before their memberships.
-    const lock = statements.findIndex(sql => /ORDER BY id FOR NO KEY UPDATE/.test(sql));
+    // The places are locked first, in the place order, the order a curator's
+    // write takes them before their memberships.
+    const lock = statements.findIndex(sql => sql.includes(`ORDER BY ${placeLockOrderSql('id')} FOR NO KEY UPDATE`));
     expect(statements[0]).toBe('BEGIN');
     expect(lock).toBeGreaterThan(0);
     expect(lock).toBeLessThan(statements.indexOf(mark));

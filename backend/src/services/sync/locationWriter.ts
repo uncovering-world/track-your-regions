@@ -113,7 +113,7 @@ import {
   claimed, claimedPointSql, heldByNameSql, keptChanges, named, renumberedSql, sameReferenceSql, samePointSql, withinUnchangedSql, NO_CHANGE,
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, lockPartsAndRegionKeys } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { foldedPointsSql, pointItemClaimedSql, pointItemSql, shownBySql } from '../../db/placePoints.js';
@@ -590,6 +590,9 @@ export async function writeExperienceLocations(
     // curator on one object serialise, and it does not conflict with the key share
     // this transaction's own insert needs.
     const locked = await lockExperience(client, experienceId);
+    // Then its parts and the region keys: the point writes below take those keys
+    // through their triggers, and `writeParts` writes the parts' rows after them.
+    if (locked) await lockPartsAndRegionKeys(client, [locked.lock]);
 
     // `ordinal` is the order a reader sees the points in, written by every run
     // that places them; two sources' lists may both start at 1, so it is not

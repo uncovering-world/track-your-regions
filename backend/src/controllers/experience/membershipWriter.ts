@@ -487,7 +487,7 @@ export async function moveWholeRecords(
  * `curator-<curator>-<record id>`, from the one `nextval` the id takes, so no
  * source listing can name it and two writes never share one. Read and published at
  * once: a person's word waits for no one. Under both places' object locks,
- * taken in id order (`lockTwoExperiences`), and the region keys the relation's
+ * taken in the place order (`lockTwoExperiences`), and the region keys the relation's
  * refresh reaches (`lock_place_regions`), so the order stays objects, keys,
  * rows (`db/locks.ts`). Answers the record's id.
  */

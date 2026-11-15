@@ -23,10 +23,10 @@
  */
 
 import type { PoolClient } from 'pg';
-import { OBJECT_LOCK } from './locks.js';
+import { OBJECT_LOCK, placeLockOrderSql } from './locks.js';
 import { DESCRIPTION_SOURCE_ID, MEMBERSHIPS } from './membership.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
-import { shownBySql } from './placePoints.js';
+import { madeOfSql, shownBySql } from './placePoints.js';
 
 declare const locked: unique symbol;
 
@@ -71,11 +71,14 @@ export async function lockExperience<Row extends Record<string, unknown> = { id:
 }
 
 /**
- * Two places' object locks for a merge or its undo (ADR-0086 decision 6): the
- * lower id first, so two merges over the same pair cannot each hold one and
- * wait for the other, then the contents, as `db/locks.ts` orders one object.
- * Null where either place is gone. Each row carries `merged_into_id`, which a
- * merge and its undo both check under the lock.
+ * Two places' object locks for a merge or its undo (ADR-0086 decision 6), a
+ * merge proposal's answer and a curator's word on a part: in the place order
+ * (`placeLockOrderSql`), a whole before its parts and among places under as
+ * many wholes the lower id first, so two writers over the same pair, or a site's run and a word on
+ * one of its parts, cannot each hold one and wait for the other; then the
+ * contents, as `db/locks.ts` orders one object. Null where either place is
+ * gone. Each row carries `merged_into_id`, which a merge and its undo both
+ * check under the lock.
  */
 export async function lockTwoExperiences(
   client: PoolClient,
@@ -83,12 +86,44 @@ export async function lockTwoExperiences(
   second: number,
 ): Promise<Map<number, { lock: LockedExperience; mergedInto: number | null }> | null> {
   const locked = new Map<number, { lock: LockedExperience; mergedInto: number | null }>();
-  for (const id of [Math.min(first, second), Math.max(first, second)]) {
+  const order = await client.query<{ id: number }>(
+    `SELECT id FROM unnest(ARRAY[$1::int, $2::int]) AS id ORDER BY ${placeLockOrderSql('id')}`,
+    [first, second],
+  );
+  for (const { id } of order.rows) {
     const result = await lockExperience<{ merged_into_id: number | null }>(client, id, 'merged_into_id');
     if (!result) return null;
     locked.set(id, { lock: result.lock, mergedInto: result.row.merged_into_id });
   }
   return locked;
+}
+
+/**
+ * The parts' object locks, then the region keys, for a writer that holds the
+ * places `wholes` and will write their points and then their parts' rows in one
+ * transaction (`db/locks.ts`): the site's run, which names each part for its
+ * point (`followTheirPoints`), and a merge or its undo. A point write takes
+ * region keys through its triggers, and a curator holding a part and writing
+ * its point asks for the same keys, so a part's row written after them would
+ * close a cycle. Taken before the first such write instead: the parts in the
+ * place order (`placeLockOrderSql`), which puts them after their wholes, then
+ * in one ordered pass the keys of the wholes, their parts and every whole
+ * above any of them, which is what the triggers below take
+ * (`refresh_whole_leaves()`, `refresh_place_regions()`).
+ */
+export async function lockPartsAndRegionKeys(client: PoolClient, wholes: readonly LockedExperience[]): Promise<void> {
+  const ids = wholes.map(whole => whole.id);
+  await client.query(
+    `SELECT 1 FROM experiences
+      WHERE id = ANY(${madeOfSql('$1::int[]')}) AND NOT id = ANY($1::int[])
+      ORDER BY ${placeLockOrderSql('id')} ${OBJECT_LOCK}`,
+    [ids],
+  );
+  await client.query(
+    `WITH made AS (SELECT ${madeOfSql('$1::int[]')} AS places)
+     SELECT lock_place_regions(ARRAY(SELECT unnest(places) FROM made UNION SELECT place_ancestors(places) FROM made))`,
+    [ids],
+  );
 }
 
 /**

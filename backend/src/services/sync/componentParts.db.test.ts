@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, lockTwoExperiences } from '../../db/experienceWriter.js';
 import { writePartFields } from '../../db/partFieldsWriter.js';
 import { pointNameSql } from '../../db/placePoints.js';
 import { writeExperienceLocations, type LocationWriteRun } from './locationWriter.js';
@@ -305,5 +306,95 @@ describe('a component the list names nothing is named for what it is (#2065)', (
     for (const name of [null, '', '  ', 'The ', 'THE']) expect(await namesNothing(name)).toBe(true);
     // Die in the Drôme and Å in Lofoten are places.
     for (const name of ['The Hague', 'Port', 'Ular', 'Die', 'Å']) expect(await namesNothing(name)).toBe(false);
+  });
+});
+
+/** Until `count` transactions wait for one of the backends `pids`. */
+async function untilWaiting(pids: number[], count: number): Promise<void> {
+  for (let tries = 0; ; tries++) {
+    const waiting = await pool.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pg_stat_activity WHERE pg_blocking_pids(pid) && $1::int[]', [pids],
+    );
+    if (waiting.rows[0].n >= count) return;
+    expect(tries, `${count} transactions wait`).toBeLessThan(200);
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+}
+
+async function backendPid(client: PoolClient): Promise<number> {
+  return (await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+}
+
+describe("the site's run locks its parts before its points take the region keys (db/locks.ts)", () => {
+  it('writes a new component while a curator refuses a part\'s point, neither aborted', async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    const [karnak] = await parts(THEBES);
+    // The run names Karnak for its point again once it writes the site: a write of the part's row.
+    await pool.query("UPDATE experiences SET name = 'Karnak (renamed since)' WHERE id = $1", [karnak.part_id]);
+
+    // A curator holds Karnak, as every curator write on a place does.
+    const curator = await pool.connect();
+    try {
+      await curator.query('BEGIN');
+      expect(await lockExperience(curator, karnak.part_id)).not.toBeNull();
+      const curatorPid = await backendPid(curator);
+
+      // The run inserts the Theban Necropolis's point on the site, and so takes
+      // the site's region key, then names Karnak: it waits for the curator.
+      const written = writeExperienceLocations(THEBES, [KARNAK, LUXOR, NECROPOLIS], run)
+        .then(() => null, (error: unknown) => error);
+      await untilWaiting([curatorPid], 1);
+
+      // Refusing Karnak's point asks for Karnak's region keys and the site's.
+      await curator.query('UPDATE experience_locations SET refused_at = NOW() WHERE id = $1', [karnak.location_id]);
+      await curator.query('COMMIT');
+      expect(await written).toBeNull();
+    } finally {
+      await curator.query('ROLLBACK').catch(() => undefined);
+      curator.release();
+    }
+
+    const now = await parts(THEBES);
+    expect(now.map(p => p.external_ref)).toEqual(['87-001', '87-002', '87-003']);
+    expect(now[0].name).toBe('Temple of Karnak');
+  });
+
+  it("locks a site before its part of a lower id, as a curator's word on the pair does", async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    const [karnak] = await parts(THEBES);
+    // Karnak was made a place after Ancient Thebes and still holds a lower id,
+    // as a place adopted as a component or nested by a curator does.
+    expect(karnak.part_id).toBeLessThan(THEBES);
+
+    // Someone holds Karnak; a curator's word on the pair queues behind them,
+    // and then the site's run that adds the Theban Necropolis.
+    const holder = await pool.connect();
+    const curator = await pool.connect();
+    try {
+      // Both pids first: a query on the curator's client queues behind its blocked lock.
+      const pids = [await backendPid(holder), await backendPid(curator)];
+      await holder.query('BEGIN');
+      expect(await lockExperience(holder, karnak.part_id)).not.toBeNull();
+      await curator.query('BEGIN');
+      const word = lockTwoExperiences(curator, THEBES, karnak.part_id).then(locked => ({ locked }), (error: unknown) => ({ error }));
+      await untilWaiting(pids, 1);
+      const written = writeExperienceLocations(THEBES, [KARNAK, LUXOR, NECROPOLIS], run)
+        .then(() => null, (error: unknown) => error);
+      await untilWaiting(pids, 2);
+      await holder.query('COMMIT');
+
+      // Both hold the site before the part: the word goes first, then the run.
+      const answer = await word;
+      expect('error' in answer ? answer.error : null).toBeNull();
+      await curator.query('SELECT lock_place_regions(ARRAY[$1::int, $2::int])', [THEBES, karnak.part_id]);
+      await curator.query('COMMIT');
+      expect(await written).toBeNull();
+    } finally {
+      for (const client of [holder, curator]) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        client.release();
+      }
+    }
+    expect((await parts(THEBES)).map(p => p.external_ref)).toEqual(['87-001', '87-002', '87-003']);
   });
 });
