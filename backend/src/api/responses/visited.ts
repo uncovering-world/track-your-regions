@@ -27,9 +27,10 @@ export const VisitedRegions = z.array(VisitedRegion).describe('The reader\'s vis
 export type VisitedRegions = z.infer<typeof VisitedRegions>;
 
 export const VisitedExperienceIds = z.strictObject({
-  visitedIds: z.array(z.number().int()).describe('The objects the reader has visited, wholly or in part.'),
-  partialIds: z.array(z.number().int())
-    .describe('Those of them visited in part: a serial site with some of its components, or ticked as a whole.'),
+  visitedIds: z.array(z.number().int()).describe(
+    'The objects the reader has visited: those they ticked and every whole above one, at any depth (ADR-0206).'
+    + ' The Struve Geodetic Arc after one station is visited.',
+  ),
   wholeTickedIds: z.array(z.number().int()).describe(
     'The wholes the reader ticked as a whole, without naming a part: "I was there, I don\'t remember which part".'
     + ' Not a whole showing a point of its own, where that tick is the point\'s (#2120).',
@@ -45,7 +46,7 @@ export const VisitedExperienceIds = z.strictObject({
     + ' "? of 34". A whole with no offered leaf is not listed.',
   ),
   total: z.number().int(),
-}).describe('The objects the reader has visited, and which of them only in part.');
+}).describe('The objects the reader has visited, and how far through each whole of them.');
 export type VisitedExperienceIds = z.infer<typeof VisitedExperienceIds>;
 
 /**
@@ -183,7 +184,7 @@ export type VisitsRestored = z.infer<typeof VisitsRestored>;
 export type AllLocationsUnmarked = z.infer<typeof AllLocationsUnmarked>;
 
 export const VisitedStatus = z.enum(VISITED_STATUSES)
-  .describe('How far through an object\'s places the reader is.');
+  .describe('Whether the reader has been to an object: at it, or at any place below it at any depth, one since withdrawn included (ADR-0206).');
 export type VisitedStatus = z.infer<typeof VisitedStatus>;
 
 export const LocationWithVisitedStatus = z.strictObject({

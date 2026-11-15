@@ -274,14 +274,14 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     expect(list.experiences.map(e => e.id)).toContain(SITE);
   });
 
-  it('records a tick on the part on the part alone, and the site reads it partly visited (#1428, #2120)', async () => {
+  it('records a tick on the part on the part alone, and the site reads it visited (#1428, ADR-0206)', async () => {
     const marked = await markLocationVisited({ params: { locationId: karnakPoint }, body: {}, caller: traveller() });
     expect(marked).toMatchObject({ locationId: karnakPoint, experienceId: KARNAK });
     // The visit is the part's, and so is the place the date offer reads.
     expect(marked.ticked).toEqual([expect.objectContaining({ experienceId: KARNAK, name: 'Temple of Karnak (parts fixture)' })]);
     expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: KARNAK }]);
     expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
-      .toMatchObject({ visitedStatus: 'partial', visitedLocations: 1, totalLocations: 2 });
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 1, totalLocations: 2 });
 
     await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);
@@ -757,7 +757,6 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
     expect(visited.visitedLocationIds).toEqual([karnakPoint]);
     const states = await getVisitedIds({ query: {}, caller: traveller() });
     expect(states.visitedIds.filter(id => id === SITE || id === KARNAK).sort()).toEqual([SITE, KARNAK].sort());
-    expect(states.partialIds.filter(id => id === SITE || id === KARNAK)).toEqual([SITE]);
 
     await unmarkVisited({ params: { experienceId: KARNAK }, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);

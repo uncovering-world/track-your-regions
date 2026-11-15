@@ -75,31 +75,43 @@ export function liveVisitsSql(user: string): string {
 }
 
 /**
- * Every place the traveller `user` has a state in, with what decides it:
- * `place_id`, `ticked` (a visit on the place itself), `total` (the points a
- * reader is shown of it, its own and its direct parts') and `visited` (those
- * whose own place the traveller visited), which `computeVisitedStatus` turns
- * into the state; `has_parts` (`showsPartsSql`); and `leaves` (its offered leaves, `whole_leaves`) and
- * `leaves_visited` (those the traveller visited), which `wholeProgress` turns
- * into its count (`@tyr/shared/visits`, ADR-0206). The places are those they
- * visited and every whole above them, at any depth (`place_ancestors()`).
+ * The places the traveller `user` has visited, as two CTEs for a `WITH`
+ * (ADR-0206 decision 1): `ticked`, the places with a visit of their own, and
+ * `touched`, those and every whole above one at any depth
+ * (`place_ancestors()`), each of them visited. A visit on a place since
+ * withdrawn counts: the traveller was there. The one statement of what a
+ * traveller has visited, for the visit read and a place's own read alike.
  *
  * The walk up is called in FROM on an aggregated array, not on an `ARRAY(...)`
  * subquery: an argument holding a subquery keeps Postgres from inlining the
  * function, and a call it cannot inline is planned as a thousand rows, which
  * turned the caller's per-row EXISTS into hashes over every offered leaf and
- * every point (3.9 ms against 1.1 ms for a traveller of ten visits). The
- * walk is still estimated at a few hundred rows, so `has_parts` is asked
- * inside the per-place subquery, where it is one probe per place, and not by
- * the caller over the result, where it was hashed the same way.
+ * every point (3.9 ms against 1.1 ms for a traveller of ten visits).
  */
-export function visitStatesSql(user: string): string {
-  return `(WITH ticked AS MATERIALIZED (SELECT DISTINCT tv.experience_id FROM ${liveVisitsSql(user)} tv),
+export function visitedPlacesCtesSql(user: string): string {
+  return `ticked AS MATERIALIZED (SELECT DISTINCT tv.experience_id FROM ${liveVisitsSql(user)} tv),
         touched AS (
           SELECT ticked.experience_id AS place_id FROM ticked
           UNION
           SELECT up.place_id FROM (SELECT array_agg(experience_id) AS ids FROM ticked) tk
-           CROSS JOIN LATERAL place_ancestors(tk.ids) AS up(place_id))
+           CROSS JOIN LATERAL place_ancestors(tk.ids) AS up(place_id))`;
+}
+
+/**
+ * Every place the traveller `user` has visited (`visitedPlacesCtesSql`), with
+ * what its row needs: `place_id`, `ticked` (a visit on the place itself),
+ * `total` (the points a reader is shown of it, its own and its direct
+ * parts') and `visited` (those whose own place the traveller visited);
+ * `has_parts` (`showsPartsSql`); and `leaves` (its offered leaves,
+ * `whole_leaves`) and `leaves_visited` (those the traveller visited), which
+ * `wholeProgress` turns into its count (`@tyr/shared/visits`, ADR-0206).
+ *
+ * The walk up is estimated at a few hundred rows, so `has_parts` is asked
+ * inside the per-place subquery, where it is one probe per place, and not by
+ * the caller over the result, where it was hashed over every point.
+ */
+export function visitStatesSql(user: string): string {
+  return `(WITH ${visitedPlacesCtesSql(user)}
       SELECT touched.place_id,
              EXISTS (SELECT 1 FROM ticked WHERE ticked.experience_id = touched.place_id) AS ticked,
              shown.total, shown.visited, shown.has_parts, leaves.leaves, leaves.leaves_visited
