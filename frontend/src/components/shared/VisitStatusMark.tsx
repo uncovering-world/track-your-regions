@@ -1,12 +1,10 @@
 import { Box } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import type { VisitedStatus } from '../../api/visited';
-import { PARTIAL_AMBER } from '../../utils/kindColors';
 
 /** A place's visited state in words: the name its mark is read out by. */
 const VISIT_STATUS_NAME: Record<VisitedStatus, string> = {
   not_visited: 'Not visited',
-  partial: 'Partly visited',
   visited: 'Visited',
 };
 
@@ -20,16 +18,16 @@ interface VisitStatusMarkProps {
 
 /**
  * A whole's visited state as a mark, never a control (#2120): a whole is
- * ticked by its parts, one by one, so its row says how far the traveller got
- * and a click on the row only opens it. A full green circle for visited, a
- * half-filled amber ring for partly visited, an empty ring for not visited,
- * each read out by its name. Not focusable, and no pointer: nothing here
- * reads as a checkbox that does not work.
+ * ticked by its parts, one by one, and a click on the row only opens it. A
+ * full green circle once one place of it is visited (ADR-0206), an empty ring
+ * otherwise, each read out by its name; how far the traveller got is the
+ * row's count beside it. Not focusable, and no pointer: nothing here reads as
+ * a checkbox that does not work.
  */
 export function VisitStatusMark({ status, size = 24, idleColor = 'text.secondary' }: VisitStatusMarkProps) {
   const name = VISIT_STATUS_NAME[status];
-  // The two rings are drawn rather than icons, the size of the circle in the
-  // visited icon, so they add no icon to the shell's chunk.
+  // The ring is drawn rather than an icon, the size of the circle in the
+  // visited icon, so it adds no icon to the shell's chunk.
   const mark = status === 'visited'
     ? <CheckCircleIcon sx={{ fontSize: size, color: 'success.main' }} />
     : (
@@ -42,8 +40,7 @@ export function VisitStatusMark({ status, size = 24, idleColor = 'text.secondary
           boxSizing: 'border-box',
           borderRadius: '50%',
           border: '2px solid',
-          borderColor: status === 'partial' ? PARTIAL_AMBER : idleColor,
-          background: status === 'partial' ? `linear-gradient(90deg, ${PARTIAL_AMBER} 50%, transparent 50%)` : 'none',
+          borderColor: idleColor,
         }}
       />
     );

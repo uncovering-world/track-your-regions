@@ -42,8 +42,6 @@ import { LazyVisitDateLine, LazyVisitRemovedLine } from '../shared/lazyVisitTrip
 interface DiscoverExperienceRowProps {
   experience: Experience;
   isVisited: boolean;
-  /** Visited in part: a serial site with some of its places visited (#2120). */
-  isPartlyVisited: boolean;
   /** How far through the whole the traveller is (ADR-0206), absent where they have not been. */
   progress?: WholeProgress;
   isSelected: boolean;
@@ -70,7 +68,6 @@ interface DiscoverExperienceRowProps {
 export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
   experience,
   isVisited,
-  isPartlyVisited,
   progress,
   isSelected,
   showCheckbox,
@@ -88,7 +85,6 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
     <ExperienceCard
       experience={experience}
       isVisited={isVisited}
-      isPartlyVisited={isPartlyVisited}
       progress={progress}
       isHovered={isHovered}
       isSelected={isSelected}
@@ -170,7 +166,6 @@ interface DiscoverExperienceListProps {
   hasCuratorScope: boolean;
   isAuthenticated: boolean;
   visitedIds: Set<number>;
-  partialIds: Set<number>;
   /** A whole's progress over its leaves (`useVisitedExperiences().progressOf`). */
   progressOf: (experienceId: number) => WholeProgress | undefined;
   /** A visit write of this traveller is on its way: every row's checkbox waits for it (#2120). */
@@ -206,7 +201,6 @@ export function DiscoverExperienceList({
   hasCuratorScope,
   isAuthenticated,
   visitedIds,
-  partialIds,
   progressOf,
   visitWritePending,
   selectedExperienceId,
@@ -448,7 +442,6 @@ export function DiscoverExperienceList({
                     <DiscoverExperienceRow
                       experience={exp}
                       isVisited={visitedIds.has(exp.id)}
-                      isPartlyVisited={partialIds.has(exp.id)}
                       progress={progressOf(exp.id)}
                       isSelected={selectedExperienceId === exp.id}
                       showCheckbox={isAuthenticated}

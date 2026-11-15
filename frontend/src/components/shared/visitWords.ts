@@ -7,7 +7,6 @@ import type { VisitedStatus } from '../../api/visited';
  */
 export const VISIT_BUTTON_LABEL: Record<VisitedStatus, string> = {
   not_visited: 'Mark Visited',
-  partial: 'Partly visited',
   visited: 'Visited',
 };
 

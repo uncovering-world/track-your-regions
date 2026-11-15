@@ -18,9 +18,9 @@ interface WholeVisitButtonProps {
 /**
  * "I was there, I don't remember which part" (#2120): a whole's own tick, on
  * its card and never on its row, and only on a whole that shows no point of
- * its own (`offersWholeTick`). It reads the whole partly visited until the
- * parts are named. Pressed again, it takes back that one tick and leaves every
- * part the traveller ticked. Its press stops at the button, so the card under
+ * its own (`offersWholeTick`). It makes the whole visited, its count "? of N"
+ * until the places are named (ADR-0206). Pressed again, it takes back that one
+ * tick and leaves every part the traveller ticked. Its press stops at the button, so the card under
  * it does not take the click.
  */
 export function WholeVisitButton({ ticked, onToggle, disabled = false }: WholeVisitButtonProps) {

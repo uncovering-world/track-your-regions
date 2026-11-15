@@ -1,6 +1,7 @@
 /**
  * A Discover card (#2120): its name is a control a keyboard reaches and
- * opens the place with, and a whole visited in part is not drawn as done.
+ * opens the place with, and a whole visited at one of its places is drawn
+ * visited, its count beside it (ADR-0206).
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -26,12 +27,18 @@ describe('a Discover card', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
-  it('shows a whole visited in part by its mark, not struck through as done', () => {
-    render(<ExperienceCard experience={arc} isVisited isPartlyVisited onClick={() => {}} showCheckbox />);
+  it('shows a whole visited after one of its places by its mark, drawn visited beside its count', () => {
+    render(<ExperienceCard experience={arc} isVisited progress={{ visited: 1, total: 34 }} onClick={() => {}} showCheckbox />);
 
-    expect(screen.getByRole('img', { name: 'Partly visited' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Visited' })).toBeTruthy();
     expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(getComputedStyle(screen.getByText('Struve Geodetic Arc')).textDecoration).not.toContain('line-through');
+    expect(getComputedStyle(screen.getByText('Struve Geodetic Arc')).textDecoration).toContain('line-through');
+    expect(screen.getByText('1 of 34')).toBeTruthy();
+  });
+
+  it('shows a whole not visited by an empty ring', () => {
+    render(<ExperienceCard experience={arc} isVisited={false} onClick={() => {}} showCheckbox />);
+    expect(screen.getByRole('img', { name: 'Not visited' })).toBeTruthy();
   });
 });
 
@@ -45,7 +52,7 @@ describe("a Discover card's checkbox while a visit write is on its way", () => {
 
 describe("a Discover card's count (ADR-0206)", () => {
   it("reads the count Map mode's row reads: the Struve Arc after one station", () => {
-    render(<ExperienceCard experience={arc} isVisited isPartlyVisited progress={{ visited: 1, total: 34 }} onClick={() => {}} showCheckbox />);
+    render(<ExperienceCard experience={arc} isVisited progress={{ visited: 1, total: 34 }} onClick={() => {}} showCheckbox />);
     expect(screen.getByText('1 of 34')).toBeTruthy();
     expect(screen.queryByText('34')).toBeNull();
   });

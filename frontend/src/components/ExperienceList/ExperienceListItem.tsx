@@ -54,7 +54,7 @@ export interface ExperienceListItemProps {
   /**
    * The place's own state, from the one read Discover draws from too
    * (`useVisitedExperiences().visitedStatusOf`, #2120): a serial site with
-   * some of its parts visited is partly visited in every region's list.
+   * one of its parts visited is visited in every region's list (ADR-0206).
    */
   visitedStatus: VisitedStatus;
   /**
@@ -239,9 +239,9 @@ function ExperienceListItemComponent({
 
   // The row's visited state is the place's own, read once for Map mode and
   // Discover alike: a visit to *Maman* in Bilbao marks it visited on Canada's
-  // list too, and Haghpat and Sanahin with two monasteries visited is partly
-  // visited wherever it is listed (#2120).
-  const isFullyVisited = visitedStatus === 'visited';
+  // list too, and the Struve Arc after a station in Finland is visited in
+  // Moldova's, "1 of 34" beside it (ADR-0206).
+  const isVisited = visitedStatus === 'visited';
   // A whole is ticked by its parts, on its card, so its row shows the state
   // and ticks nothing (#2120).
   const isWhole = experience.has_parts;
@@ -392,7 +392,7 @@ function ExperienceListItemComponent({
               // checkbox cost a second render and a subtree — for nothing a
               // reader scrolling past it will ever see.
               disableRipple
-              checked={isFullyVisited}
+              checked={isVisited}
               disabled={isLoading}
               onClick={handleRootCheckboxClick}
             />
@@ -412,7 +412,7 @@ function ExperienceListItemComponent({
               <TitleText
                 variant="body2"
                 data-selected={isSelected || isMarked}
-                data-visited={isFullyVisited}
+                data-visited={isVisited}
               >
                 {experience.name}
               </TitleText>

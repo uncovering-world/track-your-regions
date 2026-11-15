@@ -128,7 +128,6 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     // A part's tick here is dated on the object's row in Discover's list (#2120).
   } = useVisitedLocations(undefined, experience.id);
   const {
-    visitedStatus,
     castPoints,
     totalLocations: visitedTotalLocations,
     visitedLocations: visitedLocationCount,
@@ -146,13 +145,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   const colors = experienceColors(experience.kind_id, experience.type);
   const catStyle = { bg: colors.bg, text: colors.text };
 
-  let visitedStatusLabel = 'Not Started';
-  if (visitedStatus === 'visited') visitedStatusLabel = 'Completed';
-  else if (visitedStatus === 'partial') visitedStatusLabel = 'In Progress';
-
-  let visitedStatusColor: 'success' | 'warning' | 'default' = 'default';
-  if (visitedStatus === 'visited') visitedStatusColor = 'success';
-  else if (visitedStatus === 'partial') visitedStatusColor = 'warning';
+  // The place's state from the one read every list draws from: a whole is
+  // visited once one place of it is, and its count says how much is left
+  // (ADR-0206).
+  const isVisited = visitedStatusOf(experience.id) === 'visited';
 
   const totalLocations = locationsData?.totalLocations || 0;
   const isMultiLocation = totalLocations > 1;
@@ -303,9 +299,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
                   : visitCount && `${visitCount.text} visited`}
               </Typography>
               <Chip
-                label={visitedStatusLabel}
+                label={isVisited ? 'Visited' : 'Not visited'}
                 size="small"
-                color={visitedStatusColor}
+                color={isVisited ? 'success' : 'default'}
                 sx={{ height: 22, fontSize: '0.65rem' }}
               />
             </Box>
@@ -317,9 +313,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
                 height: 4,
                 borderRadius: 2,
                 bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': {
-                  bgcolor: visitedStatus === 'visited' ? 'success.main' : 'warning.main',
-                },
+                '& .MuiLinearProgress-bar': { bgcolor: 'success.main' },
               }}
             />}
           </Box>

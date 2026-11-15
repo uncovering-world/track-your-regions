@@ -121,7 +121,6 @@ function renderList(
         hasCuratorScope={false}
         isAuthenticated={false}
         visitedIds={new Set()}
-        partialIds={new Set()}
         progressOf={() => undefined}
         visitWritePending={false}
         selectedExperienceId={null}
