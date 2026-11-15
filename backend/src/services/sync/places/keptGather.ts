@@ -5,10 +5,17 @@
  * inputs are the same.
  *
  * Every run that makes a step writes it; only a dry run reads one back, and
- * only under the same key: the same builds in place, the same admitted rows
- * and the same code. A real pass always makes both afresh. The steps are kept
- * in the dumps directory (workbench tier: derived, made again at will), one
- * file per step, the older removed when a newer is written.
+ * only under the same key: the same builds in place, the same admitted rows,
+ * the same question and the same code. A real pass always makes both afresh.
+ * The steps are kept in the dumps directory (workbench tier: derived, made
+ * again at will), one file per step, the older removed when a newer is written.
+ *
+ * Each step has a key of its own (ADR-0209). The gather of places is keyed by
+ * what it asks each kind, as data, and by its own code: a kind's rule is in
+ * neither, so a change to a verdict, an exception or a world bar reads the
+ * gather back. The pool is keyed by the gather's key, by what it is asked and
+ * by its own code, which reaches every kind's declaration and so its rule.
+ * This module imports no step's code but the gather's, so it can be in both.
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';
@@ -17,10 +24,10 @@ import { pool } from '../../../db/index.js';
 import { dumpsDir } from '../../dumps/localCopies.js';
 import { codeHash } from './codeGraph.js';
 import { readSliced, writeSliced } from './slicedV8.js';
-import { gatherPlaces, type GatheredPlaces, type GatherRequest, type KindShare, type PlaceKind } from './gather.js';
 import {
-  readSurroundingsPool, type PoolMembers, type SurroundingsGroup, type SurroundingsPool, type SurroundingsPoolRun,
-} from './surroundingsPool.js';
+  gatherPlaces, type GatheredPlaces, type GatherRequest, type KindShare, type KindTrees, type PlaceKind,
+} from './gather.js';
+import type { PoolMembers, SurroundingsGroup, SurroundingsPool, SurroundingsPoolRun } from './surroundingsPool.js';
 import type { SurroundingsCut } from './surroundingsCut.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import type { KeptGatherNote } from '../types.js';
@@ -64,15 +71,56 @@ function admittedOf(requests: readonly GatherRequest[]): string {
 }
 
 /**
- * The gather's key: the builds, the admitted rows and the code of the gather
- * and of every kind it asks for. Null where the key cannot be read: the run
- * then keeps nothing and reads nothing back, and makes its steps as it would.
+ * What the gather asks each kind, as data, in the order the kinds were asked
+ * for: the classes it asks by (`poolClasses` over the trees just walked), the
+ * floor of its admission pool, whether its rule reads what holds a candidate
+ * and what it depicts, and the names of its entrances and whether it has
+ * editions. The trees themselves are not in it: they are walked afresh every
+ * run (`walkTrees`) and never kept, so a tree only the rule reads changes
+ * nothing the gather reads. What the entrances and the editions run is code,
+ * held by the code key (`KIND_GATHER_MODULES` in `placePass.ts`).
  */
-export async function gatherKey(requests: readonly GatherRequest[], code: readonly URL[]): Promise<GatherKey | null> {
+export function gatherQuestion(requests: readonly GatherRequest[], trees: KindTrees): string {
+  return JSON.stringify(requests.map(({ kind }) => {
+    const asked = kind.poolClasses(trees.get(kind));
+    return {
+      name: kind.name,
+      broad: asked.broad.map((root) => [root.qid, root.label]),
+      narrow: [...new Set(asked.narrow)].sort(),
+      admissionPool: kind.admissionPool ?? null,
+      readsContainers: kind.readsContainers,
+      readsSubjects: kind.readsSubjects === true,
+      entrances: Object.keys(kind.entrances ?? {}).sort(),
+      editions: kind.editions !== undefined,
+    };
+  }));
+}
+
+/** The entry modules of the code each step is made by, whose import graphs the code key hashes (`codeGraph.ts`). */
+export interface StepsCode {
+  places: readonly URL[];
+  pool: readonly URL[];
+}
+
+/** What the pass's two steps are read again by. */
+export interface PassKeys {
+  /** The gather of places': the builds, the admitted rows, the question and the gather's code. */
+  places: GatherKey;
+  /** The hash of the pool's code, which the pool's key adds to the gather's and to what the pool is asked (`poolKey`). */
+  poolCode: string;
+}
+
+/**
+ * The pass's keys over the trees the run walked. Null where a key cannot be
+ * read: the run then keeps nothing and reads nothing back, and makes its steps
+ * as it would.
+ */
+export async function passKeys(requests: readonly GatherRequest[], trees: KindTrees, code: StepsCode): Promise<PassKeys | null> {
   try {
     const builds = await buildsInPlace();
-    const { hash: codeOf } = await codeHash(code);
-    return { hash: sha([builds, admittedOf(requests), codeOf]), builds };
+    const { hash: placesCode } = await codeHash(code.places);
+    const { hash: poolCode } = await codeHash(code.pool);
+    return { places: { hash: sha([builds, admittedOf(requests), gatherQuestion(requests, trees), placesCode]), builds }, poolCode };
   } catch (error) {
     console.warn(`[Kept gather] no key, so the pass's shared steps are neither kept nor read back: ${(error as Error).message}`);
     return null;
@@ -80,11 +128,12 @@ export async function gatherKey(requests: readonly GatherRequest[], code: readon
 }
 
 /**
- * The pool's key: the gather's, and what the pool is asked for, as data.
- * `venueLine` is a function, so it is not in it: it is the readers' code over
- * the gather, and the gather's key already holds both.
+ * The pool's key: the gather's, the pool's code, and what the pool is asked
+ * for, as data. `venueLine` is a function, so it is not in it: it is the
+ * readers' code over the gather, which the pool's code reaches through every
+ * kind's declaration.
  */
-export function poolKey(gather: GatherKey, members: PoolMembers, cut: SurroundingsCut, groups: readonly SurroundingsGroup[]): GatherKey {
+export function poolKey(keys: PassKeys, members: PoolMembers, cut: SurroundingsCut, groups: readonly SurroundingsGroup[]): GatherKey {
   const sorted = (set: ReadonlySet<string> | null | undefined) => (set ? [...set].sort() : null);
   const asked = JSON.stringify({
     classes: sorted(members.classes),
@@ -93,7 +142,7 @@ export function poolKey(gather: GatherKey, members: PoolMembers, cut: Surroundin
     cut,
     groups: groups.map((group) => ({ key: group.key, classes: sorted(group.classes), items: sorted(group.items) })),
   });
-  return { hash: sha([gather.hash, asked]), builds: gather.builds };
+  return { hash: sha([keys.places.hash, keys.poolCode, asked]), builds: keys.places.builds };
 }
 
 function sha(parts: readonly string[]): string {
@@ -102,9 +151,12 @@ function sha(parts: readonly string[]): string {
   return hash.digest('hex');
 }
 
+/** A kind's share as it is kept: without its trees, which every run walks afresh. */
+type KeptShare = Omit<KindShare<unknown>, 'trees'>;
+
 /** The gather as it is kept: a kind is an object with functions, so its share is kept by the kind's name. */
 interface KeptPlaces {
-  shares: [string, KindShare<unknown>][];
+  shares: [string, KeptShare][];
   pooled: number;
   classes: ReadonlySet<string>;
 }
@@ -177,8 +229,13 @@ async function writeStep(step: Step, key: GatherKey, value: unknown): Promise<vo
   }
 }
 
-/** The gather kept under the key, its shares given back to the kinds asked for; null where none is kept or a kind is missing. */
-export async function readKeptPlaces(key: GatherKey, requests: readonly GatherRequest[]): Promise<KeptStep<GatheredPlaces> | null> {
+/**
+ * The gather kept under the key, its shares given back to the kinds asked for
+ * with the trees this run walked; null where none is kept or a kind is missing.
+ */
+export async function readKeptPlaces(
+  key: GatherKey, requests: readonly GatherRequest[], trees: KindTrees,
+): Promise<KeptStep<GatheredPlaces> | null> {
   const kept = await readStep('places', key, isKeptPlaces);
   if (!kept) return null;
   const { shares, pooled, classes } = kept.value as KeptPlaces;
@@ -187,15 +244,15 @@ export async function readKeptPlaces(key: GatherKey, requests: readonly GatherRe
   for (const { kind } of requests) {
     const share = byName.get(kind.name);
     if (!share) return null;
-    restored.set(kind, share);
+    restored.set(kind, { ...share, trees: trees.get(kind) });
   }
   return { value: { shares: restored, pooled, classes }, keptAt: kept.keptAt };
 }
 
-/** Keep the gather of places under its key, each share by its kind's name. */
+/** Keep the gather of places under its key, each share by its kind's name and without its trees. */
 export async function keepPlaces(key: GatherKey, gathered: GatheredPlaces): Promise<void> {
   const kept: KeptPlaces = {
-    shares: [...gathered.shares].map(([kind, share]) => [kind.name, share]),
+    shares: [...gathered.shares].map(([kind, { trees: _walked, ...share }]) => [kind.name, share]),
     pooled: gathered.pooled,
     classes: gathered.classes,
   };
@@ -221,40 +278,47 @@ export async function keepPool(key: GatherKey, made: SurroundingsPool): Promise<
  * nothing afresh reads one back (`read`), and says so in `note`.
  */
 export interface PassKeep {
-  key: GatherKey | null;
+  key: PassKeys | null;
   read: boolean;
   note: KeptGatherNote;
 }
 
-/** The gather of places: read back under its key where the pass reads, else made, and kept under its key either way. */
+/**
+ * The gather of places over the trees the run walked: read back under its key
+ * where the pass reads, else made, and kept under its key either way.
+ */
 export async function placesOf(
-  keep: PassKeep, requests: readonly GatherRequest[], run: SubjectRunner, gather = gatherPlaces,
+  keep: PassKeep, requests: readonly GatherRequest[], trees: KindTrees, run: SubjectRunner, gather = gatherPlaces,
 ): Promise<GatheredPlaces> {
-  if (keep.key && keep.read) {
-    const kept = await readKeptPlaces(keep.key, requests);
+  const key = keep.key?.places;
+  if (key && keep.read) {
+    const kept = await readKeptPlaces(key, requests, trees);
     if (kept) {
-      Object.assign(keep.note, { places: kept.keptAt, builds: keep.key.builds });
-      run.phase(`Read the gather of places kept at ${kept.keptAt.toISOString()}: the same code, builds and admitted rows`);
+      Object.assign(keep.note, { places: kept.keptAt, builds: key.builds });
+      run.phase(`Read the gather of places kept at ${kept.keptAt.toISOString()}: the same question, code, builds and admitted rows`);
       return kept.value;
     }
   }
-  const gathered = await gather(run, [...requests]);
-  if (keep.key) await keepPlaces(keep.key, gathered);
+  const gathered = await gather(run, [...requests], trees);
+  if (key) await keepPlaces(key, gathered);
   return gathered;
 }
 
-/** The surroundings pool, the same way, under a key that adds what the pool is asked for. */
+/**
+ * The surroundings pool, the same way, under its own key (`poolKey`). `read`
+ * makes it (`readSurroundingsPool`), handed in so this module, which the
+ * gather's code key reads, imports none of the pool's code.
+ */
 export async function poolOf(
   keep: PassKeep, members: PoolMembers, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run: SurroundingsPoolRun,
-  read: (members: PoolMembers, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run: SurroundingsPoolRun) => Promise<SurroundingsPool>
-    = readSurroundingsPool,
+  read: (members: PoolMembers, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run: SurroundingsPoolRun) => Promise<SurroundingsPool>,
 ): Promise<SurroundingsPool> {
   const key = keep.key && poolKey(keep.key, members, cut, groups);
   if (key && keep.read) {
     const kept = await readKeptPool(key);
     if (kept) {
       Object.assign(keep.note, { pool: kept.keptAt, builds: key.builds });
-      run.phase(`Read the surroundings pool kept at ${kept.keptAt.toISOString()}: the same code, builds and question`);
+      run.phase(`Read the surroundings pool kept at ${kept.keptAt.toISOString()}: the same gather, code, builds and question`);
       return kept.value;
     }
   }
