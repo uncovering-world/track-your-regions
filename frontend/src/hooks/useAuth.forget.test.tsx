@@ -30,7 +30,7 @@ vi.mock('../components/shared/trips/visitTrips', () => ({
 import { getHeldAccount, refreshSession, setAccessToken } from '../api/fetchUtils';
 import { LazyVisitRemovedLine } from '../components/shared/lazyVisitTrips';
 import {
-  clearRemovedVisits, dateLineAt, noteRemovedVisits, OFFER_SILENCE_KEY, removedVisitsOf, showDateLine, writeOrigin,
+  clearRemovedVisits, dateLineAt, noteRemovedVisits, OFFER_SESSION_KEY, OFFER_SILENCE_KEY, removedVisitsOf, showDateLine, writeOrigin,
 } from '../components/shared/visitRemovals';
 import { AuthProvider, useAuth } from './useAuth';
 
@@ -72,6 +72,37 @@ describe("the Undo of a traveller's untick and the next sign-in", () => {
     act(() => clearRemovedVisits());
     setAccessToken(null);
     vi.unstubAllGlobals();
+  });
+
+  it('leaves nothing of the last traveller in storage when a reload finds the session over', async () => {
+    // Traveller 7 ticked before the reload; another tab signed out meanwhile.
+    sessionStorage.setItem(OFFER_SESSION_KEY, JSON.stringify({ owner: 7, session: { mode: 'past', ticks: [] } }));
+    sessionStorage.setItem(OFFER_SILENCE_KEY, JSON.stringify({ owner: 7, until: Date.now() + 3_600_000 }));
+    renderTab();
+    await waitFor(() => expect(auth.isLoading).toBe(false));
+    expect(sessionStorage.getItem(OFFER_SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(OFFER_SILENCE_KEY)).toBeNull();
+  });
+
+  it("leaves nothing of the last traveller in storage when a reload finds another tab's traveller", async () => {
+    // Traveller 7 ticked before the reload; another tab signed 8 in meanwhile.
+    sessionStorage.setItem(OFFER_SESSION_KEY, JSON.stringify({ owner: 7, session: { mode: 'past', ticks: [] } }));
+    sessionStorage.setItem(OFFER_SILENCE_KEY, JSON.stringify({ owner: 7, until: Date.now() + 3_600_000 }));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => traveller(8) })));
+    renderTab();
+    await waitFor(() => expect(auth.user?.id).toBe(8));
+    expect(sessionStorage.getItem(OFFER_SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(OFFER_SILENCE_KEY)).toBeNull();
+  });
+
+  it('keeps what the traveller stored when a reload finds them still signed in', async () => {
+    const session = JSON.stringify({ owner: 7, session: { mode: 'past', ticks: [] } });
+    sessionStorage.setItem(OFFER_SESSION_KEY, session);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => traveller(7) })));
+    renderTab();
+    await waitFor(() => expect(auth.user?.id).toBe(7));
+    expect(sessionStorage.getItem(OFFER_SESSION_KEY)).toBe(session);
+    sessionStorage.clear();
   });
 
   it('is gone once the traveller signs out', async () => {

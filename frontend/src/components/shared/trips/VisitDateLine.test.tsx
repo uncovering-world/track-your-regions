@@ -24,9 +24,9 @@ vi.mock('../../../hooks/useVisitedExperiences', () => ({ useVisitWritePending: (
 
 import { VisitDateLine } from './VisitDateLine';
 import { closeOffer, forgetGuessesOn, forgetOffer, offerDate, useCurrentOffer } from './offerRuntime';
-import { readSession } from './dateOffer';
+import { readSession, type OfferSession } from './dateOffer';
 import { formatApproximateDate } from '../../../utils/dateFormat';
-import { dateLineAt, forgetTraveller, handleTicks, OFFER_SILENCE_KEY, writeOrigin } from '../visitRemovals';
+import { dateLineAt, forgetTraveller, handleTicks, OFFER_SESSION_KEY, OFFER_SILENCE_KEY, writeOrigin } from '../visitRemovals';
 
 const PANTHEON = { experienceId: 9001, name: 'Pantheon', latitude: 41.8986, longitude: 12.4769 };
 const savedTrip = (id: number, year: number | null, month: number | null, day: number | null) =>
@@ -114,15 +114,19 @@ describe('the line under the newest tick', () => {
     await waitFor(() => expect(addTrips).toHaveBeenCalled());
   });
 
-  it('keeps no place or time of a tick in the tab\'s storage, only until when it is silenced', async () => {
-    // Past travels with a carried year: the session holds the ticks, the mode and the year, in memory.
+  it('keeps the session in the tab\'s storage for its owner, places rounded to about a kilometre, and the silence apart (#2536)', async () => {
+    // Past travels with a carried year: the session holds the ticks, the mode and the year.
     tickPantheon(new Date().toISOString());
     const thisYear = new Date().getFullYear();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: String(thisYear - 1) })); });
-    expect(sessionStorage.length).toBe(0);
+    const stored = JSON.parse(sessionStorage.getItem(OFFER_SESSION_KEY)!) as { owner: number; session: OfferSession };
+    expect(stored.owner).toBe(7);
+    expect(stored.session.mode).toBe('past');
+    expect(stored.session.carried).toMatchObject({ year: thisYear - 1, lat: 41.9, lon: 12.48 });
+    expect(stored.session.ticks.map(t => [t.lat, t.lon])).toEqual([[41.9, 12.48]]);
 
     fireEvent.click(screen.getByRole('button', { name: "Don't ask in this session" }));
-    expect(Object.keys(sessionStorage)).toEqual([OFFER_SILENCE_KEY]);
+    expect(Object.keys(sessionStorage).sort()).toEqual([OFFER_SESSION_KEY, OFFER_SILENCE_KEY].sort());
     expect(Object.keys(JSON.parse(sessionStorage.getItem(OFFER_SILENCE_KEY)!)).sort()).toEqual(['owner', 'until']);
   });
 
@@ -133,6 +137,7 @@ describe('the line under the newest tick', () => {
     act(() => forgetTraveller());
     expect(dateLineAt()).toBeNull();
     expect(sessionStorage.getItem(OFFER_SILENCE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(OFFER_SESSION_KEY)).toBeNull();
   });
 
   it('stores and writes nothing for a tick, or a choice, of an earlier sign-in', async () => {
