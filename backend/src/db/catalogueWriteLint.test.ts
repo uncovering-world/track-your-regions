@@ -2,8 +2,8 @@
  * The lint rules that hold the catalogue's reads and writes to their one
  * spelling (#791, ADR-0069): a reader predicate is composed from
  * `db/readerPredicates.ts` or `db/membership.ts`, and `experiences`,
- * `experience_locations`, a venue's works and `regions` are written only by
- * their writer modules.
+ * `experience_locations`, a venue's works, `regions` and a place's dates are
+ * written only by their writer modules.
  *
  * Asserted against the repo's own `eslint.config.mjs`, as
  * `api/routeRegistryLint.test.ts` asserts its rule, and in both directions: the code
@@ -31,6 +31,7 @@ const WRITE = /^experiences is written by its writer modules only/;
 const POINT_WRITE = /^experience_locations and experience_location_placements are written by their writer modules only/;
 const WORK_WRITE = /^treasures, experience_treasures and experience_treasure_placements are written by their writer modules only/;
 const REGION_WRITE = /^regions is written by its writer modules only/;
+const DATE_WRITE = /^place_dates and record_dates are written by their writer module only/;
 
 describe('the catalogue lint rules', () => {
   // The first lint in a worker loads the whole config and its plugins; pay it
@@ -134,5 +135,21 @@ describe('the catalogue lint rules', () => {
     ['the seed', 'export const q = `INSERT INTO regions (name) VALUES ($1)`;\n', 'src/db/seed/lint-fixture.ts'],
   ])('lets a region write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => REGION_WRITE.test(m))).toBe(false);
+  });
+
+  it.each([
+    ['a place\'s date set in a controller', 'export const q = `INSERT INTO place_dates (experience_id, slot) VALUES ($1, $2)`;\n', 'src/controllers/experience/lint-fixture.ts'],
+    ['a place\'s date taken off in a sync service', "export const q = 'delete from place_dates where experience_id = $1';\n", 'src/services/sync/lint-fixture.ts'],
+    ['a record\'s view rewritten in the run\'s upsert', 'export const q = `UPDATE record_dates SET year = $2 WHERE record_id = $1`;\n', 'src/services/sync/experienceUpsert.ts'],
+  ])('refuses a write to a place\'s dates outside their writer: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => DATE_WRITE.test(m))).toBe(true);
+  });
+
+  it.each([
+    ['a read', 'export const q = `SELECT slot, year FROM place_dates WHERE experience_id = $1`;\n', 'src/controllers/lint-fixture.ts'],
+    ['the writer module', 'export const q = `INSERT INTO record_dates (record_id, slot) VALUES ($1, $2)`;\n', 'src/db/placeDatesWriter.ts'],
+    ['the seed', 'export const q = `INSERT INTO place_dates (experience_id, slot) VALUES ($1, $2)`;\n', 'src/db/seed/lint-fixture.ts'],
+  ])('lets a date write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => DATE_WRITE.test(m))).toBe(false);
   });
 });
