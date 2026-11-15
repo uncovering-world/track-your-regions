@@ -7175,10 +7175,12 @@ reading the places again; `POST /trips` and `PUT /trips` write such dates, one r
 
 **A date is offered after every tick** (#2120, the mock's scenarios A to D). The shell hands each
 tick's `ticked` places to the trips chunk (`noteTicked` in `visitRemovals.ts`, handled by `lazyVisitTrips.tsx`), which applies the rules of
-`components/shared/trips/dateOffer.ts`: pure functions over a session the chunk keeps in memory, so a
-reload starts a fresh one and the tab's storage never holds where or when a traveller ticked. Only *Don't
-ask in this session* is stored, in `sessionStorage` as the time it lasts until and whose it is
-(`OFFER_SILENCE_KEY`, `tyr.tripOfferSilence`): `SILENCE_HOURS`, 12 hours, or until the tab closes or who
+`components/shared/trips/dateOffer.ts`: pure functions over a session the chunk keeps in memory and in the
+tab's `sessionStorage` (`OFFER_SESSION_KEY`, `tyr.tripOfferSession`, #2536), so a reload or an address
+opened in the same tab keeps it: whose it is, and its coordinates rounded to two decimals (`storable`; the places' names and the guessed places' ids stay, since the question names them), read
+back only for that traveller (`storedSession`) and removed with them (`forgetTraveller`). *Don't ask in
+this session* is stored beside it as the time it lasts until and whose it is (`OFFER_SILENCE_KEY`,
+`tyr.tripOfferSilence`): `SILENCE_HOURS`, 12 hours, or until the tab closes or who
 is signed in changes if that comes first, a reload keeping it; a private window that
 refuses it keeps the silence in memory, and the tick never waits. The session and the line are the
 ticking traveller's: the tick's own start names them (`writeOrigin`), a session kept for another account

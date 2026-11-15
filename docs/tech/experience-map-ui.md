@@ -157,6 +157,15 @@ trips chunk, fetched on the first tick.
   in this session* closes it and opens no line for 12 hours, or until the tab closes or who is signed in
   changes if that comes first, a reload keeping it; on a trip today
   is still saved for each tick, and shown on the place's card.
+- The session itself — the recent ticks, past travels or a trip, the followed answer, the carried
+  year and the places saved as today on a guess — survives a reload and an address opened in the same
+  tab, and ends with the tab or a change of who is signed in, as the silence does (#2536): Museo del
+  Prado and Museo Reina Sofía saved as today, then Kyoto opened by its address and Kinkaku-ji ticked a
+  minute later, asks "Museo del Prado and Museo Reina Sofía were saved as today. When were you there?"
+  It is kept in `sessionStorage` (`OFFER_SESSION_KEY`, `dateOffer.ts` `storedSession`), keyed to its
+  traveller, its coordinates rounded to about a kilometre, and cleared too by a load that finds the
+  session over or another account's (`forgetStoredOtherThan`, called from `useAuth.tsx`), under the rule `docs/security/SECURITY.md`
+  § Data Classification sets for a traveller's history in browser storage.
 
 Only the newest tick keeps a line; an untick closes it, and so does a change of who is signed in, the line being the ticking traveller's alone. The sentence is a `role="status"` region, so
 it is read out once when the line opens or changes; every choice is a button, held by
