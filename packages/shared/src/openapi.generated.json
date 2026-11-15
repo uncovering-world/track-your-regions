@@ -17296,6 +17296,56 @@
         }
       }
     },
+    "/api/experiences/review/guide-articles/{membershipId}": {
+      "get": {
+        "operationId": "getExperiencesReviewGuideArticlesByMembershipId",
+        "summary": "The Wikivoyage articles that use the item a membership's source knows its place by, from the local copy",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membershipId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideArticles"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/geocode/search": {
       "get": {
         "operationId": "getGeocodeSearch",
@@ -28909,6 +28959,65 @@
         ],
         "additionalProperties": false,
         "description": "Which group one region belongs to, as the model suggests it, and what asking cost."
+      },
+      "GuideArticles": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "description": "The Wikidata item the guide evidence is read for, the one its source knows the place by; null where it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "articlesKept": {
+            "type": "boolean",
+            "description": "Whether the Wikivoyage copy in place keeps the articles: false where it was built before they were kept, or where no copy is in place. Then an empty list says nothing of whether a guide uses the item, and a rebuild of the Wikivoyage item usage keeps them."
+          },
+          "articles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "site": {
+                  "type": "string",
+                  "description": "The edition's database name, as the dumps name it: dewikivoyage."
+                },
+                "language": {
+                  "type": "string",
+                  "description": "The edition's language, as its host names it: de for de.wikivoyage.org."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The article's title as a reader reads it, spaces and not underscores."
+                },
+                "url": {
+                  "type": "string",
+                  "description": "The article on its edition's own host, its title percent-encoded."
+                }
+              },
+              "required": [
+                "site",
+                "language",
+                "title",
+                "url"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every guide article that uses the item, by edition and then by title; empty where none does or none is kept."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More articles use the item than the read lists."
+          }
+        },
+        "required": [
+          "item",
+          "articlesKept",
+          "articles",
+          "truncated"
+        ],
+        "additionalProperties": false
       },
       "HandBackPinBody": {
         "type": "object",
