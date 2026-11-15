@@ -690,6 +690,19 @@ export const ReviewQueueMap = z.strictObject({
 }).describe("The curator's open questions under the queue's filters, as points on a map (#2477).");
 export type ReviewQueueMap = z.infer<typeof ReviewQueueMap>;
 
+export const QueueMapName = z.strictObject({
+  placeId: z.number().int(),
+  name: z.string(),
+}).describe('A place the map draws, by the name its card carries.');
+export type QueueMapName = z.infer<typeof QueueMapName>;
+
+export const ReviewQueueMapNames = z.strictObject({
+  names: z.array(QueueMapName).describe(
+    'The asked places this curator has an open question about under their scope, by id. A place outside it is left out, as one that does not exist is.',
+  ),
+}).describe("The names of the places a short list on the review queue's map shows (#2501).");
+export type ReviewQueueMapNames = z.infer<typeof ReviewQueueMapNames>;
+
 export const RunSetAside = z.strictObject({
   syncLogId: z.number().int(),
   setAside: z.boolean().describe('The state the caller asked for, whether or not a row changed.'),

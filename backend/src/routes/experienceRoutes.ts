@@ -61,7 +61,7 @@ import { answerMergeProposals } from '../controllers/experience/mergeProposalCon
 import { takeBackMergeProposalAnswer } from '../controllers/experience/mergeProposalTakeBackController.js';
 import { askNamesakes } from '../controllers/experience/pointNamesakesController.js';
 import { searchReviewRegions } from '../controllers/experience/reviewRegionSearchController.js';
-import { getReviewQueueMap } from '../controllers/experience/reviewQueueMapController.js';
+import { getReviewQueueMap, getReviewQueueMapNames } from '../controllers/experience/reviewQueueMapController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
@@ -69,7 +69,7 @@ import { searchCommemorationSubjects } from '../controllers/experience/commemora
 import { getPictureClasses } from '../controllers/experience/pictureClassesController.js';
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import {
-  ReviewAnswerResult, ReviewQueue, ReviewQueueMap, ReviewRegionSearchResults, RunSetAside,
+  ReviewAnswerResult, ReviewQueue, ReviewQueueMap, ReviewQueueMapNames, ReviewRegionSearchResults, RunSetAside,
 } from '../api/responses/reviewQueue.js';
 import { CrowdingAnswered, CrowdingGroup, CrowdingPlaceView, ShadowedArrivals } from '../api/responses/crowding.js';
 import {
@@ -167,6 +167,7 @@ import {
   mergeProposalParamsSchema,
   reviewQueueQuerySchema,
   reviewQueueMapQuerySchema,
+  reviewQueueMapNamesQuerySchema,
   reviewRegionSearchQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -524,6 +525,15 @@ export const experienceCurationRoutes = [
     query: reviewQueueMapQuerySchema,
     response: ReviewQueueMap,
     handler: getReviewQueueMap,
+  }),
+  // The names of the places a short list on that map shows (#2501), which the
+  // map's read leaves out: only those the caller has an open question about.
+  defineRoute({
+    method: 'get', path: '/review/queue/map/names', access: 'curator', cache: 'no-store',
+    summary: 'Name the places a short list on the review queue\'s map shows, within the caller\'s scope',
+    query: reviewQueueMapNamesQuerySchema,
+    response: ReviewQueueMapNames,
+    handler: getReviewQueueMapNames,
   }),
   // A curator's own "not now" on a run's whole batch (ADR-0051 decision 4), and
   // the way back — `reviewQueueSetAside.ts` has the reasoning, including why

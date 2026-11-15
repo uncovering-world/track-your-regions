@@ -5288,6 +5288,26 @@ export interface ReviewQueueMap {
 }
 
 /**
+ * A place the map draws, by the name its card carries.
+ */
+export interface QueueMapName {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  placeId: number;
+  name: string;
+}
+
+/**
+ * The names of the places a short list on the review queue's map shows (#2501).
+ */
+export interface ReviewQueueMapNames {
+  /** The asked places this curator has an open question about under their scope, by id. A place outside it is left out, as one that does not exist is. */
+  names: QueueMapName[];
+}
+
+/**
  * A run's batch set aside for this curator, or brought back (ADR-0051 decision 4).
  */
 export interface RunSetAside {
@@ -8982,6 +9002,14 @@ export type GetExperiencesReviewQueueMapAside = typeof GetExperiencesReviewQueue
 export const GetExperiencesReviewQueueMapAside = {
   show: 'show',
 } as const;
+
+export type GetExperiencesReviewQueueMapNamesParams = {
+  /**
+   * @maxLength 1100
+   * @pattern ^[1-9]\d{0,8}(?:,[1-9]\d{0,8}){0,99}$
+   */
+  ids: string;
+};
 
 export type GetExperiencesReviewCrowdingGroupParams = {
   region: 'none' | number;
@@ -12968,6 +12996,38 @@ export const getGetExperiencesReviewQueueMapUrl = (params?: GetExperiencesReview
 export const getExperiencesReviewQueueMap = async (params?: GetExperiencesReviewQueueMapParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewQueueMap> => {
 
   return apiFetch<ReviewQueueMap>(getGetExperiencesReviewQueueMapUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewQueueMapNamesUrl = (params: GetExperiencesReviewQueueMapNamesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/queue/map/names?${stringifiedParams}` : `/api/experiences/review/queue/map/names`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Name the places a short list on the review queue's map shows, within the caller's scope
+ */
+export const getExperiencesReviewQueueMapNames = async (params: GetExperiencesReviewQueueMapNamesParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewQueueMapNames> => {
+
+  return apiFetch<ReviewQueueMapNames>(getGetExperiencesReviewQueueMapNamesUrl(params),
   {
     ...options,
     method: 'GET'

@@ -25,6 +25,8 @@ import { DUMP_KEYS } from '../services/dumps/catalog.js';
 // The world-view import's request schemas live in their own module (#933) and
 // are part of this barrel, so a route imports them from here as before.
 export * from './worldViewImportSchemas.js';
+// The names the review queue map's short list asks for (#2501), beside the map's own query below.
+export * from './reviewQueueMapNamesSchema.js';
 
 // =============================================================================
 // API query params

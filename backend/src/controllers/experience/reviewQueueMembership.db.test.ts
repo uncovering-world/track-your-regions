@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { queryQueueKeys } from './reviewQueueKeys.js';
-import { queryQueueMap } from './reviewQueueMapController.js';
+import { queryQueueMap, queryQueueMapNames } from './reviewQueueMapController.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { publishUnderLock } from './publishController.js';
 import { refuseContentsUnderLock } from './curatorRefusalController.js';
@@ -95,6 +95,14 @@ async function membershipOf(source: number): Promise<number> {
   return result.rows[0].id;
 }
 
+/** The fixture's curator, given one source's scope. */
+async function assignSource(source: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO curator_assignments (user_id, scope_type, source_id, assigned_by) VALUES ($1, 'source', $2, $3)`,
+    [curatorId, source, adminId],
+  );
+}
+
 describe('a waiting question of each membership (#1264)', () => {
   it('asks about the arrival a second kind brought, whichever source brought the place', async () => {
     const { keys, facets } = await queryQueueKeys({ userId: adminId, isAdmin: true, filters: filters() });
@@ -117,15 +125,11 @@ describe('a waiting question of each membership (#1264)', () => {
   });
 
   it('puts it in the scope of a curator who holds the source that asks', async () => {
-    const assign = (source: number) => pool.query(
-      `INSERT INTO curator_assignments (user_id, scope_type, source_id, assigned_by) VALUES ($1, 'source', $2, $3)`,
-      [curatorId, source, adminId],
-    );
-    await assign(artSource);
+    await assignSource(artSource);
     const artCurator = await queryQueueKeys({ userId: curatorId, isAdmin: false, filters: filters() });
     expect(artCurator.total).toBe(0);
 
-    await assign(archaeologySource);
+    await assignSource(archaeologySource);
     const archaeologyCurator = await queryQueueKeys({ userId: curatorId, isAdmin: false, filters: filters() });
     expect(archaeologyCurator.total).toBe(1);
   });
@@ -159,6 +163,21 @@ describe('a waiting question of each membership (#1264)', () => {
     );
     const curator = await queryQueueMap({ userId: curatorId, isAdmin: false, selection: { q: NAME } });
     expect(curator.places.map(place => place.questions)).toEqual([[{ kind: 'waiting', subs: ['arrival'] }]]);
+  });
+
+  it('names the unpassed place to a curator whose scope holds its question, and to no other (#2501)', async () => {
+    const named = { names: [{ placeId: PLACE, name: NAME }] };
+    // An id naming no place is left out, as the place is below for a curator it is not in scope of.
+    expect(await queryQueueMapNames({ userId: adminId, isAdmin: true, ids: [PLACE, 2147483000] })).toEqual(named);
+
+    // The place's one open question is the Archaeology arrival nobody has passed. A curator with
+    // no scope, then one of Art Museums alone, is not asked it, and is not told the place's name.
+    expect(await queryQueueMapNames({ userId: curatorId, isAdmin: false, ids: [PLACE] })).toEqual({ names: [] });
+    await assignSource(artSource);
+    expect(await queryQueueMapNames({ userId: curatorId, isAdmin: false, ids: [PLACE] })).toEqual({ names: [] });
+
+    await assignSource(archaeologySource);
+    expect(await queryQueueMapNames({ userId: curatorId, isAdmin: false, ids: [PLACE] })).toEqual(named);
   });
 
   it("draws the arrival as the Archaeology membership's", async () => {
