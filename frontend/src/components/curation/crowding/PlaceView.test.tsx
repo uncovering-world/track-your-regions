@@ -55,7 +55,8 @@ describe("a place's circle as one table (#2486)", () => {
     const own = screen.getByRole('row', { name: 'Gendarmenmarkt, this place' });
     expect(own.firstChild).toHaveTextContent('3');
     expect(within(own).getByText('this place')).toBeInTheDocument();
-    expect(within(own).queryByRole('button')).toBeNull();
+    // Its one button is the guide's yes, which opens the articles behind it (#2520), never its circle.
+    expect(within(own).queryAllByRole('button').map(button => button.textContent)).toEqual(['yes']);
     expect(screen.getByRole('button', { name: 'Alexanderplatz' })).toBeInTheDocument();
   });
 

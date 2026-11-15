@@ -64,6 +64,19 @@ describe('an offered place with nothing to see', () => {
   });
 });
 
+describe("a travel guide's yes (#2520)", () => {
+  it('opens the Wikivoyage articles that use the place\'s item', () => {
+    const lupanar = {
+      ...EBORACUM, name: 'Lupanar',
+      visit_question: { ...EBORACUM.visit_question!, witnesses: ['guide'] },
+    } as unknown as ReviewQueueItem;
+    show([lupanar]);
+    const guide = screen.getByRole('button', { name: /^a travel guide lists it, the Wikivoyage articles about Lupanar$/ });
+    expect(guide).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(guide.closest('p')).toHaveTextContent('One witness of four says a visitor goes here: a travel guide lists it');
+  });
+});
+
 describe('the witness lines', () => {
   it('name the one witness found and the three missing', () => {
     expect(witnessLines(['guide'])).toEqual({

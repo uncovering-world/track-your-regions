@@ -34,3 +34,27 @@ describe('the venue column (#2454)', () => {
     expect(within(container).getAllByRole('cell').at(-1)).toHaveTextContent('—');
   });
 });
+
+describe('the guide column (#2520)', () => {
+  const columns = figureColumns({ readsVenues: false, venueRadiusM: null });
+  const place = { membershipId: 41, name: 'Mantineia' };
+
+  it("opens the Wikivoyage articles behind a guide's yes, where the row names its place", () => {
+    const { container } = render(<FigureCells columns={columns} signals={{ ...FAME, venues: null }} place={place} />);
+    const cell = within(container).getAllByRole('cell')[2];
+    expect(within(cell).getByRole('button', { name: /^yes, the Wikivoyage articles about Mantineia$/ }))
+      .toHaveAttribute('aria-haspopup', 'dialog');
+  });
+
+  it('writes a no, and a value not read yet, as they were: nothing to open', () => {
+    const { container, rerender } = render(
+      <FigureCells columns={columns} signals={{ ...FAME, guideUsed: false, venues: null }} place={place} />,
+    );
+    const guide = () => within(container).getAllByRole('cell')[2];
+    expect(guide()).toHaveTextContent('no');
+    expect(within(guide()).queryByRole('button')).toBeNull();
+    rerender(<FigureCells columns={columns} signals={{ ...FAME, guideUsed: null, venues: null }} place={place} />);
+    expect(guide()).toHaveTextContent('—');
+    expect(within(guide()).queryByRole('button')).toBeNull();
+  });
+});
