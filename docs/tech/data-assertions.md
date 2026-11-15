@@ -270,7 +270,9 @@ come nearest first. The nearest region is a suggestion and decides nothing, as w
 near a border (#1054): a curator adds the object to the right region by hand,
 and the row leaves the list. The next region is what left the row here: the
 Øresund Bridge is 3.1 km from Copenhagen and 4.5 km from Skåne, and belongs to
-both. A point farther than 25 km from every leaf is the open ocean (#470):
+both. Its line, read from OpenStreetMap at the next layer build, places it in
+both (ADR-0212); a place with no line, such as the sunken city of Heracleion,
+stays on the list. A point farther than 25 km from every leaf is the open ocean (#470):
 Malpelo's nearest leaf, 355 km off, is in Panama, and the island is Colombian.
 Measured on world view 5 on 2026-10-18: 33 objects in no region, 28 with a
 suggestion, and the statement takes about 1.5 s; the rule places most of them.
