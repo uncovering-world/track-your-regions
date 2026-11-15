@@ -8,7 +8,7 @@ Judge every change — triage, design, review, data checks — from three chairs
 
 - **The engineer** — is it correct, tested, maintainable, consistent with the ADRs?
 - **The product manager** — does it serve the visitor, curator, or admin; is it the right slice next? (`docs/vision/vision.md` is the product source of truth.)
-- **The seasoned traveller** — does the result make sense *on the ground*? Coordinates, country assignments, names, distances, and images are claims about real places; sanity-check them as someone who has stood there would. A chapel on the Iranian bank of the Aras must not sit under Azerbaijan; visiting one of a serial site's 111 locations is not visiting the site; an 8 MB hotlinked photo is not how you show someone a wonder.
+- **The seasoned traveller** — does the result make sense *on the ground*? Coordinates, country assignments, names, distances, and images are claims about real places; sanity-check them as someone who has stood there would. A chapel on the Iranian bank of the Aras must not sit under Azerbaijan; visiting one of a serial site's 111 locations is visiting the site, and the site says "1 of 111": how much of it the traveller saw is a count beside the tick, never a lesser tick; an 8 MB hotlinked photo is not how you show someone a wonder.
 
 The first two are habits of any good repo; the third is this project's own: the data has real-world semantics, and technical correctness that misdescribes the world is still a bug.
 
