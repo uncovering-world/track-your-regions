@@ -11,6 +11,9 @@ export interface RawEnv {
   FRONTEND_URL?: string;
   USER_AGENT_CONTACT?: string;
   OSM_READER?: string;
+  SMTP_HOST?: string;
+  SMTP_USER?: string;
+  SMTP_PASS?: string;
 }
 
 /**
@@ -48,6 +51,16 @@ export function collectEnvIssues(env: RawEnv): EnvIssue[] {
   }
   if (!(env.FRONTEND_URL ?? '').toLowerCase().startsWith('https://')) {
     issues.push({ key: 'FRONTEND_URL', message: 'must use https:// in production', scope: 'production' });
+  }
+  // Without SMTP the verification email falls back to the console, which
+  // prints the address and the link with its one-time token: a personal
+  // contact and a secret in the log (SECURITY.md § Data Classification). That
+  // is the developer's mailbox, never production's, and a production server
+  // without SMTP could not verify anyone, so it does not start. Refused here
+  // rather than at the send, where a failure only some registrations reach
+  // would tell an existing address from a new one.
+  if (!(env.SMTP_HOST ?? '').trim() || !(env.SMTP_USER ?? '').trim() || !(env.SMTP_PASS ?? '').trim()) {
+    issues.push({ key: 'SMTP_HOST, SMTP_USER, SMTP_PASS', message: 'must be set in production so verification emails are sent rather than printed', scope: 'production' });
   }
   // Only when it says something: the built-in default is a contact that
   // answers, and an instance that overrides it publishes the new value to
