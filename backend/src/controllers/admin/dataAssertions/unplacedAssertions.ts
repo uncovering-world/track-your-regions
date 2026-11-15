@@ -8,18 +8,18 @@
  * centre, which no GADM division of Ireland reaches. The object then vanishes
  * from every region page while search and the map still have it.
  *
- * The nearest region is a good suggestion and not an answer, so this suggests
- * and decides nothing, as a place near a border is decided (#1054): a curator
- * adds the object to the region by hand, and that row is told apart from a
- * containment by its `assignment_type`. Measured on world view 5 on 2026-10-18,
- * 33 offered objects held no region. For 28 a leaf lies within
- * `SUGGEST_WITHIN_M`, and read as a traveller the nearest one is right for all
- * of them but Ha Long Bay, whose point lies 6.4 km from Hải Phòng and 10.1 km
- * from Quảng Ninh, the province the bay is in. The next region and its distance
- * are what tell that row from Gorée's, where the next region is 28 km away.
- * The other five are the open ocean, Phoenix Islands at 86 km to Malpelo at
- * 355 km, and their nearest leaf names nothing a traveller would recognise as
- * theirs (#470).
+ * Placement now takes the nearest leaf itself where it is plain: within 25 km,
+ * with no other leaf within 1.5 times that distance (`place_shape_regions_expected()`,
+ * ADR-0207), so Gorée is in Dakar and the Golden Gate Bridge in California.
+ * What is left here is what that rule leaves: a point between two leaves
+ * nearly as near, which is usually a place on both sides (the Øresund Bridge,
+ * 3.1 km from Copenhagen and 4.5 km from Skåne, until its line places it), and
+ * the open sea, the Phoenix Islands at 86 km to Malpelo at 355 km, whose
+ * nearest leaf names nothing a traveller would recognise as theirs (#470).
+ * Those a curator decides, as a place near a border is decided (#1054): the
+ * curator adds the object to the region by hand, and that row is told apart
+ * from a containment by its `assignment_type`. The next region and its
+ * distance are what say which of the two a row is.
  */
 
 import { experienceOfferedToReaderSql, hideLostSql, offeredLocationSql } from '../../../db/readerPredicates.js';
@@ -98,10 +98,10 @@ function suggestion(s: AssertionRow): string {
  * it is to already know its name.
  *
  * The known cause is a matching gap rather than a defect in the roll-up — a
- * point that falls just outside every region's boundary (#469) or lies
- * offshore (#470) is placed nowhere at all. That is why the remedy is a
- * curator's manual claim or a better match, and why this number is expected to
- * be worked down rather than to be zero tomorrow. Each row names the nearest
+ * point between two leaves nearly as near, or far out at sea (#470), which the
+ * nearest-leaf rule leaves unplaced on purpose. That is why the remedy is a
+ * curator's manual claim or a line that places it, and why this number is
+ * expected to be worked down rather than to be zero tomorrow. Each row names the nearest
  * leaf of every placed world view within `SUGGEST_WITHIN_M` and the next one,
  * the nearest first, so a curator starts with the rows that are quickest to settle.
  *
@@ -118,10 +118,10 @@ const heldByNoRegion: CatalogueAssertion = {
   kind: 'invariant',
   meaning:
     'The object cannot be found by browsing: no region page lists it, though search and the map '
-    + 'still have it. Usually a point that fell outside every boundary (#469) or lies offshore '
+    + 'still have it. Placement takes the nearest region of a point within 25 km when no other region is '
+    + 'nearly as near, so what is left is a point between two regions nearly as near, or far out at sea '
     + `(#470). Where a region lies within ${SUGGEST_WITHIN_M / 1000} km the row names the nearest and the next: a curator `
-    + 'who agrees adds the object to that region by hand, and one who does not adds it to the right one. '
-    + 'Nothing is placed without a curator.',
+    + 'adds the object to the right one by hand.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                e.external_id AS external_id,
@@ -198,6 +198,36 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
 };
 
 /**
+ * A place whose outline lies more than a kilometre from its point.
+ *
+ * Such an outline is another object of the same name, which the site door
+ * matched by its item: the Pergamon Altar stands in Berlin and its outline is
+ * the ancient city's in Izmir, 1,827 km away; Trelleborg's is the Swedish
+ * town's, 119 km from the Danish fortress. It places nothing
+ * (`outline_reaches_place()`, ADR-0207), so the place keeps the regions its
+ * point gives, but it is still drawn around a place it is not. 100 places on
+ * the development catalogue (2026-11-15).
+ */
+const outlineAwayFromItsPlace: CatalogueAssertion = {
+  id: 'outline-away-from-its-place',
+  area: 'regions',
+  title: 'A place whose outline lies away from its point',
+  kind: 'invariant',
+  meaning:
+    'The outline drawn for this place lies more than 1 km from its point, so it is most likely the outline '
+    + 'of another place of the same name. It does not decide the regions the place is listed in, but it is '
+    + 'still drawn. A developer looks at how the site door matched it.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               round(ST_Distance(e.boundary::geography, e.location::geography))::int AS metres
+          FROM experiences e
+         WHERE e.boundary IS NOT NULL AND NOT outline_reaches_place(e.boundary, e.location)
+         ORDER BY metres DESC, e.name`,
+  describe: row => `${text(row, 'experience_name')}: its outline lies ${distance(count(row, 'metres'))} `
+    + `from its point (experience ${count(row, 'experience_id')})`,
+};
+
+/**
  * A place's automatic region row its points no longer give, a row they give
  * that the place lacks, or a row whose listing says otherwise.
  *
@@ -212,11 +242,11 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
 const placeRegionsOutOfStep: CatalogueAssertion = {
   id: 'place-regions-out-of-step',
   area: 'regions',
-  title: 'A place whose regions no longer match its points',
+  title: 'A place whose regions no longer match where it lies',
   kind: 'invariant',
   meaning:
-    'The regions this place is listed in no longer match where its points lie, or what readers may see '
-    + 'of them. A change skipped the update that keeps the two together. Running Region Assignment for '
+    'The regions this place is listed in no longer match where its points and its outline lie, or what '
+    + 'readers may see of them. A change skipped the update that keeps the two together. Running Region Assignment for '
     + 'the world view brings them back.',
   sql: `WITH expected AS (
           SELECT x.experience_id, x.region_id, x.listing
@@ -239,8 +269,8 @@ const placeRegionsOutOfStep: CatalogueAssertion = {
   describe: row => {
     const held = { '': 'is not listed', offered: 'is listed for readers' }[text(row, 'held_listing')]
       ?? 'is listed for curators only';
-    const expected = { '': 'its points do not put it there', offered: 'its points list it for readers' }[
-      text(row, 'expected_listing')] ?? 'its points list it for curators only';
+    const expected = { '': 'where it lies does not put it there', offered: 'where it lies lists it for readers' }[
+      text(row, 'expected_listing')] ?? 'where it lies lists it for curators only';
     return `${text(row, 'experience_name')} in ${text(row, 'region_name')} ${held}, but ${expected} `
       + `(experience ${count(row, 'experience_id')})`;
   },
@@ -296,5 +326,5 @@ const wholeLeavesOutOfStep: CatalogueAssertion = {
 };
 
 export const unplacedAssertions: CatalogueAssertion[] = [
-  heldByNoRegion, offeredPlaceInNoRegion, placeRegionsOutOfStep, wholeLeavesOutOfStep,
+  heldByNoRegion, offeredPlaceInNoRegion, outlineAwayFromItsPlace, placeRegionsOutOfStep, wholeLeavesOutOfStep,
 ];
