@@ -22,6 +22,7 @@ const ACROPOLIS: ExperienceDetailRow = {
   source_description: null, kinds: [ACROPOLIS_IN_ARCHAEOLOGY],
   part_of_id: null, part_of_name: null, part_of_point_id: null, part_of_places: null, part_of_kind_id: null, part_of_regions: null,
   has_own_point: true,
+  leaf_count: null,
 };
 
 describe('experienceDetailOf', () => {
@@ -81,7 +82,7 @@ const ACROPOLIS_ROW: ExperienceListRow = {
   id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', subtitle: null, description: null, description_source: null, description_adapted: false, type: 'site',
   kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
   image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263, focus: null,
-  in_danger: false, danger_since: null, location_count: 1, cast_points: false, has_parts: false, treasure_count: 0, finds_count: 6,
+  in_danger: false, danger_since: null, location_count: 1, cast_points: false, has_parts: false, leaf_count: null, treasure_count: 0, finds_count: 6,
   source_membership: 'present', existence: 'extant', missing_since: null, is_new: false,
 };
 
@@ -102,11 +103,11 @@ describe('experienceOf', () => {
     // its row is framed by the three, and stands at none of them.
     const seville = { bbox: [-5.993096, 37.383833, -5.991556, 37.385742], anchorPoint: [-5.992326, 37.384788] };
     const row = {
-      ...ACROPOLIS_ROW, id: 1175, name: 'Cathedral, Alcázar and Archivo de Indias in Seville', has_parts: true,
+      ...ACROPOLIS_ROW, id: 1175, name: 'Cathedral, Alcázar and Archivo de Indias in Seville', has_parts: true, leaf_count: 3,
       longitude: null, latitude: null, focus: { ...seville, extra: 1 } as unknown as ExperienceListRow['focus'],
     };
     const wire = JSON.parse(JSON.stringify(experienceOf(row)));
-    expect(wire).toMatchObject({ longitude: null, latitude: null, focus: seville });
+    expect(wire).toMatchObject({ longitude: null, latitude: null, focus: seville, leaf_count: 3 });
     expect(wire.focus).not.toHaveProperty('extra');
     expect(Experience.safeParse(wire).success).toBe(true);
   });

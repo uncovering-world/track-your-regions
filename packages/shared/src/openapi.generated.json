@@ -26192,6 +26192,19 @@
             "type": "boolean",
             "description": "A whole shown by its parts, such as a serial site: its visit is read from its parts, which are ticked one by one, so its row shows the state and ticks nothing (#2120)."
           },
+          "leaf_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many offered leaves the place has, the N of a whole's \"k of N\" (ADR-0206): places below it at any depth with no parts of their own and a point a reader is shown, each counted once. The Struve Geodetic Arc counts 34. Null on a place with none, such as an edition, whose casts are its own points, or a whole whose parts all wait for a curator."
+          },
           "treasure_count": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -26278,6 +26291,7 @@
           "location_count",
           "cast_points",
           "has_parts",
+          "leaf_count",
           "treasure_count",
           "finds_count",
           "source_membership",
@@ -26655,6 +26669,19 @@
           "has_own_point": {
             "type": "boolean",
             "description": "Whether the place shows a point of its own a reader may see. On a whole, a tick on that point is a visit on the whole itself, as on the point named for the whole of the City of Graz beside its historic centre, so its card offers no separate \"visited, not sure which part\" (#2120)."
+          },
+          "leaf_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many offered leaves the place has, the N of a whole's \"k of N\" (ADR-0206): places below it at any depth with no parts of their own and a point a reader is shown, each counted once. The Struve Geodetic Arc counts 34. Null on a place with none, such as an edition, whose casts are its own points, or a whole whose parts all wait for a curator."
           }
         },
         "required": [
@@ -26693,7 +26720,8 @@
           "source_description",
           "regions",
           "part_of",
-          "has_own_point"
+          "has_own_point",
+          "leaf_count"
         ],
         "additionalProperties": false,
         "description": "One object, as its own page reads it."

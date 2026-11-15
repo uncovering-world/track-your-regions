@@ -2638,6 +2638,8 @@ export interface Experience {
   cast_points: boolean;
   /** A whole shown by its parts, such as a serial site: its visit is read from its parts, which are ticked one by one, so its row shows the state and ticks nothing (#2120). */
   has_parts: boolean;
+  /** How many offered leaves the place has, the N of a whole's "k of N" (ADR-0206): places below it at any depth with no parts of their own and a point a reader is shown, each counted once. The Struve Geodetic Arc counts 34. Null on a place with none, such as an edition, whose casts are its own points, or a whole whose parts all wait for a curator. */
+  leaf_count: number | null;
   /**
      * Offered and published links to works.
      * @minimum -9007199254740991
@@ -2945,6 +2947,8 @@ export interface ExperienceDetail {
   part_of: ExperienceDetailPartOf;
   /** Whether the place shows a point of its own a reader may see. On a whole, a tick on that point is a visit on the whole itself, as on the point named for the whole of the City of Graz beside its historic centre, so its card offers no separate "visited, not sure which part" (#2120). */
   has_own_point: boolean;
+  /** How many offered leaves the place has, the N of a whole's "k of N" (ADR-0206): places below it at any depth with no parts of their own and a point a reader is shown, each counted once. The Struve Geodetic Arc counts 34. Null on a place with none, such as an edition, whose casts are its own points, or a whole whose parts all wait for a curator. */
+  leaf_count: number | null;
 }
 
 /**

@@ -42,7 +42,7 @@ import type {
   experienceRegionCountsQuerySchema, experienceSearchQuerySchema, experiencesByRegionQuerySchema,
   idParamSchema, regionIdParamSchema,
 } from '../../types/index.js';
-import { showsOwnPointSql } from '../../db/visits.js';
+import { leafCountSql, showsOwnPointSql } from '../../db/visits.js';
 
 /**
  * Get single experience by ID
@@ -171,6 +171,8 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       -- A point of its own a reader may see: on a whole, the point a tick
       -- on which is the whole's own visit (#2120).
       ${showsOwnPointSql('e.id')} AS has_own_point,
+      -- The N of its "k of N": its offered leaves, null on a place with none (ADR-0206).
+      ${leafCountSql('e.id')} AS leaf_count,
       CASE WHEN pw.id IS NOT NULL THEN
         (SELECT min(own.id) FROM experience_locations own WHERE own.experience_id = e.id) END AS part_of_point_id,
       -- Every kind the place is offered in, none the primary one (#1245).
