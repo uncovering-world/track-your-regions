@@ -14,6 +14,7 @@ import {
 import { queryKeys } from '../api/queryKeys';
 import { noteRemovedVisits, noteTicked, writeOrigin } from '../components/shared/visitRemovals';
 import type { VisitedStatus } from '../api/visited';
+import type { WholeProgress } from '@tyr/shared/visits';
 
 /**
  * Hook for managing experience-level visited status (backward compatible)
@@ -48,6 +49,16 @@ export function useVisitedExperiences(kindId?: number) {
   const isWholeTicked = useCallback(
     (experienceId: number) => wholeTickedIdsSet.has(experienceId), [wholeTickedIdsSet],
   );
+  // How far through each whole the traveller is, over its offered leaves
+  // (ADR-0206): one entry per whole they have been to, the same object from
+  // render to render while the read stands, so a memoised row keeps its memo.
+  const progressById = useMemo(
+    () => new Map((data?.wholeProgress ?? []).map(entry => [entry.experienceId, entry])),
+    [data?.wholeProgress],
+  );
+  const progressOf = useCallback(
+    (experienceId: number): WholeProgress | undefined => progressById.get(experienceId), [progressById],
+  );
 
   // Mark as visited mutation
   const markVisitedMutation = useMutation({
@@ -78,6 +89,7 @@ export function useVisitedExperiences(kindId?: number) {
     partialIds: partialIdsSet,
     visitedStatusOf,
     isWholeTicked,
+    progressOf,
     visitedCount: data?.total || 0,
     isLoading,
     refetch,

@@ -32,6 +32,11 @@ export function invalidateExperiences(
   queryClient.invalidateQueries({ queryKey: queryKeys.discover.experiencesAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.discover.regionCountsAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.experiences.all });
+  // The traveller's visit read holds each whole's count (`wholeProgress`), whose
+  // N is the whole's offered leaves: a part taken out, published or refused
+  // changes it. One request per signed-in reader, and only on a curator's write,
+  // never on a tick (`invalidateVisitedStatus` is that one).
+  queryClient.invalidateQueries({ queryKey: queryKeys.visited.experiencesAll });
   // Manual curation can change the current side of a pending proposal, its
   // claims, or which questions remain. Refresh the list and map together.
   queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
