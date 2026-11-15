@@ -297,11 +297,36 @@ on every statement that writes a point and on a record that moves to another pla
 one of them is published, turned down while none is and every one still asked about is refused,
 missing and former once all of them are. *Lost* stays the part's own. Migration 250 writes it on
 every part's record: on the development catalogue (2026-11-15, a dry run of its rule) 75 parts nobody has read, Wudang's
-45 among them, and 13 withdrawn lines, 11 judged former. The readers still ask the points; the
-predicates the record is asked by are `partRecordShownSql` (`readerPredicates.ts`),
-`partRecordUnreadSql` and `partRecordWithdrawnSql` (`membership.ts`), and the catalogue check
-`part-gate-out-of-step` holds the two readings to each other until the points go (#2124). The
-record opens no card of its own. Nothing reads it as a kind:
+45 among them, and 13 withdrawn lines, 11 judged former. The predicates the record is asked by
+are `partRecordShownSql` (`readerPredicates.ts`), `partRecordUnreadSql` and
+`partRecordWithdrawnSql` (`membership.ts`), and the catalogue check `part-gate-out-of-step` holds
+the two readings to each other until the points go (#2124). Two readers ask the record:
+- **The review queue asks whether a part is unread of its record** (`pointAskedUnreadSql`,
+  `waitingCounts.ts`). While a part's record is unread, each of its line points nobody turned down
+  stands for it on its site's card. Every other point is asked by its own state: a museum's own
+  point, an edition's casts, another kind's point on a part, and a second unread point of a part
+  already read (El Silencio's duplicate on the Diquís stone spheres), which is a move or a
+  duplicate and stays the point's question until the writers write the record. The queue's
+  `contents` key and its date, the card's list of points, the counts by source, *Publish all
+  waiting*, the batch answer, the refusal of unread contents and what a publish reaches all
+  compose it. The line points of every unread part come from one set the planner hashes once per
+  statement: a lookup per point cost the queue's keys 46 % on the development catalogue. The set
+  reads its own partial index (`idx_source_records_unread_parts`, migration 251), and
+  `is_part_line_point()` is parallel safe there, since a function left unsafe keeps the whole
+  statement out of a parallel plan.
+- **A reader asks whether a part is shown of its record** too (`partOfferedSql`): read, not turned
+  down and its line still listed (`partRecordListedSql`; `partRecordShownSql` is the form that also
+  asks whether the part still stands, which a by-id read does not). The point a reader is shown
+  stays asked beside the record, as before, since a curator's *lost* on a line point and a merge
+  folding every line point are written on the point, which the record does not follow. A part no
+  source records in its whole, one a curator's word or a Wikidata statement made (the Giralda in
+  Seville's site), is shown by its point alone.
+
+The refused-parts list and the take-back still read the row's refusal mark, which is what the
+take-back clears until the writers write the record. On the development catalogue (2026-11-15)
+both readings ask the same: the queue's keys and the counts by source are identical to the
+points', and the same 5,557 of the 5,645 parts are shown. The record opens no card of its own.
+Nothing reads it as a kind:
 - `backend/src/db/membership.ts` states the test: `kindRecordSql` (`kind_id IS NOT NULL`) over a
   record or a source, composed into `membershipOfferedSql`, the place-level forms, the kind a row is
   shown under, a place's sources and `placeHoldsKindSql`, which is what "a part that holds a kind of
@@ -9221,6 +9246,10 @@ What every card shows about its object — `objectContextSelectSql`, `countedWor
 moved to `reviewQueueContext.ts` with the page size, since a definition two files build rows
 from is the only arrangement in which the cards cannot drift apart.
 
+A serial site's part is asked by its record in the site, not by its point (`pointAskedUnreadSql`,
+ADR-0213, § A part's record in its whole): the card still lists the part's line points, which are
+what a publish writes until the writers write the record.
+
 A location's own visibility matters here too: `offeredLocationSql()` — both terms — alongside
 `el.curation_state = 'pending'`, because a point the source has withdrawn — or one a curator has
 declared gone from the world — is not "unread" in any sense a reader would ever notice: every
@@ -10087,10 +10116,12 @@ NULL` too, so a refused point drops out of `experience_location_regions` when th
 re-places the object after its commit (`placeAfterRelease`, the reason the route carries
 `authenticatedLimiter`); a point that was holding a replaced pin keeps holding it, so readers
 keep that pin (ADR-0083). "Unread and still asked about" is spelled once —
-`unreadPointSql` and `unreadLinkSql` in `waitingCounts.ts` — and composed by
+`pointAskedUnreadSql` and `unreadLinkSql` in `waitingCounts.ts` — and composed by
 `contentsRowsSql`, the keys union, the contents card, `contentsWaitingSql` and the three
 `publishContents` statements, so a later whole-object publish cannot release what a curator
-turned down. A point is unread while `curation_state = 'pending' AND refused_at IS NULL`; a
+turned down. `pointAskedUnreadSql` asks a serial site's part's line point by the part's record
+(ADR-0213), and every other point by `unreadPointSql`, its point-only half: a point is unread
+while `curation_state = 'pending' AND refused_at IS NULL`; a
 link on either of its two axes, `(et.curation_state = 'pending' OR t.curation_state = 'pending')
 AND et.refused_at IS NULL`, since the link says the work is *here* and the work says it is a
 work, and either unread keeps the question open. The mark sits on the link, not the work: "not
