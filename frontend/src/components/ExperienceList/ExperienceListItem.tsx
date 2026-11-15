@@ -35,6 +35,7 @@ import type { VisitedStatus } from '../../api/visited';
 import type { WholeProgress } from '@tyr/shared/visits';
 import { placesCount, wholeCountLabel, type VisitCount } from '../shared/visitWords';
 import { LazyVisitDateLine } from '../shared/lazyVisitTrips';
+import { WholeVisitAsk } from '../shared/WholeVisitAsk';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -516,6 +517,9 @@ function ExperienceListItemComponent({
         />
       )}
       {showCheckbox && <LazyVisitDateLine at={experience.id} />}
+      {/* Which places, after "Visited, not sure which part" on the open card:
+          under the date that tick offers, never between it and the card (#2121). */}
+      {showCheckbox && experience.has_parts && <WholeVisitAsk experienceId={experience.id} inset />}
     </Box>
   );
 }

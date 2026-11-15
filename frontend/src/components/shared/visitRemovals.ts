@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { matchMutation, type QueryClient } from '@tanstack/react-query';
 import type { RemovedVisit, TickedPlace } from '../../api/client.generated';
 import { queryKeys } from '../../api/queryKeys';
+import { forgetWholeAsks } from './wholeAsk';
 
 /**
  * What the traveller's last visit write leaves on screen (#2120, ADR-0202),
@@ -107,12 +108,13 @@ export function clearRemovedVisits(): void {
 let forgetOffer: (() => void) | undefined;
 let onRemoved: ((places: number[]) => void) | undefined;
 
-/** Who is signed in changed: nothing the last traveller's visit writes left stays. */
+/** Who is signed in changed: nothing the last traveller's visit writes left stays, their questions about a whole's places included. */
 export function forgetTraveller(): void {
   signIn += 1;
   keepRemoval(null);
   line = null;
   forgetOffer?.();
+  forgetWholeAsks();
   try {
     sessionStorage.removeItem(OFFER_SILENCE_KEY);
   } catch {

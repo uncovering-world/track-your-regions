@@ -411,6 +411,7 @@ function ExperienceExpandedDetailsComponent({
       {/* Multi-location list */}
       {listsPlaces && locationsWithRegionInfo.length > 0 && (
         <CardLocationList
+          experienceId={experience.id}
           objectName={experience.name}
           inRegionLocs={inRegionLocs}
           outOfRegionLocs={outOfRegionLocs}
@@ -471,8 +472,11 @@ function ExperienceExpandedDetailsComponent({
           <VisitedStatusButton visitedStatus={visitedStatus} count={visitCount} />
         )}
         {/* A whole ticked without naming a part, on its card and never its row. */}
-        {isAuthenticated && showCheckbox && offersWholeTick(experience, details) && (
+        {isAuthenticated && showCheckbox && offersWholeTick(
+          experience, details, { ticked: isWholeTicked(experience.id), progress: progressOf(experience.id) },
+        ) && (
           <WholeVisitButton
+            experienceId={experience.id}
             disabled={visitWritePending}
             ticked={isWholeTicked(experience.id)}
             onToggle={() => onTogglePlace(experience.id, !isWholeTicked(experience.id))}

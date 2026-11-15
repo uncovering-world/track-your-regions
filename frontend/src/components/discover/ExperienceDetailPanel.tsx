@@ -64,6 +64,7 @@ import { inDangerLabel } from '../../utils/dangerLabel';
 import { queryKeys } from '../../api/queryKeys';
 import { VISIT_BUTTON_LABEL, cardVisitCount, offersWholeTick } from '../shared/visitWords';
 import { WholeVisitButton } from '../shared/WholeVisitButton';
+import { WholeVisitAsk } from '../shared/WholeVisitAsk';
 import { LazyTripsSection } from '../shared/lazyVisitTrips';
 
 interface ExperienceDetailPanelProps {
@@ -357,13 +358,19 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         <Divider sx={{ my: 2 }} />
 
         {/* A whole ticked without naming a part, on its panel as on Map mode's card. */}
-        {isAuthenticated && offersWholeTick(experience, details) && (
+        {isAuthenticated && offersWholeTick(
+          experience, details, { ticked: isWholeTicked(experience.id), progress: progressOf(experience.id) },
+        ) && (
           <Box sx={{ mb: 2 }}>
             <WholeVisitButton
+              experienceId={experience.id}
               disabled={visitWritePending}
               ticked={isWholeTicked(experience.id)}
               onToggle={() => (isWholeTicked(experience.id) ? unmarkVisited(experience.id) : markVisited(experience.id))}
             />
+            {/* Which places, under the tick: the date it offers stands under
+                the place's row in the list, so nothing comes between (#2121). */}
+            <WholeVisitAsk experienceId={experience.id} />
           </Box>
         )}
 

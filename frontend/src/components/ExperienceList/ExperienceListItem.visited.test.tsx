@@ -6,17 +6,25 @@
  * on its card.
  */
 
-import { describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HoverProvider } from '../../hooks/useHoverContext';
 import type { Experience, RegionExperienceLocation } from '../../api/experiences';
 import type { VisitedStatus } from '../../api/visited';
 import type { WholeProgress } from '@tyr/shared/visits';
 import { ExperienceListItem } from './ExperienceListItem';
+import { askWhichPlaces, forgetWholeAsks } from '../shared/wholeAsk';
 
 // The date line under a row reads who is signed in: no one, here.
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: false, user: null }) }));
+// The question under a whole's row reads the visit read: the Arc ticked as a whole, "? of 34".
+vi.mock('../../hooks/useVisitedExperiences', () => ({
+  useVisitedExperiences: () => ({
+    isWholeTicked: () => true,
+    progressOf: () => ({ visited: null, total: 34 }),
+  }),
+}));
 
 const BILBAO = 101;
 const OTTAWA = 102;
@@ -168,5 +176,27 @@ describe("the count on a row (ADR-0206)", () => {
     renderRow('visited');
     expect(screen.getByText('2 places')).toBeTruthy();
     expect(screen.queryByText('1/2')).toBeNull();
+  });
+});
+
+/**
+ * The question after "Visited, not sure which part" on the open card (#2121)
+ * stands under the row, below the line offering a date for that tick, so
+ * nothing comes between the date and the card.
+ */
+describe("the question under a whole's row", () => {
+  afterEach(() => { forgetWholeAsks(); });
+
+  it('stands under the row once its card asked', () => {
+    renderRow('visited', { whole: true, visited: [], progress: { visited: null, total: 34 } });
+    expect(screen.queryByText('Which places were you at?')).toBeNull();
+    act(() => askWhichPlaces(1093));
+    expect(screen.getByText('Which places were you at?')).toBeTruthy();
+  });
+
+  it('never stands under a place of no parts', () => {
+    renderRow('visited');
+    act(() => askWhichPlaces(1581));
+    expect(screen.queryByText('Which places were you at?')).toBeNull();
   });
 });

@@ -11,7 +11,7 @@ describe("a whole's own tick", () => {
   it('ticks the whole when it is not ticked, without reaching the card under it', () => {
     const toggle = vi.fn();
     const card = vi.fn();
-    render(<div onClick={card}><WholeVisitButton ticked={false} onToggle={toggle} /></div>);
+    render(<div onClick={card}><WholeVisitButton experienceId={847} ticked={false} onToggle={toggle} /></div>);
 
     const button = screen.getByRole('button', { name: 'Visited, not sure which part' });
     expect(button.getAttribute('aria-pressed')).toBe('false');
@@ -21,14 +21,14 @@ describe("a whole's own tick", () => {
   });
 
   it('says it is pressed once the whole is ticked', () => {
-    render(<WholeVisitButton ticked onToggle={() => {}} />);
+    render(<WholeVisitButton experienceId={847} ticked onToggle={() => {}} />);
     expect(screen.getByRole('button', { name: 'Visited, not sure which part' }).getAttribute('aria-pressed')).toBe('true');
   });
 });
 
 describe("a whole's own tick while a visit write is on its way", () => {
   it('waits for it', () => {
-    render(<WholeVisitButton ticked={false} onToggle={() => {}} disabled />);
+    render(<WholeVisitButton experienceId={847} ticked={false} onToggle={() => {}} disabled />);
     expect(screen.getByRole('button', { name: 'Visited, not sure which part' })).toBeDisabled();
   });
 });
