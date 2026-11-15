@@ -57,7 +57,8 @@ export async function maybePromoteToAdmin(userId: number, accountEmail: string, 
     await client.query('COMMIT');
     if (promoted) {
       // Audit: structured, greppable grant record. (A dedicated audit table is a follow-up.)
-      console.warn(`🔑 ADMIN GRANT: user id=${userId} email=${normalizedEmail} reason=${adminEmail ? 'ADMIN_EMAIL match' : 'first-user dev fallback'}`);
+      // The user id names the grant; the address stays out of the log (SECURITY.md § Data Classification).
+      console.warn(`🔑 ADMIN GRANT: user id=${userId} reason=${adminEmail ? 'ADMIN_EMAIL match' : 'first-user dev fallback'}`);
     } else if (shouldPromote) {
       console.warn(`⚠️  ADMIN GRANT SKIPPED: user id=${userId} not found (UPDATE matched 0 rows)`);
     }
