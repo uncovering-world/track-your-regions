@@ -49,7 +49,7 @@ Every source declares the shape of the ids it knows a place by (`experience_sour
 
 **"Holds treasures" is derived, never stored** (ADR-0052 decision 8). A place says how many things there are to look at inside it from the offered links themselves: `treasure_count` is counted per row beside the region read (`experienceRegionQuery.ts`), by the same predicates the treasures endpoint uses — `offeredLinkSql` for a link the source still places (ADR-0044) and the published state on both the link and the work (ADR-0025) — and `TreasuresInsideChip` draws it as "3 treasures inside" on the map-mode row, the Discover card and both hover cards. No column and no flag a run has to remember to keep in step. The chip is silent for the kinds whose row lists its holdings already — art museums (`kind_id` 2) and Archaeology (5), whose museums hold finds the row lists the same way — where the count is the point of the card rather than a side note; every other kind that links treasures gets it wherever the count is above zero. A church admitted for its own fame counts zero, one admitted for its *Pietà* counts it.
 
-**How two rows become one place** is [ADR-0046](../decisions/0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md). A place has an identity of its own, assigned by us; a source's id — a Wikidata item, a World Heritage id — is a property of a membership, and for a serial World Heritage site identity is decided per location. Three signals are universal: an equal Wikidata item merges without a question, and coordinates within a threshold that grows with the place's extent, plus a name at trigram similarity 0.5 or better or one name's significant words all standing in the other's ([ADR-0120](../decisions/0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md)), produce a proposal a curator confirms through the same gate as every other open decision; distance alone proposes nothing, and each kind adds its threshold and any signal of its own. A merge keeps both rows in the history and can be undone. A second relation, **part of** (the Neues Museum on Museum Island, a monument on Red Square), comes from Wikidata's *part of* / *location* chains, from a site's boundary polygons once #714 sources them, or from geometry as a curator's proposal; a visit to the part marks the whole visited, never the reverse — and across a serial World Heritage site a visit is recorded on the component's part place, and the site reads it partly visited until every part is (#2120). **The place and the membership exist since #822, the merge and the equal-item signal since #1247 (§ Review Queue, *Two rows that are one place are merged*), the near-pair signal's proposals since #1249 (§ Review Queue, *Near places with similar names*), and "part of" for a serial site's components alone (ADR-0100)**: `metadata.wikidataQid` is written by the syncs and read only to label or hide it on a curator's card (`fieldMeaning.tsx`), never to match one row with another — the item a merge reads is the membership's (`membershipItemSql`); a run finds its places by the id its membership carries (ADR-0084, #1244), and whether a source still lists a place, the points and works it placed, the type within a kind and its view of the place's name, subtitle, picture, coordinate and Wikipedia article are its membership's (#1251, #1252, #1253, #1256, #1246, #1975); and `user_visited_experiences` records a visit against the place ticked, and a whole reads its direct parts' visits (#2120, § User visits). The rows that the signals already match are listed on #780 and #755.
+**How two rows become one place** is [ADR-0046](../decisions/0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md). A place has an identity of its own, assigned by us; a source's id — a Wikidata item, a World Heritage id — is a property of a membership, and for a serial World Heritage site identity is decided per location. Three signals are universal: an equal Wikidata item merges without a question, and coordinates within a threshold that grows with the place's extent, plus a name at trigram similarity 0.5 or better or one name's significant words all standing in the other's ([ADR-0120](../decisions/0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md)), produce a proposal a curator confirms through the same gate as every other open decision; distance alone proposes nothing, and each kind adds its threshold and any signal of its own. A merge keeps both rows in the history and can be undone. A second relation, **part of** (the Neues Museum on Museum Island, a monument on Red Square), comes from Wikidata's *part of* / *location* chains, from a site's boundary polygons once #714 sources them, or from geometry as a curator's proposal; a visit to the part marks the whole visited, never the reverse — and across a serial World Heritage site a visit is recorded on the component's part place, which makes the site visited, with a count of how much of it is left (#2120, ADR-0206). **The place and the membership exist since #822, the merge and the equal-item signal since #1247 (§ Review Queue, *Two rows that are one place are merged*), the near-pair signal's proposals since #1249 (§ Review Queue, *Near places with similar names*), and "part of" for a serial site's components alone (ADR-0100)**: `metadata.wikidataQid` is written by the syncs and read only to label or hide it on a curator's card (`fieldMeaning.tsx`), never to match one row with another — the item a merge reads is the membership's (`membershipItemSql`); a run finds its places by the id its membership carries (ADR-0084, #1244), and whether a source still lists a place, the points and works it placed, the type within a kind and its view of the place's name, subtitle, picture, coordinate and Wikipedia article are its membership's (#1251, #1252, #1253, #1256, #1246, #1975); and `user_visited_experiences` records a visit against the place ticked, and a whole is visited once a place below it is, at any depth (#2120, ADR-0206, § User visits). The rows that the signals already match are listed on #780 and #755.
 
 ### The place and its memberships (#822)
 
@@ -435,9 +435,9 @@ check of a part's uncredited picture. On the development catalogue on 2026-11-14
 
 A visit to a component is recorded on its part, as a place visit in `user_visited_experiences`: a
 merge with another kind's place reconciles it as any two places' visits. Nothing is written for the
-site, which reads its parts' visits (#2120, § User visits): Map mode, Discover and the site's
-progress count a part's visit as its point's, once, and the site is partly visited until every part
-is. A tick on a point the site holds as its own, a component that stands for the whole site, is a
+site, which reads its parts' visits (#2120, § User visits): one visited part makes the site
+visited, and its count over its offered leaves says how much of it is left (ADR-0206). A tick on a
+point the site holds as its own, a component that stands for the whole site, is a
 visit on the site, and stays there when a later run parts that point. The curator's cards about a
 withdrawn, lost or refused point weigh `someoneVisitedPointSql` (`db/visits.ts`: a visit on the
 point's own place); the catalogue's watch on visits no reader is shown counts visits by place, never
@@ -6800,19 +6800,22 @@ What a traveller has visited is read one way, in `db/visits.ts`, for Map mode an
 
 - a point is visited when its own place has a visit (`liveVisitsSql`), and a place's points are
   its own and its direct parts', as every reader shows them (`pointsShownSql`);
-- a place's state is `computeVisitedStatus` (`@tyr/shared/visits`, ADR-0065) over the points a
-  reader is shown of it: `visited` when all are visited (and a ticked place a reader is shown no
-  point of), `partial` when some are or the place is ticked as a whole, `not_visited` otherwise.
-  Haghpat and Sanahin with two of its three monasteries visited is `partial`, in the status mark
-  its row and its Discover card show in place of a checkbox, and in the card's badge. A place of no
-  parts shows a checkbox, ticked or not. An edition's casts are
-  its own points, so one tick marks them all (ADR-0145 decision 5);
-- `GET /visited-experiences/ids` answers `visitedIds` (visited wholly or in part) and
-  `partialIds` (in part), over the places visited and every whole above them at any depth
-  (`visitStatesSql`, `place_ancestors()`); the row (`ExperienceListItem`), the card
-  (`ExperienceExpandedDetails`), and Discover's list and panel take the state from it
-  (`useVisitedExperiences().visitedStatusOf`), so the state is the place's own in every region's
-  list;
+- a place's state has two values (`VISITED_STATUSES`, `@tyr/shared/visits`, ADR-0206 decision
+  1): `visited` once the place is ticked itself or a place below it is, at any depth, and
+  `not_visited` otherwise. The places visited are one statement, `visitedPlacesCtesSql`: the
+  places ticked and every whole above one (`place_ancestors()`). Nothing is partly visited:
+  Haghpat and Sanahin with two of its three monasteries visited is `visited`, in the status mark
+  its row and its Discover card show in place of a checkbox, and how much of it is left is its
+  count (below). A visit to a part since withdrawn still makes its whole visited, and the whole
+  reads "?" of the parts still offered when none of those is visited. A place of no
+  parts shows a checkbox, ticked or not. An edition's casts are its own points, so one tick marks
+  them all (ADR-0145 decision 5);
+- `GET /visited-experiences/ids` answers `visitedIds`, the places the traveller ticked and every
+  whole above them at any depth (`visitStatesSql`, `place_ancestors()`); the row
+  (`ExperienceListItem`), the card (`ExperienceExpandedDetails`), and Discover's list and panel
+  take the state from it (`useVisitedExperiences().visitedStatusOf`), so the state is the place's
+  own in every region's list. `GET /:id/visited-status` answers the place's state from the same
+  statement, beside its points a reader is shown, each with its tick, and how many are ticked;
 - a whole's count is "k of N" over its offered leaves (ADR-0206): N is its rows of `whole_leaves`
   a reader is shown, k those whose place the traveller visited, and `wholeProgress`
   (`@tyr/shared/visits`) turns the two into the count, with k shown as "?" (null) when the whole is
@@ -6841,10 +6844,9 @@ both to `whole_leaves`), shows its state on its row as a mark that is not a
 control, and its parts are ticked one by one on its card or expanded row. On its card in Map
 mode, beside the count of its places in the region, *Mark all in region* and *Unmark all in region* (`markAllLocationsVisited` and
 `unmarkAllLocationsVisited` with the region) reach only the places with a point in that region,
-each shown only where it would change one. A whole is visited when every point it shows is, its own
-points included, and a tick on one of its own points is a visit on the whole: the City of Graz's
-point named for the whole site, beside its historic centre, is ticked in its list of places, and
-that row is the whole's. The whole's own tick, "I was there, I don't remember which part", is a
+each shown only where it would change one. A tick on one of a whole's own points is a visit on
+the whole: the City of Graz's point named for the whole site, beside its historic centre, is ticked
+in its list of places, and that row is the whole's. The whole's own tick, "I was there, I don't remember which part", is a
 button on the card of a whole that shows no point of its own (`WholeVisitButton`, offered where
 `offersWholeTick` reads `has_own_point` false off the detail read, `showsOwnPointSql` in
 `db/visits.ts`): one visit on the whole, which `wholeTickedIds` in `GET /visited-experiences/ids`
