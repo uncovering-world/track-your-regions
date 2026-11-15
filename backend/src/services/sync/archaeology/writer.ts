@@ -360,7 +360,9 @@ async function processSite(
       experienceId, item.qid, location?.lon ?? item.lon, location?.lat ?? item.lat,
       { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
     );
-    if (written.needsAssignment.length > 0 || written.unoffered > 0) {
+    // A re-traced outline places the site as a moved point does (ADR-0207).
+    const outlineMoved = changeSet.changedFields.some(field => field.field === 'boundary');
+    if (written.needsAssignment.length > 0 || written.unoffered > 0 || outlineMoved) {
       context.onLocationsChanged(experienceId);
     }
     locations = written.delta;

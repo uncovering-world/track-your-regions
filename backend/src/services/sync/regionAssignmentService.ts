@@ -7,9 +7,12 @@
  * A point is placed in the leaves that hold it, tested through their geometry
  * cut into pieces, and in the other regions only when no leaf holds it; every
  * ancestor's row comes from the tree (`directPlacementSql`, ADR-0054). A
- * place's rows, its parts' included, are then written by the database's
- * `refresh_place_regions()` from those point rows, the one statement of which
- * regions a place is in and whether a reader finds it there.
+ * place's own geometry is placed next, by the database's
+ * `refresh_place_shape_regions()`: its outline, its line, the nearest leaf of a
+ * point no region holds, its kind record's point (ADR-0207). A place's rows,
+ * its parts' included, are then written by `refresh_place_regions()` from
+ * both, the one statement of which regions a place is in and whether a reader
+ * finds it there.
  */
 
 import { Operation } from '../operationProgress.js';
@@ -327,10 +330,11 @@ async function assignAncestors(
 }
 
 /**
- * Step 4: write each place's rows from the point rows, its parts' included:
- * `refresh_place_regions()`, the database's one statement of a place's
- * regions (ADR-0197). Every place for the whole world view, else the source's
- * places and their parts, with the wholes they are parts of.
+ * Step 4: place each place by its own geometry (`refresh_place_shape_regions()`,
+ * ADR-0207), then write each place's rows from those and the point rows, its
+ * parts' included: `refresh_place_regions()`, the database's one statement of
+ * a place's regions (ADR-0197). Every place for the whole world view, else the
+ * source's places and their parts, with the wholes they are parts of.
  */
 async function refreshPlaceRegions(
   client: PoolClient,
@@ -339,12 +343,14 @@ async function refreshPlaceRegions(
   progress: AssignmentProgress
 ): Promise<void> {
   progress.status = 'denormalizing';
-  progress.statusMessage = 'Writing each place\'s regions from its points...';
-  progress.operation.step(STEP.denormalize, 'Writing each place\'s regions from its points');
+  progress.statusMessage = 'Writing each place\'s regions from where it lies...';
+  progress.operation.step(STEP.denormalize, 'Writing each place\'s regions from where it lies');
 
+  const places = sourceId ? ONE_SOURCE_PLACED : 'NULL';
+  const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
+  await client.query(`SELECT refresh_place_shape_regions(${places}, $1)`, params);
   const result = await client.query<{ written: number }>(
-    `SELECT refresh_place_regions(${sourceId ? ONE_SOURCE_PLACED : 'NULL'}, $1) AS written`,
-    sourceId ? [worldViewId, sourceId] : [worldViewId],
+    `SELECT refresh_place_regions(${places}, $1) AS written`, params,
   );
 
   progress.experienceAssignments = result.rows[0]?.written ?? 0;
@@ -354,7 +360,8 @@ async function refreshPlaceRegions(
 /**
  * The rebuild's steps, on the transaction the caller opened: clear the
  * automatic point rows, place every point again, carry the points up the
- * tree, write each place's regions from its points, and stamp the world view.
+ * tree, write each place's regions from where it lies (its points, its
+ * geometry rows and its record point, ADR-0207), and stamp the world view.
  * Answers false when a cancel stopped it between two steps, for the caller to
  * roll back.
  */
@@ -590,6 +597,9 @@ export async function assignRegionsForExperiences(
       ON CONFLICT (location_id, region_id) DO NOTHING
     `, params);
 
+    // Its own geometry after its points, since the nearest leaf is asked only
+    // of a place none of whose points a region holds (ADR-0207).
+    await client.query(`SELECT refresh_place_shape_regions(${THESE_PLACED}, $1)`, params);
     const refreshed = await client.query<{ written: number }>(
       `SELECT refresh_place_regions(${THESE_PLACED}, $1) AS written`, params,
     );

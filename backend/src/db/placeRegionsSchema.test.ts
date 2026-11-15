@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { repoFile } from '../testSupport/repoFile.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
+import { membershipAdmittedSql, kindRecordSql } from './membership.js';
 import { PLACE_POINT_ARMS } from './placePoints.js';
 
 /**
@@ -28,6 +29,9 @@ const migration = collapse(
 const leavesMigration = collapse(
   readFileSync(repoFile('db', 'migrations', '247-a-whole-knows-its-leaves.sql'), 'utf8'),
 );
+const geometryMigration = collapse(readFileSync(
+  repoFile('db', 'migrations', '243-a-place-is-placed-by-its-outline-and-its-nearest-region.sql'), 'utf8',
+));
 
 /** The body of one function, from its CREATE to the end of its dollar quote. */
 function functionBody(sql: string, name: string): string {
@@ -56,6 +60,35 @@ describe('the points that place a place', () => {
     expect(body).toContain('SELECT prt.whole_id, prt.part_id FROM experience_parts prt WHERE prt.whole_id = ANY(places)');
     expect(PLACE_POINT_ARMS).toHaveLength(2);
     expect(PLACE_POINT_ARMS[1].from).toMatch(/experience_parts prt\s+JOIN experience_locations el ON el\.experience_id = prt\.part_id/);
+  });
+});
+
+describe('the geometry that places a place (ADR-0207)', () => {
+  const shapes = functionBody(schema, 'place_shape_regions_expected');
+
+  it('is asked of the points placement places, by the terms a reader-facing read calls offered', () => {
+    expect(shapes).toContain(`WHERE ${collapse(offeredLocationSql('el'))} AND el.refused_at IS NULL`);
+  });
+
+  it('asks an outline whether it is the place\'s own before it places anything', () => {
+    expect(shapes).toContain('outline_reaches_place(s.boundary, s.location)');
+  });
+
+  it('places by a kind record\'s point only a place with no point of its own, by the terms a record is offered by', () => {
+    expect(shapes).toContain(`${kindRecordSql('m')} AND ${membershipAdmittedSql('m')}`);
+    expect(shapes).toContain('NOT EXISTS (SELECT 1 FROM experience_locations el WHERE el.experience_id = s.id)');
+  });
+
+  it('is written under the places\' region keys, taken before it is computed', () => {
+    const writer = functionBody(schema, 'refresh_place_shape_regions');
+    expect(writer.indexOf('PERFORM lock_place_regions(places)')).toBeGreaterThan(0);
+    expect(writer.indexOf('lock_place_regions')).toBeLessThan(writer.indexOf('place_shape_regions_expected'));
+  });
+
+  it('is read by the refresh, which still reads no geometry', () => {
+    const expected = functionBody(schema, 'place_regions_expected');
+    expect(expected).toContain('experience_shape_regions');
+    expect(expected).not.toMatch(/ST_|region_geom_pieces/);
   });
 });
 
@@ -119,10 +152,14 @@ describe('the triggers that call it', () => {
 });
 
 describe('the migration', () => {
-  it('declares what the schema declares', () => {
-    for (const name of ['place_shown_points', 'place_regions_expected', 'places_with_regions', 'place_regions_reach',
-      'lock_place_regions', 'refresh_place_regions', 'place_regions_follow_points', 'place_regions_follow_parts']) {
+  it('declares what the schema declares, each function as the latest migration that declares it', () => {
+    for (const name of ['place_shown_points', 'place_regions_reach', 'lock_place_regions', 'refresh_place_regions',
+      'place_regions_follow_points', 'place_regions_follow_parts']) {
       expect(functionBody(migration, name)).toBe(functionBody(schema, name));
+    }
+    for (const name of ['place_regions_expected', 'places_with_regions', 'outline_reaches_place',
+      'place_shape_regions_expected', 'refresh_place_shape_regions']) {
+      expect(functionBody(geometryMigration, name)).toBe(functionBody(schema, name));
     }
     expect(migration).toContain("CHECK (listing IN ('offered', 'fallback', 'scope'))");
     expect(migration).toContain("CHECK (assignment_type IS DISTINCT FROM 'manual' OR listing = 'offered')");
@@ -134,6 +171,16 @@ describe('the migration', () => {
     const before = migration.slice(0, backfill);
     expect(before.lastIndexOf('COMMIT;')).toBeGreaterThan(before.indexOf('ALTER TABLE experience_regions'));
     expect(before.lastIndexOf('BEGIN;')).toBeGreaterThan(before.lastIndexOf('COMMIT;'));
+  });
+
+  it('places every place by its geometry, then refreshes the ones it placed, after the shape has committed', () => {
+    const backfill = geometryMigration.indexOf('refresh_place_shape_regions(NULL, w.world_view_id)');
+    expect(backfill).toBeGreaterThan(0);
+    const before = geometryMigration.slice(0, backfill);
+    expect(before.lastIndexOf('COMMIT;')).toBeGreaterThan(before.indexOf('CREATE TABLE IF NOT EXISTS experience_shape_regions'));
+    expect(before.lastIndexOf('BEGIN;')).toBeGreaterThan(before.lastIndexOf('COMMIT;'));
+    expect(geometryMigration.indexOf('SELECT refresh_place_regions(ARRAY(SELECT DISTINCT experience_id FROM experience_shape_regions))'))
+      .toBeGreaterThan(backfill);
   });
 });
 
