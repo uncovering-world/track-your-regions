@@ -67,7 +67,8 @@ accepted debt, and a fresh checkout of the code inherits none.
 | places | Visits recorded against a place no reader-facing read offers | watch |
 | regions | An object offered to readers that no region holds | invariant |
 | regions | A place the source still offers that no region holds | invariant |
-| regions | A place whose regions no longer match its points | invariant |
+| regions | A place whose outline lies away from its point | invariant |
+| regions | A place whose regions no longer match where it lies | invariant |
 | regions | A region framed as the whole world while its geometry is not | invariant |
 | regions | A region whose anchor point is more than 500 km from its own geometry | watch |
 | regions | A parent region whose geometry covers less than nine tenths of what its children hold | invariant |
@@ -255,31 +256,42 @@ down (ADR-0053) is still offered on the source's terms but never to be
 published, and placement gives it no row for that reason — so the check carries
 `refused_at IS NULL`, or every refusal would read as a placement run that failed.
 
-The first of the pair also says where a curator would put the object
+Placement now takes the nearest leaf itself where the call is easy: within
+25 km, with no other leaf within 1.5 times that distance (ADR-0207,
+`experiences.md` § Region assignment), so the Island of Gorée, 14 m from Dakar
+with the next region 28 km away, is in Dakar. What the first of the pair lists
+is what that rule leaves, and it still says where a curator would put the object
 (`unplacedAssertions.ts`, #469). For every world view some placement has
 written into, its row names the nearest leaf within `SUGGEST_WITHIN_M` (30 km)
 and the next leaf within it, each with its distance on the sphere, and the rows
 come nearest first. The nearest region is a suggestion and decides nothing, as with a place
-near a border (#1054): a curator who agrees adds the object to that region by
-hand, and the row leaves the list. The next region is the confidence signal.
-The Island of Gorée is 14 m from Dakar with the next region 28 km away, which
-is an easy call. Ha Long Bay is 6.4 km from Hải Phòng and 10.1 km from Quảng
-Ninh, the province the bay is in, which is a real question. A point farther
-than 30 km from every leaf is the open ocean (#470), and the row says that no
-region is within reach. Measured on world view 5 on 2026-10-18: 33 objects in
-no region, 28 with a suggestion, and the statement takes about 1.5 s.
+near a border (#1054): a curator adds the object to the right region by hand,
+and the row leaves the list. The next region is what left the row here: the
+Øresund Bridge is 3.1 km from Copenhagen and 4.5 km from Skåne, and belongs to
+both. A point farther than 25 km from every leaf is the open ocean (#470):
+Malpelo's nearest leaf, 355 km off, is in Panama, and the island is Colombian.
+Measured on world view 5 on 2026-10-18: 33 objects in no region, 28 with a
+suggestion, and the statement takes about 1.5 s; the rule places most of them.
 
-The third (`place-regions-out-of-step`, `unplacedAssertions.ts`) holds a place's
-region rows to what their points give (ADR-0197). Nothing writes a place's
+`outline-away-from-its-place` lists the outlines that lie more than 1 km from
+their place's point (`outline_reaches_place()`, the test placement asks before
+an outline places anything). Such an outline is another object of the same
+name, which the Archaeology site door matched by its item: the Pergamon Altar's
+is the ancient city's in Izmir, Trelleborg's the Swedish town's. It places
+nothing, but it is still drawn around a place it is not. 100 on the development
+catalogue on 2026-11-15.
+
+`place-regions-out-of-step` (`unplacedAssertions.ts`) holds a place's
+region rows to what their points and its geometry give (ADR-0197, ADR-0207). Nothing writes a place's
 automatic rows of `experience_regions` but `refresh_place_regions()`, which
 placement and the triggers on a point's state and a part relation call; a write
 that skipped them (a trigger disabled for a bulk load, a placement that failed
 after its point rows) leaves a place listed where none of its points lies, missing
 from a region one does, or offered to readers where only an unread point puts
 it. The check compares every held automatic row, and every row the function
-expects (`place_regions_expected()` over `places_with_regions()`), and names each
-difference, saying in words who finds the place there now and who its points
-say should; a curator's manual row is never out of step. Region Assignment for
+expects (`place_regions_expected()` over `places_with_regions()`), and
+names each difference, saying in words who finds the place there now and who
+where it lies says should; a curator's manual row is never out of step. Region Assignment for
 the world view settles every row, and `SELECT refresh_place_regions(ARRAY[id])`
 one place.
 

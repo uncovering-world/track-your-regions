@@ -5872,7 +5872,8 @@ not turned down). Each row carries `listing`:
 
 A manual row is always `offered`. `refresh_place_regions(places, world_view)` (in
 `db/init/01-schema.sql`) walks up from the places it is given to the wholes they are direct parts of, computes
-the expected rows from the point rows (`place_regions_expected()`), and writes only what differs: a
+the expected rows from the point rows and the rows its geometry gives (`place_regions_expected()`,
+below), and writes only what differs: a
 second call writes nothing, and a manual row is never touched. It reads no geometry, so it is cheap
 enough to run in a curator's transaction. Before it computes anything it locks the places it will
 rewrite, one advisory key per place among 1,024 under 1197 taken in key order, as the identity
@@ -5919,6 +5920,38 @@ hold a kind of their own and held no rows, because the kind arrived after their 
 One of those a reader is offered: Park Güell, a part of the Works of Antoni Gaudí whose Public art
 membership arrived on 2026-11-09, three weeks after its point was placed, and which no region's
 list held until then.
+
+**A place's own geometry places it too** ([ADR-0207](../decisions/0207-a-places-regions-come-from-its-own-geometry-and-a-point-no-region-holds-takes-its-nearest.md),
+#2122). Beside its points' regions, a place is in the regions its own geometry gives, a union
+written by placement into `experience_shape_regions` (place, region, `basis`; each leaf with the
+regions above it) through `refresh_place_shape_regions()`, which takes the places' region keys
+first and writes only what differs. `place_shape_regions_expected()` (in `db/init/01-schema.sql`)
+states the rule, one basis per row:
+
+| `basis` | The place is in | Example |
+|---|---|---|
+| `area` | every leaf holding at least 1% of its outline, when the outline holds its point or lies within 1 km of it (`outline_reaches_place()`) | the Theban Necropolis in Luxor as well as Qina; not the Pergamon Altar in Izmir, whose outline is the ancient city's, 1,827 km from the altar |
+| `line` | every leaf holding at least 1% of its line (`experiences.path`, empty until bridges' lines are read from OpenStreetMap) | — |
+| `nearest` | for a place none of whose own points a region holds and with no outline or line placing it, the leaf nearest each point within 25 km, when no other leaf lies within 1.5 times that distance | the Island of Gorée in Dakar, the Golden Gate Bridge in California; not the Øresund Bridge, 3.1 km from Copenhagen and 4.5 km from Skåne, nor Malpelo, 355 km from the nearest leaf |
+| `record` | for a place with no point of its own, the leaf holding the point its kind record reports (`reported_location`) | Wudang, once its own point goes |
+
+`refresh_place_regions()` reads the table and still reads no geometry. The `area`, `line` and
+`nearest` rows of a place and of its direct parts join its points' rows, listed as the place's
+points are (a whole is in the Wadden Sea's five regions because its parts are); the `record` rows
+join only in a world view where nothing else offers the place to a reader, and are offered there,
+the place's other rows becoming `scope`. A reader's list still composes a record the reader is
+offered, so a site whose record waits is listed nowhere. Placement places the geometry after the
+points, since `nearest` asks whether a region holds one, and the Archaeology site door names a site
+whose outline it re-traced among what moved. The checks `held-by-no-region` (what the nearest
+rule leaves: the open sea and the points between two leaves) and `outline-away-from-its-place`
+(the outlines that place nothing) follow it.
+
+On a copy of the development catalogue (2026-11-15) the first placement wrote 7,681 rows (area 4,955
+on 1,645 places, nearest 1,367 on 456, record 1,359 on 453) in 5.3 s and changed the rows of 483
+places, removing none: 202 places are findable in a region they were not, 280 waiting for a curator
+gained a curator's row. The test hierarchy's borders decide an outline's share: Yaxchilan, on the
+Mexican bank of the Usumacinta, is also in Petén, and Petra also in Aqaba (#2135 owns the border
+sliver).
 
 **Two ways in, for two different questions.** A sync places what moved, by itself, at the end
 of the run — `placeMovedExperiences` in `placement.ts` calls
@@ -6028,7 +6061,8 @@ of its children: eight offered points on the development catalogue lie in a coun
 of it, each 20–240 m outside its nearest leaf — Juno Beach, Delos, the Megaliths of Carnac, Tuol
 Sleng, the Hiroshima Peace Memorial from two sources, and two points of the Dorset and East Devon
 Coast. A rule that tested the leaves alone would take them out of their
-countries. The points nothing holds (#469, #471) stay unheld either way.
+countries. The points nothing holds (#469, #471) stay unheld either way; the place they belong to
+may take its nearest leaf (above, ADR-0207).
 
 What the rule does change is the other direction. A non-leaf whose outline covers a point that a
 leaf outside it holds used to get a row for the point, and no longer does. On the development

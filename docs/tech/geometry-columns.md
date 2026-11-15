@@ -286,7 +286,9 @@ whole geometry reads all of it, and a bounding box narrows nothing where the box
 longitude: Russia's parts reach both sides of the antimeridian, so the boxes of Russia and of Asia
 — 7.1 million vertices — hold every point on Earth, and a point in Paris was read against both. A
 piece of a hundred vertices is found by its own box. `experiences.md` § Region assignment has the
-rule placement follows and what it measured.
+rule placement follows and what it measured. A place's own geometry is placed through the same
+pieces (`place_shape_regions_expected()`, ADR-0207): the share of an outline or a line each leaf
+holds, and the leaf nearest a point no leaf holds.
 
 - **Leaves only.** Placement takes a non-leaf's rows from the tree, and asks a non-leaf directly
   only about a point no leaf holds. Cutting continents too would add minutes to every write of
