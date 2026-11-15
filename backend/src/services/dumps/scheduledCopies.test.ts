@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('./catalog.js', () => ({ DUMPS: [{ key: 'enwiki-page' }, { key: 'enwiki-page-props' }, { key: 'osm-planet' }, { key: 'pageviews-user' }] }));
-vi.mock('./buildQueue.js', () => ({ dumpsDir: () => '/dumps' }));
+vi.mock('./localCopies.js', () => ({ dumpsDir: () => '/dumps' }));
 const keepers = vi.hoisted(() => ({
   structure: { schedule: { read: vi.fn(async () => ({ everyDays: 7, chosen: false })) }, latest: vi.fn(async () => ({ dumpDate: '2026-10-01', swappedAt: new Date('2026-10-03') })) },
   readership: { schedule: { read: vi.fn(async () => ({ everyDays: 7, chosen: false })) }, latest: vi.fn(async () => ({ dumpDate: '2026-09-01', swappedAt: new Date('2026-10-20') })) },
