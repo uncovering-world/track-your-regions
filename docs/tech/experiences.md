@@ -5522,7 +5522,8 @@ Marco Polo, who described it, and neither commemorates them.
 **The reading** (`places/commemorates.ts`, `readCommemorates`) runs in `fetchLandmarkItems` for the
 two public-art sources once the kind has decided,
 after the gone refusal and any retyping, over the run's admitted places. The first step that names
-anyone answers, and a later step is not read for that place. A run keeps at most
+anyone answers, and a later step is not read for that place, except that a later statement may
+widen a category's reading (step 2, below). A run keeps at most
 `MAX_COMMEMORATED_SUBJECTS` (`@tyr/shared/commemorates`) of the subjects a step yields, in the order
 it reads them, which is also the most a curator's list may hold, so a list a run stored can always
 be saved back with one name removed:
@@ -5543,6 +5544,13 @@ be saved back with one name removed:
    since those titles name classes too (*Military monuments and memorials*). The National
    Monument of Scotland → the Napoleonic Wars, Mamayev Kurgan (*World War II memorials in
    Russia*) → World War II. *Monuments and memorials in Warsaw* says where, and names nothing.
+   A category names only the people English Wikipedia has one for, so a place raised to several
+   can be filed under some of them: where a later statement, `P921` or `P138` read as steps 3
+   and 4 read them, names everyone the categories named and more, the reading takes that
+   statement's subjects and `via` names it (`widenedCategory`, #2456). The Marx-Engels-Forum is
+   filed under *Monuments and memorials to Karl Marx* alone, and its `P138` names Karl Marx and
+   Friedrich Engels. A statement that names fewer or others leaves the category's reading, and a
+   place's parts are not read for it: Arlington National Cemetery's part names John F. Kennedy.
 3. `P921` *main subject*, a value that is a person or an event: the Hermannsdenkmal → Arminius.
 4. `P138` *named after*, the same: the Alexander Column → Alexander I of Russia. The Brandenburg
    Gate's namesake is a town, so it names nobody.
