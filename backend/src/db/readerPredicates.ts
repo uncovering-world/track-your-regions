@@ -48,7 +48,9 @@
  * of the first three.
  */
 
-import { membershipAdmittedSql, membershipVisibleSql, placeAdmittedSql, placeOfferedSql, placeShownSql, rowKindJoinSql } from './membership.js';
+import {
+  MEMBERSHIPS, partRecordListedSql, partRecordSql, placeAdmittedSql, placeOfferedSql, placeShownSql, rowKindJoinSql,
+} from './membership.js';
 import { pointsShownSql, wholeFocusSql } from './placePoints.js';
 
 /**
@@ -254,6 +256,9 @@ function partOfSql(alias: string, whole: (w: string) => string, point: (el: stri
        WHERE po.part_id = ${alias}.id AND ${whole('pw')} AND ${point('pel')})`;
 }
 
+/** A point a reader is shown: offered, and read or published unread. */
+const shownPointSql = (el: string): string => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`;
+
 /**
  * A part of a serial site a reader may be sent to (ADR-0100 decision 2): it
  * carries no membership for its whole's kind, so it is offered where its whole
@@ -264,20 +269,37 @@ function partOfSql(alias: string, whole: (w: string) => string, point: (el: stri
  * place, never into a set: a part is reached through its whole, and no list,
  * count, search or map offers it as a place of its own until it holds a kind
  * of its own (Google's rule for a sub-destination, ADR-0100 decision 2).
+ *
+ * A part is shown while a point of its own is one a reader is shown, and a
+ * serial site's part only while its record in the site shows it too
+ * (`partRecordListedSql`, ADR-0213): read, not turned down and its line still
+ * listed. The point stays asked while the record follows the points: a
+ * curator's *lost* on a line point, and a merge folding every line point, are
+ * written on the point, which the record does not follow. A part no source
+ * records in a whole, one a curator's word or a Wikidata statement made, is
+ * shown by its point alone.
  */
 export function partOfferedSql(alias = 'e'): string {
-  return partOfSql(alias, placeOfferedSql, el => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`);
+  return `EXISTS (SELECT 1 FROM experience_parts po
+        JOIN experiences pw ON pw.id = po.whole_id
+       WHERE po.part_id = ${alias}.id AND ${placeOfferedSql('pw')}
+         AND EXISTS (SELECT 1 FROM experience_locations pel
+                      WHERE pel.experience_id = po.part_id AND ${shownPointSql('pel')})
+         AND COALESCE(
+           (SELECT ${partRecordListedSql('po_rec')} FROM ${MEMBERSHIPS} po_rec
+             WHERE po_rec.experience_id = po.part_id AND po_rec.whole_id = po.whole_id AND ${partRecordSql('po_rec')}
+             LIMIT 1),
+           TRUE))`;
 }
 
 /**
  * A part a reader may be shown, by its record in its whole (ADR-0213): read
- * or published unread, not turned down, its line still listed, and the part
- * still in the world. `rec` is a part's record (`partRecordSql`), `part` the
- * part's `experiences` alias. What `partOfferedSql` asks of the part's point,
- * asked of the record that becomes its gate.
+ * or published unread, not turned down, its line still listed
+ * (`partRecordListedSql`), and the part still in the world. `rec` is a part's
+ * record (`partRecordSql`), `part` the part's `experiences` alias.
  */
 export function partRecordShownSql(rec: string, part: string): string {
-  return `${membershipAdmittedSql(rec)} AND ${membershipVisibleSql(rec)} AND ${rec}.missing_since IS NULL AND ${hideLostSql(part)}`;
+  return `${partRecordListedSql(rec)} AND ${hideLostSql(part)}`;
 }
 
 /**

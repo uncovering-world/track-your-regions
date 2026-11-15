@@ -130,6 +130,16 @@ export function partRecordSql(alias = 'rec'): string {
 }
 
 /**
+ * A part's record that shows the part (ADR-0213): read or published unread,
+ * not turned down, and its line still listed. Whether the part is still in the
+ * world is the part's own (`partRecordShownSql` asks both); a by-id read asks
+ * this half alone, as it asks no place whether it still stands.
+ */
+export function partRecordListedSql(rec = 'rec'): string {
+  return `${membershipAdmittedSql(rec)} AND ${membershipVisibleSql(rec)} AND ${rec}.missing_since IS NULL`;
+}
+
+/**
  * A part nobody has read, by its record (ADR-0213): its record in its whole is
  * pending, not turned down, and its line is still listed. `rec` is a part's
  * record (`partRecordSql`). Whether the part is still in the world is the

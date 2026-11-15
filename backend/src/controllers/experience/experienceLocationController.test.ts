@@ -129,8 +129,11 @@ function lockThenDelete(): [string, string] {
 
 /** The one statement that reads the location table. */
 function locationRead(): string {
-  // The read that finds the points, not the write that reads each point's place again.
-  const reads = sentSql().filter(sql => /FROM experience_locations/i.test(sql) && !/INSERT INTO/i.test(sql));
+  // The read that finds the points, not the write that reads each point's place
+  // again, nor the check that the place is readable, whose predicate asks a
+  // part with no record in its whole for a point of its own (partOfferedSql).
+  const reads = sentSql().filter(sql => /FROM experience_locations/i.test(sql) && !/INSERT INTO/i.test(sql)
+    && !sql.trim().startsWith('SELECT e.id, e.name FROM experiences e'));
   expect(reads).toHaveLength(1);
   return reads[0];
 }
