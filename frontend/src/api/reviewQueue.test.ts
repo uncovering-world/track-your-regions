@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  fetchReviewQueue, fetchReviewQueueMap, setRunAside, bringRunBack,
+  fetchQueueMapNames, fetchReviewQueue, fetchReviewQueueMap, setRunAside, bringRunBack,
 } from './reviewQueue';
 import { EMPTY_REVIEW, type ReviewAddress } from '../utils/appUrl';
 
@@ -125,6 +125,24 @@ describe('fetchReviewQueueMap', () => {
     const url = new URL(String(fetchSpy.mock.calls[0][0]));
     expect(url.pathname).toBe('/api/experiences/review/queue/map');
     expect(url.search).toBe('');
+  });
+});
+
+/** `fetchQueueMapNames` asks the names of a short list's places (#2501) by their ids, in the list's order. */
+describe('fetchQueueMapNames', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('names the places by their ids, one parameter', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ names: [] }) });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await fetchQueueMapNames([88213, 4120]);
+
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/experiences/review/queue/map/names');
+    expect(url.search).toBe('?ids=88213%2C4120');
   });
 });
 

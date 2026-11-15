@@ -1,7 +1,7 @@
 /**
  * The review queue's map (#2477), with the map mocked: what it is handed to draw, what
- * a click on a place opens, the short list of a place several questions are about, the
- * line under the map, the line after a walk to the next question, and where the camera goes. The markers' own data is
+ * a click on a place opens, the short list of a place several questions are about and the
+ * names it reads for its places, the line under the map, the line after a walk to the next question, and where the camera goes. The markers' own data is
  * `queueMapData.test.ts`'s.
  */
 
@@ -18,7 +18,9 @@ import { EMPTY_REVIEW, type ReviewAddress } from '../../../utils/appUrl';
 import type { QueueMapPlace, ReviewQueueMap as QueueMapRead } from '../../../api/reviewQueue';
 
 /** What the mocked map was last handed, so a test can click it as MapLibre would. */
-const { theMap, mockFetchMap, mockAncestors } = vi.hoisted(() => {
+const {
+  theMap, mockFetchMap, mockFetchNames, mockAncestors,
+} = vi.hoisted(() => {
   const state = {
     props: {} as Record<string, unknown>,
     zoom: 3,
@@ -32,7 +34,9 @@ const { theMap, mockFetchMap, mockAncestors } = vi.hoisted(() => {
       getNorth: () => state.view[3],
     }),
   };
-  return { theMap: state, mockFetchMap: vi.fn(), mockAncestors: vi.fn() };
+  return {
+    theMap: state, mockFetchMap: vi.fn(), mockFetchNames: vi.fn(), mockAncestors: vi.fn(),
+  };
 });
 
 vi.mock('react-map-gl/maplibre', async () => {
@@ -59,7 +63,7 @@ vi.mock('react-map-gl/maplibre', async () => {
   };
 });
 
-vi.mock('../../../api/reviewQueue', () => ({ fetchReviewQueueMap: mockFetchMap }));
+vi.mock('../../../api/reviewQueue', () => ({ fetchReviewQueueMap: mockFetchMap, fetchQueueMapNames: mockFetchNames }));
 vi.mock('../../../api/regions', () => ({ fetchRegionAncestors: mockAncestors }));
 vi.mock('../../../utils/mapUtils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../utils/mapUtils')>()),
@@ -82,6 +86,14 @@ const SANTA_PRASSEDE: QueueMapPlace = {
 };
 const ROME: QueueMapRead = { places: [PANTHEON, SANTA_PRASSEDE], unplaced: 0 };
 
+/** The names the names read holds, the square in front of the Pantheon among them; the review list has loaded none. */
+const NAMES = new Map([[4120, 'Pantheon'], [4121, 'Piazza della Rotonda'], [88213, 'Santa Prassede']]);
+
+/** The names read as the server answers it: only the asked places it knows. */
+const answerNames = async (placeIds: readonly number[]) => ({
+  names: placeIds.flatMap(placeId => (NAMES.has(placeId) ? [{ placeId, name: NAMES.get(placeId)! }] : [])),
+});
+
 function renderMap(address: Partial<ReviewAddress> = {}) {
   const onOpen = vi.fn();
   const onShowList = vi.fn();
@@ -90,7 +102,6 @@ function renderMap(address: Partial<ReviewAddress> = {}) {
     <QueryClientProvider client={client}>
       <ReviewQueueMap
         address={{ ...EMPTY_REVIEW, view: 'map', ...address }}
-        placeName={id => (id === 4120 ? 'Pantheon' : undefined)}
         onOpen={onOpen}
         onShowList={onShowList}
       />
@@ -105,7 +116,7 @@ function renderChanging() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = (address: Partial<ReviewAddress>) => (
     <QueryClientProvider client={client}>
-      <ReviewQueueMap address={{ ...EMPTY_REVIEW, view: 'map', ...address }} placeName={() => undefined} onOpen={onOpen} onShowList={vi.fn()} />
+      <ReviewQueueMap address={{ ...EMPTY_REVIEW, view: 'map', ...address }} onOpen={onOpen} onShowList={vi.fn()} />
     </QueryClientProvider>
   );
   const { rerender } = render(view({}));
@@ -131,6 +142,7 @@ function drawn(sourceId: string): GeoJSON.FeatureCollection {
 beforeEach(() => {
   vi.spyOn(webgl, 'isWebGLAvailable').mockReturnValue(true);
   mockFetchMap.mockReset().mockResolvedValue(ROME);
+  mockFetchNames.mockReset().mockImplementation(answerNames);
   theMap.zoom = 3;
   theMap.view = [12.46, 41.89, 12.49, 41.905];
   theMap.easeTo.mockReset();
@@ -177,7 +189,8 @@ describe('the review queue’s map', () => {
 
     expect(onOpen).not.toHaveBeenCalled();
     const list = await screen.findByRole('presentation');
-    expect(within(list).getByText('2 questions about Pantheon')).toBeInTheDocument();
+    expect(await within(list).findByText('2 questions about Pantheon')).toBeInTheDocument();
+    expect(mockFetchNames).toHaveBeenCalledWith([4120]);
     const choices = within(list).getAllByRole('button');
     expect(choices.map(choice => choice.textContent)).toEqual(['disagreements', 'holding a change']);
     // The open question is marked in the list.
@@ -229,7 +242,6 @@ describe('the review queue’s map', () => {
       <QueryClientProvider client={client}>
         <ReviewQueueMap
           address={{ ...EMPTY_REVIEW, view: 'map', row: step?.row ?? 'conflicts:4120' }}
-          placeName={() => undefined}
           onOpen={vi.fn()}
           onShowList={vi.fn()}
           step={step}
@@ -276,7 +288,55 @@ describe('the review queue’s map', () => {
     await screen.findByTestId('source-review-questions');
     clickPlace([PANTHEON.placeId, twin.placeId]);
     expect(await screen.findByText('3 questions about 2 places here')).toBeInTheDocument();
+    await screen.findByText('Piazza della Rotonda');
     expect(screen.getAllByRole('button').filter(b => /Pantheon/.test(b.textContent ?? ''))).toHaveLength(2);
+  });
+
+  it('reads the names of the places a short list shows when it opens, and no other, named in the list without its rows', async () => {
+    renderMap();
+    await screen.findByTestId('source-review-questions');
+    expect(mockFetchNames).not.toHaveBeenCalled();
+
+    theMap.zoom = 16;
+    clickPlace([SANTA_PRASSEDE.placeId, PANTHEON.placeId]);
+
+    expect(mockFetchNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchNames).toHaveBeenCalledWith([SANTA_PRASSEDE.placeId, PANTHEON.placeId]);
+    const list = await screen.findByRole('presentation');
+    const entries = await within(list).findAllByText(/^(Pantheon|Santa Prassede)$/);
+    expect(entries.map(entry => entry.textContent)).toEqual(['Santa Prassede', 'Pantheon', 'Pantheon']);
+  });
+
+  it('says it is reading the names while they are on their way, never a blank', async () => {
+    mockFetchNames.mockReturnValue(new Promise(() => undefined));
+    renderMap();
+    await screen.findByTestId('source-review-questions');
+
+    clickPlace(PANTHEON.placeId);
+    expect(await screen.findByText('2 questions about this place')).toBeInTheDocument();
+    act(() => { fireEvent.keyDown(screen.getByRole('presentation'), { key: 'Escape' }); });
+    await waitFor(() => expect(screen.queryByRole('presentation')).toBeNull());
+
+    theMap.zoom = 16;
+    clickPlace([SANTA_PRASSEDE.placeId, PANTHEON.placeId]);
+    const list = await screen.findByRole('presentation');
+    expect(within(list).getAllByText('Reading its name…')).toHaveLength(3);
+  });
+
+  it('says a name could not be read when the read fails or leaves the place out', async () => {
+    mockFetchNames.mockImplementation(async (placeIds: readonly number[]) => {
+      if (placeIds.includes(PANTHEON.placeId)) throw new Error('down');
+      return { names: [] };
+    });
+    const twin: QueueMapPlace = { ...SANTA_PRASSEDE, placeId: 4121, lon: PANTHEON.lon, lat: PANTHEON.lat };
+    mockFetchMap.mockResolvedValue({ places: [SANTA_PRASSEDE, twin], unplaced: 0 });
+    renderMap();
+    await screen.findByTestId('source-review-questions');
+
+    theMap.zoom = 16;
+    clickPlace([SANTA_PRASSEDE.placeId, twin.placeId]);
+    const list = await screen.findByRole('presentation');
+    expect(await within(list).findAllByText('Could not read its name')).toHaveLength(2);
   });
 
   it('does nothing for a click on no place', async () => {

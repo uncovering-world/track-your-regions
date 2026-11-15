@@ -34,10 +34,10 @@ vi.mock('../../api/experiences', () => ({ fetchExperience: vi.fn() }));
 // The map's own chunk, as the page hands it the address and the way to open a card.
 vi.mock('./queueMap/LazyReviewQueueMap', () => ({
   LazyReviewQueueMap: ({
-    address, placeName, onOpen, onShowList, step,
+    address, onOpen, onShowList, step,
   }: ComponentProps<typeof import('./queueMap/ReviewQueueMap').ReviewQueueMap>) => (
     <div data-testid="the-map">
-      {`open: ${address.row ?? 'none'}; kinds: ${address.kinds.join(',') || 'any'}; place 77: ${placeName(77) ?? '?'}`}
+      {`open: ${address.row ?? 'none'}; kinds: ${address.kinds.join(',') || 'any'}`}
       {step && <p>{`walked to ${step.row}`}</p>}
       <button type="button" onClick={() => onOpen(`missing:${MISSING.id}`)}>open the missing place</button>
       <button type="button" onClick={onShowList}>show the list</button>
@@ -91,7 +91,7 @@ describe('the review queue’s map mode', () => {
     await waitFor(() => expect(at()).toBe(`/review?kind=conflict,missing&row=conflicts:${CONFLICT.id}&view=map`));
     expect(navType()).toBe('PUSH');
     expect(screen.getByTestId('the-map'))
-      .toHaveTextContent(`open: conflicts:${CONFLICT.id}; kinds: conflict,missing; place 77: ${MISSING.name}`);
+      .toHaveTextContent(`open: conflicts:${CONFLICT.id}; kinds: conflict,missing`);
     // The map takes the list's column; the card stays.
     expect(screen.queryByRole('checkbox', { name: `Select ${CONFLICT.name}` })).toBeNull();
     expect(screen.getByText(CONFLICT.name)).toBeInTheDocument();

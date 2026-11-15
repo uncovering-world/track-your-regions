@@ -12,7 +12,8 @@
  *   counting a place's questions where it has more than one, and the open question's
  *   place drawn as selected at every zoom.
  * - **A click.** A place with one question opens its card. A place with several opens a
- *   short list of them, each in the chip's word and colour, and picking one opens it.
+ *   short list of them, each in the chip's word and colour, and picking one opens it. The
+ *   list names its places by a read of their names it makes when it opens (`useQueueMapNames`).
  * - **The camera** is not in the address. A region chip frames the region by its stored
  *   frame (`smartFitBounds`); otherwise, or where the region has none, the map frames
  *   every point (`frameGeoJson`, which measures across the antimeridian). It frames again
@@ -49,6 +50,7 @@ import {
   QUESTION_PIN_LAYERS, SOURCE_QUESTIONS, SOURCE_SELECTED, questionBadgeBgLayer, questionBadgeTextLayer,
   questionHeatLayer, questionPinLayer, selectedPinLayer, selectedRingLayer,
 } from './queueMapLayers';
+import { useQueueMapNames } from './useQueueMapNames';
 import { useQueueMapRead } from './useQueueMapRead';
 
 /** The closest the points are framed: a chip that leaves one place shows it among its streets. */
@@ -59,6 +61,8 @@ const SPREAD_MAX_ZOOM = 14;
  * them: one place of several questions, or places no closer view would separate.
  */
 interface Picking { placeIds: number[]; top: number; left: number }
+
+const NO_PLACES: number[] = [];
 
 function Swatch({ color }: { color: string }) {
   return (
@@ -93,11 +97,9 @@ export function QueueMapLine({ count, unplaced, onShowList }: {
 }
 
 export function ReviewQueueMap({
-  address, placeName, onOpen, onShowList, step = null,
+  address, onOpen, onShowList, step = null,
 }: {
   address: ReviewAddress;
-  /** A place's name where the list has loaded a row of it, for the short list's heading. */
-  placeName: (placeId: number) => string | undefined;
   /** Opens a question's card, by the list's key of its row. */
   onOpen: (row: string) => void;
   onShowList: () => void;
@@ -168,6 +170,7 @@ export function ReviewQueueMap({
 
   const [pointer, setPointer] = useState(false);
   const [picking, setPicking] = useState<Picking | null>(null);
+  const { nameOf, pending: namesPending } = useQueueMapNames(picking?.placeIds ?? NO_PLACES);
   const onClick = (event: MapLayerMouseEvent) => {
     // The markers of the chips before a change stay drawn while the new read is on its way, and open nothing.
     if (isPlaceholderData) return;
@@ -209,7 +212,9 @@ export function ReviewQueueMap({
   const pickedQuestions = picking
     ? pickedPlaces.flatMap(place => place.questions.map(question => ({ place, question })))
     : [];
-  const pickedName = pickedPlaces.length === 1 ? placeName(pickedPlaces[0].placeId) : undefined;
+  const pickedName = pickedPlaces.length === 1 ? nameOf(pickedPlaces[0].placeId) : undefined;
+  // Never a blank under an entry: the name, that it is being read, or that it could not be.
+  const entryName = (placeId: number) => nameOf(placeId) ?? (namesPending ? 'Reading its name…' : 'Could not read its name');
   const pickedTitle = pickedPlaces.length > 1
     ? `${plural(pickedQuestions.length, 'question')} about ${plural(pickedPlaces.length, 'place')} here`
     : `${plural(pickedQuestions.length, 'question')} about ${pickedName ?? 'this place'}`;
@@ -310,7 +315,7 @@ export function ReviewQueueMap({
                     <Swatch color={questionColor(question)} />
                     <ListItemText
                       primary={questionWord(question)}
-                      secondary={pickedPlaces.length > 1 ? placeName(place.placeId) : undefined}
+                      secondary={pickedPlaces.length > 1 ? entryName(place.placeId) : undefined}
                     />
                   </ListItemButton>
                 );
