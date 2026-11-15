@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { inTransaction, pool } from './index.js';
+import { unplacedAssertions } from '../controllers/admin/dataAssertions/unplacedAssertions.js';
 
 /**
  * A whole knows its leaves (ADR-0206), against PostgreSQL: the rows
@@ -188,5 +189,31 @@ describe("a whole's leaves (ADR-0206)", () => {
       expect(calls.rows).toEqual([{ calls: '1' }]);
     });
     expect(await leaves(ROCK_ART)).toEqual({ ids: SHELTERS, offered: 758 });
+  });
+
+  it('is nothing the out-of-step check reports, until a row is changed by hand', async () => {
+    await places([ARC, ...STATIONS]);
+    await points(STATIONS, 'auto');
+    await parts(ARC, STATIONS);
+    const check = unplacedAssertions.find(a => a.id === 'whole-leaves-out-of-step');
+    expect(check).toBeDefined();
+    const fixtureRows = async () => (await pool.query(check!.sql)).rows
+      .filter(row => Number(row.whole_id) === ARC);
+
+    expect(await fixtureRows()).toEqual([]);
+
+    await pool.query('UPDATE whole_leaves SET offered = false WHERE whole_id = $1 AND leaf_id = $2', [ARC, STATIONS[0]]);
+    await pool.query('DELETE FROM whole_leaves WHERE whole_id = $1 AND leaf_id = $2', [ARC, STATIONS[1]]);
+    expect(await fixtureRows()).toEqual([
+      expect.objectContaining({ leaf_id: STATIONS[0], expected_offered: true, held_offered: false }),
+      expect.objectContaining({ leaf_id: STATIONS[1], expected_offered: true, held_offered: null }),
+    ]);
+
+    // The refresh brings both back, and writes nothing a second time.
+    const first = await pool.query<{ written: number }>('SELECT refresh_whole_leaves(ARRAY[$1::int]) AS written', [ARC]);
+    expect(first.rows[0].written).toBe(2);
+    const second = await pool.query<{ written: number }>('SELECT refresh_whole_leaves(ARRAY[$1::int]) AS written', [ARC]);
+    expect(second.rows[0].written).toBe(0);
+    expect(await fixtureRows()).toEqual([]);
   });
 });

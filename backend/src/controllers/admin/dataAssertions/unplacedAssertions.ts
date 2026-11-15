@@ -246,4 +246,55 @@ const placeRegionsOutOfStep: CatalogueAssertion = {
   },
 };
 
-export const unplacedAssertions: CatalogueAssertion[] = [heldByNoRegion, offeredPlaceInNoRegion, placeRegionsOutOfStep];
+/**
+ * A whole's leaf row its parts no longer give, a leaf they give that the
+ * whole lacks, or a leaf whose offered flag says otherwise.
+ *
+ * Nothing writes `whole_leaves` but `refresh_whole_leaves()`, which the
+ * triggers on a part relation and a point's state call (ADR-0206); a write
+ * that skipped them (a trigger disabled for a bulk load) leaves a whole
+ * counting a place that is no longer under it, missing one that is, or
+ * counting a place as shown that readers are not shown. The expected rows are
+ * the refresh's own (`whole_leaves_expected()`) over every whole.
+ */
+const wholeLeavesOutOfStep: CatalogueAssertion = {
+  id: 'whole-leaves-out-of-step',
+  area: 'places',
+  title: 'A place made of parts whose count of places no longer matches its parts',
+  kind: 'invariant',
+  meaning:
+    'This site counts a place its parts no longer give, misses one they do, or counts one readers are '
+    + 'not shown. Its count of places is then wrong. A developer running refresh_whole_leaves for the site '
+    + 'settles it.',
+  sql: `WITH expected AS (
+          SELECT x.whole_id, x.leaf_id, x.offered FROM whole_leaves_expected(NULL) x
+        )
+        SELECT COALESCE(x.whole_id, wl.whole_id) AS whole_id,
+               whole.name AS whole_name,
+               COALESCE(x.leaf_id, wl.leaf_id) AS leaf_id,
+               leaf.name AS leaf_name,
+               x.offered AS expected_offered,
+               wl.offered AS held_offered
+          FROM expected x
+          FULL JOIN whole_leaves wl ON wl.whole_id = x.whole_id AND wl.leaf_id = x.leaf_id
+          JOIN experiences whole ON whole.id = COALESCE(x.whole_id, wl.whole_id)
+          JOIN experiences leaf ON leaf.id = COALESCE(x.leaf_id, wl.leaf_id)
+         WHERE x.whole_id IS NULL OR wl.whole_id IS NULL OR x.offered IS DISTINCT FROM wl.offered
+         ORDER BY whole.name, leaf.name`,
+  describe: row => {
+    const shown = (key: string) => (row[key] === true ? 'shown to readers' : 'not shown to readers');
+    const ids = `(experience ${count(row, 'whole_id')}, place ${count(row, 'leaf_id')})`;
+    const [whole, leaf] = [text(row, 'whole_name'), text(row, 'leaf_name')];
+    if (row.held_offered === null || row.held_offered === undefined) {
+      return `${whole} does not count ${leaf}, a place of its parts ${shown('expected_offered')} ${ids}`;
+    }
+    if (row.expected_offered === null || row.expected_offered === undefined) {
+      return `${whole} counts ${leaf}, which is no longer a place of its parts ${ids}`;
+    }
+    return `${whole} counts ${leaf} as ${shown('held_offered')}, but it is ${shown('expected_offered')} ${ids}`;
+  },
+};
+
+export const unplacedAssertions: CatalogueAssertion[] = [
+  heldByNoRegion, offeredPlaceInNoRegion, placeRegionsOutOfStep, wholeLeavesOutOfStep,
+];
