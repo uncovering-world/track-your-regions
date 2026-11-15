@@ -442,6 +442,50 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     expect(article).toBe('https://en.wikipedia.org/wiki/Santa_Maria_ad_Martyres');
   });
 
+  /** The Pantheon made a dispersed whole of one part, as a serial site is (ADR-0210), its UNESCO record's point at `reported`. */
+  const dispersedWhole = async (reported: { lon: number } | null): Promise<void> => {
+    const unescoMembership = await membershipOf('UNESCO World Heritage Sites');
+    if (reported) {
+      await pool.query(
+        'UPDATE source_records SET reported_location = ST_SetSRID(ST_MakePoint($2, 41.8986), 4326) WHERE id = $1',
+        [unescoMembership, reported.lon],
+      );
+    }
+    const part = await pool.query<{ id: number }>(
+      `INSERT INTO experiences (source_id, external_id, name, location)
+       VALUES (1, 'part:9710-001', $1, ST_SetSRID(ST_MakePoint(12.4770, 41.8990), 4326)) RETURNING id`, [NAME],
+    );
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $2, 10, '9710-001')`,
+      [part.rows[0].id, PANTHEON],
+    );
+    const shape = await pool.query('SELECT whole_shape, location FROM experiences WHERE id = $1', [PANTHEON]);
+    expect(shape.rows[0]).toEqual({ whole_shape: 'dispersed', location: null });
+  };
+
+  it('places a kind separated from a dispersed whole where the whole stands, its own source giving no point (ADR-0210)', async () => {
+    await dispersedWhole({ lon: 12.4769 });
+
+    const outcome = await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
+
+    expect(outcome.refusal).toBeUndefined();
+    const at = await pool.query<{ lon: number; whole_shape: string | null }>(
+      'SELECT ST_X(location) AS lon, whole_shape FROM experiences WHERE id = $1', [outcome.result!.separatedId],
+    );
+    expect(at.rows[0]).toEqual({ lon: 12.4769, whole_shape: null });
+  });
+
+  it('refuses to separate a kind from a dispersed whole where nothing gives it a point, and changes nothing', async () => {
+    await dispersedWhole(null);
+    await pool.query('DELETE FROM experience_locations WHERE experience_id = $1', [PANTHEON]);
+
+    const outcome = await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
+
+    expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('point to stand at') });
+    const left = await pool.query('SELECT experience_id FROM source_records WHERE id = $1', [siteMembership]);
+    expect(left.rows).toEqual([{ experience_id: PANTHEON }]);
+  });
+
   it('refuses the place\'s only kind, and changes nothing', async () => {
     await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
     const outcome = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });

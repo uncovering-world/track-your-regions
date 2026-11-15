@@ -135,6 +135,23 @@ export function offeredLocationSql(alias = 'el'): string {
 }
 
 /**
+ * A point the place `e` stands at, as a geometry expression: its own point.
+ * A dispersed whole holds none (ADR-0210), and stands where its kind record
+ * puts it (the World Heritage list's most central component), else at a point
+ * it shows; NULL where it has neither. Where a tick on the place is
+ * (`db/visits.ts`), and the point a membership separated from it takes where
+ * the membership's own view gives none (`insertSeparatedExperience`).
+ */
+export function placeStandsAtSql(e: string): string {
+  return `COALESCE(${e}.location,
+    (SELECT stands_r.reported_location FROM source_records stands_r
+      WHERE stands_r.experience_id = ${e}.id AND stands_r.kind_id IS NOT NULL AND stands_r.reported_location IS NOT NULL
+      ORDER BY stands_r.source_id = 1 DESC, stands_r.id LIMIT 1),
+    (SELECT stands_el.location FROM ${pointsShownSql(`${e}.id`, 'stands_el')}
+      WHERE ${offeredLocationSql('stands_el')} ORDER BY stands_el.id LIMIT 1))`;
+}
+
+/**
  * Where a reader is told a place is, as three select-list columns:
  * `longitude`, `latitude` and `focus` (#2122).
  *

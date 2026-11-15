@@ -235,8 +235,8 @@ async function applyProposedFields(
     // whether one is *there* decides what the curator is told was removed, and
     // reading it separately would be reading it at another moment.
     const locked = await lockExperience<{
-      curated_fields: string[] | null; image_credit: unknown; metadata: unknown; name_local: unknown;
-    }>(client, experienceId, "curated_fields, metadata, name_local, metadata->'imageCredit' AS image_credit");
+      curated_fields: string[] | null; image_credit: unknown; metadata: unknown; name_local: unknown; whole_shape: string | null;
+    }>(client, experienceId, "curated_fields, metadata, name_local, whole_shape, metadata->'imageCredit' AS image_credit");
     const placeClaims: string[] = locked?.row.curated_fields ?? [];
     const hadCredit = locked?.row.image_credit != null;
 
@@ -359,7 +359,8 @@ async function applyProposedFields(
     // **Every accepted value is written now, the coordinate included** (#2222):
     // the run being answered recorded what it offered, and that is what lands,
     // as `expectedSyncLogId` guarantees. After the point release above, which
-    // finds the anchor's pin by the coordinate this overwrites.
+    // finds the anchor's pin by the coordinate this overwrites. A dispersed
+    // whole's coordinate is only released: it holds none (ADR-0210).
     const values: unknown[] = [];
     const writes = acceptedWrites(
       // A name-carrying value as the catalogue stores a name (`tidyNameValue`,
@@ -367,7 +368,7 @@ async function applyProposedFields(
       // spaces the run saw, and accepting it must not put back what migration
       // 047 took out.
       open.map(p => ({ ...p, new: tidyNameValue(p.field, p.new) })),
-      { metadata: locked.row.metadata, name_local: locked.row.name_local },
+      { metadata: locked.row.metadata, name_local: locked.row.name_local, whole_shape: locked.row.whole_shape },
       remaining,
       acceptedImage,
       pictureCredit,

@@ -122,8 +122,10 @@ export interface ExperienceUpsertParams {
   lat: number;
   /**
    * The place has several points and `lon`/`lat` is only the anchor the run
-   * derived from them (ADR-0095): written past the gate and filed as written,
-   * never a question for a curator. Absent is a place's own coordinate.
+   * derived from them (ADR-0095): its record's view, written to the place past
+   * the gate where the place holds a coordinate at all (an edition), never to
+   * a dispersed whole (ADR-0210), and never a question for a curator. Absent
+   * is a place's own coordinate.
    */
   locationIsAnchor?: boolean;
   /**
@@ -445,6 +447,7 @@ function snapshotFromRow(row: Record<string, unknown>): ExperienceSnapshot {
     tags: (row.tags as string[] | null) ?? null,
     lon: Number(row.lon),
     lat: Number(row.lat),
+    ...(row.lon == null ? { noCoordinate: true } : {}),
     countryCodes: (row.country_codes as string[] | null) ?? null,
     countryNames: (row.country_names as string[] | null) ?? null,
     imageUrl: (row.image_url as string | null) ?? null,
@@ -896,12 +899,14 @@ async function writeUnderLock(
         -- that flag is held, and the Catalogue Check comparing the two leaves out a row
         -- whose held proposal holds the flag itself.
         tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-        -- A place of several points has no coordinate of its own (ADR-0095):
-        -- the one stored is an anchor the run derives from its points, written
-        -- past the gate, since a curator can decide nothing by answering it.
-        -- A curator's claim still keeps it.
+        -- A dispersed whole holds no point (ADR-0210): the run's coordinate
+        -- for it is its record's view alone (reported_location below). An
+        -- edition's coordinate is derived from its casts, and written past
+        -- the gate, since a curator can decide nothing by answering it
+        -- (ADR-0145). A curator's claim still keeps it.
         -- A short move passes the gate too (ADR-0140, the diff's 'short-move').
-        location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location
+        location = CASE WHEN experiences.whole_shape = 'dispersed' THEN NULL
+                        WHEN experiences.curated_fields ? 'location' THEN experiences.location
                         WHEN $28::boolean THEN EXCLUDED.location
                         WHEN ${HELD} AND NOT ${PASSES('location')} THEN experiences.location ELSE EXCLUDED.location END,
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR (${HELD} AND NOT ${PASSES('country_codes')})
@@ -1161,7 +1166,7 @@ async function writeUnderLock(
   //
   // Fields this statement actually wrote, which is what `changedFields` holds:
   // `computeChangeSet` files a refused write under the reason it was refused
-  // instead (#519). Two kinds of written field are left out: a serial site's
+  // instead (#519). Two kinds of written field are left out: an edition's
   // anchor moving is the run's own bookkeeping (ADR-0095), and a rewrite that
   // passed the gate replaces no fact a reader holds (ADR-0099, ADR-0135) — written and
   // recorded, but neither a proposal for the pointer nor a reason to demote a

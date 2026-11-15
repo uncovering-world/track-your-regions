@@ -299,6 +299,11 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       .toEqual([]);
     expect((await markVisited({ params: { experienceId: SITE }, body: {}, caller: traveller() })).ticked).toEqual([]);
 
+    // A serial site holds no point of its own (ADR-0210): a tick on it stands where its record puts it.
+    await pool.query(
+      'UPDATE source_records SET reported_location = ST_SetSRID(ST_MakePoint(32.6396, 25.7188), 4326) WHERE experience_id = $1 AND kind_id IS NOT NULL',
+      [SITE],
+    );
     await unmarkVisited({ params: { experienceId: SITE }, caller: traveller() });
     expect((await markVisited({ params: { experienceId: SITE }, body: {}, caller: traveller() })).ticked)
       .toEqual([expect.objectContaining({ experienceId: SITE, longitude: 32.6396, latitude: 25.7188 })]);
@@ -356,6 +361,21 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       await client.query('BEGIN');
       const locked = await lockExperience(client, SITE);
       expect(await anchorToItsPoint(client, locked!.lock, 32.64, 25.70, luxorPoint)).toBe(false);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+  });
+
+  it('gives the site no point when a curator corrects the one point it shows, since it is dispersed (ADR-0210)', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Its own point withdrawn: the Temple of Karnak's is the one point the site shows.
+      await client.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [luxorPoint]);
+      const locked = await lockExperience(client, SITE);
+      expect(await anchorToItsPoint(client, locked!.lock, 32.66, 25.72, karnakPoint)).toBe(false);
+      expect((await client.query('SELECT location FROM experiences WHERE id = $1', [SITE])).rows[0].location).toBeNull();
       await client.query('ROLLBACK');
     } finally {
       client.release();

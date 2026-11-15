@@ -408,11 +408,12 @@ export function isInDanger(record: UnescoApiRecord): boolean {
  * nomination for "a point at the approximate centre" of the property beside
  * each component's, publishes none on the Danube Limes' page, and the
  * export's value jumps when the list is reordered: Carnuntum to Linz, 180 km,
- * a held move a curator could answer nothing about. Regions and markers are
- * read from the components, and no reader is given the stored point: a whole
- * is framed by its places (ADR-0205). The column keeps it for crowding and the
- * catalogue checks, so it is the most central component whatever the export's
- * value, written past the gate (`locationIsAnchor`).
+ * a held move a curator could answer nothing about. Such a site is a dispersed
+ * whole, which holds no point (ADR-0210): the anchor is only its World
+ * Heritage record's view of where it is (`reported_location`), which places
+ * it while none of its parts is read (ADR-0207 decision 2), so it is the most
+ * central component whatever the export's value (`locationIsAnchor`). A new
+ * site stands there until the same write parts it.
  *
  * The site's own point is `geo_point_2d`, the portal's point of `coordinates`,
  * which since 2026-10-20 is a shape holding every component's point (#1803):

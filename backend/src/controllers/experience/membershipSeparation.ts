@@ -209,6 +209,15 @@ export async function separateMembership(
     // the pair's check reads a pair a live membership carries anywhere as in
     // order); the new place takes the membership's, or a name of its own.
     const separated = await insertSeparatedExperience(client, original, membershipId);
+    // A place stands at a point. Where neither the kind's source nor the
+    // original gives one (a dispersed whole that shows no place yet), the new
+    // place would have none.
+    if (!separated) {
+      return await refuse({
+        status: 409,
+        error: 'Neither this kind\'s source nor the place gives a point to stand at, so it cannot be a place of its own',
+      });
+    }
     separatedId = separated.id;
     const moved = await moveWhatIsItsOwn(client, original, separated, membershipId, found.source_id);
     // The curator's word that keeps the two apart (ADR-0144 decision 4): the

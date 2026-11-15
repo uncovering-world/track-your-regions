@@ -744,7 +744,7 @@ export interface ExperiencesRow {
   subtitle: string | null;
   description: string | null;
   tags: unknown | null;
-  location: string;
+  location: string | null;
   boundary: string | null;
   area_km2: number | null;
   country_codes: string[] | null;
@@ -770,6 +770,7 @@ export interface ExperiencesRow {
   state_decided_at: Date | null;
   state_note: string | null;
   merged_into_id: number | null;
+  whole_shape: string | null;
 }
 
 /** The table `find_site_links`. */
@@ -1777,6 +1778,7 @@ export const COLUMN_WIDTHS = {
     status: 20,
     source_membership: 10,
     existence: 10,
+    whole_shape: 10,
   },
   geometry_computations: {
     status: 20,
@@ -1964,6 +1966,7 @@ export const CHECK_VALUES = {
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
+    whole_shape: ["dispersed", "container"],
   },
   find_site_links: {
     origin: ["coordinate", "curator"],

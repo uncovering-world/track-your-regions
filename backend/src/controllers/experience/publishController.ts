@@ -43,7 +43,7 @@ import type { idParamSchema, publishExperienceBodySchema } from '../../types/ind
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { contentsReached, publishContents, placeAfterRelease, pointMovedWithObject, worksPublished } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
+import { heldFieldWrites, publicationAssignments, type HeldBefore, type HeldFieldWrites } from './publishHeldFields.js';
 import {
   applyHeldPartWrites, heldWorkRefs, planHeldPartWrites, type HeldPartPlan,
 } from './publishHeldParts.js';
@@ -360,7 +360,7 @@ async function planHeldAnswer(
   lock: LockedExperience,
   pendingWorks: WorksToPublish['pending'],
   pointer: number | null,
-  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown; membership_facts?: unknown },
+  before: HeldBefore,
   claimed: string[],
   selection: HeldSelection | null,
   expectedSyncLogId: number | undefined,
@@ -543,7 +543,7 @@ export async function publishUnderLock(
       // this read and the write below. Which membership: the one the card
       // named (#1264), or the one `membershipToAnswerSql` picks where it named
       // none.
-      `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url,
+      `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url, e.whole_shape,
               m.id AS membership_id, m.curation_state, m.admission, m.facts AS membership_facts,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
