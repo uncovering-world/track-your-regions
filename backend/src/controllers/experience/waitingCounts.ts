@@ -36,7 +36,8 @@
 
 import { pool } from '../../db/index.js';
 import {
-  KINDS, MEMBERSHIPS, kindRecordSql, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql,
+  KINDS, MEMBERSHIPS, kindRecordSql, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql, partRecordSql,
+  partRecordUnreadSql,
 } from '../../db/membership.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
@@ -213,15 +214,14 @@ export function unplacedContentsMembershipSql(experienceIdExpr: string): string 
  * row counts whether or not it is still offered: its take-back is offered on the
  * refused card either way, and the card says where the source stands.
  *
- * The unread terms are `unreadPointSql` and `unreadLinkSql`, the one spelling
- * of "unread and still asked about" every reader of that question shares.
+ * The unread terms are `pointAskedUnreadSql` and `unreadLinkSql`, the one
+ * spelling of "unread and still asked about" every reader of that question
+ * shares; a part's line point is asked by its part's record (ADR-0213).
  * Composed by the queue's key and card, the counts, the publish's filter, the
  * refusal and its take-back, so each reads the same rows.
  */
 export function contentsRowsSql(alias: string, membership: string, which: 'unread' | 'refused'): string {
-  const point = which === 'unread'
-    ? `${offeredLocationSql('el')} AND ${unreadPointSql('el')}`
-    : 'el.refused_at IS NOT NULL';
+  const point = which === 'unread' ? pointAskedUnreadSql('el') : 'el.refused_at IS NOT NULL';
   const link = which === 'unread'
     ? `${offeredLinkSql('et')} AND ${unreadLinkSql('et', 't')}`
     : 'et.refused_at IS NOT NULL';
@@ -310,6 +310,38 @@ export function contentsMembershipToAnswerSql(
                OR (${membershipOfferedSql('cm')} AND ${contentsRowsSql('ce', 'cm', which)}))
         ORDER BY ck.display_priority, cm.id
         LIMIT 1)`;
+}
+
+/**
+ * A point the queue asks about as unread, and the publish reaches: one a reader
+ * would be shown once it is passed (`offeredLocationSql`), unread by the gate
+ * that answers for it (ADR-0213). A serial site's part is gated by its record
+ * in the site: while that record is unread, each of the part's line points
+ * that nobody turned down stands for the part on the card.
+ * Every other point is gated by its own state (`unreadPointSql`): a museum's
+ * own point, an edition's casts, another kind's point on a part, and a second
+ * unread point of a part already read, which is a move or a duplicate and stays
+ * the point's question until the writers write the record. While the record
+ * follows its points (`refresh_part_record_gates()`), both readings ask the
+ * same rows; `part-gate-out-of-step` names a part where they would not.
+ */
+export function pointAskedUnreadSql(el = 'el'): string {
+  return `${offeredLocationSql(el)}
+    AND (${unreadPointSql(el)} OR (${el}.refused_at IS NULL AND ${el}.id IN (${unreadPartLinePointsSql()})))`;
+}
+
+/**
+ * The line points of every part whose record in its whole nobody has read
+ * (`partRecordUnreadSql`, `is_part_line_point()`), as a `SELECT` of point
+ * ids. Uncorrelated on purpose: the planner hashes it once per statement, a
+ * few dozen points on the development catalogue, where a lookup per point
+ * cost the queue's keys 46 % and the counts by source 132 % (2026-11-15).
+ */
+function unreadPartLinePointsSql(): string {
+  return `SELECT upl.id FROM ${MEMBERSHIPS} upr
+            JOIN experience_locations upl ON upl.experience_id = upr.experience_id
+           WHERE ${partRecordSql('upr')} AND ${partRecordUnreadSql('upr')}
+             AND is_part_line_point(upl.id, upr.whole_id)`;
 }
 
 /**

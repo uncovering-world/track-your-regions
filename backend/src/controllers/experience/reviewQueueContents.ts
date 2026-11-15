@@ -29,7 +29,7 @@ import type { QueryResult } from 'pg';
 import {
   lifecycleSelectSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql, venuesSql,
 } from '../../db/readerPredicates.js';
-import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsWaitingSql, linkMembershipSql, pointAskedUnreadSql, pointMembershipSql, unreadLinkSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
@@ -327,8 +327,7 @@ export async function queryContents(
         -- fragment gained it, so the badge and the card would have disagreed about
         -- an object holding one unread point a curator had declared gone.
         FROM ${pointsShownSql('e.id', 'el')}
-        WHERE ${unreadPointSql('el')}
-          AND ${offeredLocationSql('el')}
+        WHERE ${pointAskedUnreadSql('el')}
           AND ${pointMembershipSql('el')} = m.id
       ) el
     ) points

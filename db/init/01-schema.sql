@@ -3277,6 +3277,11 @@ COMMENT ON COLUMN source_records.pending_change_sync_log_id IS 'The run of this 
 CREATE INDEX IF NOT EXISTS idx_source_records_kind ON source_records(kind_id, admission);
 CREATE INDEX IF NOT EXISTS idx_source_records_source ON source_records(source_id, experience_id);
 CREATE INDEX IF NOT EXISTS idx_source_records_pending ON source_records(experience_id) WHERE curation_state = 'pending';
+-- The parts nobody has read, by their record in their whole (ADR-0213): the
+-- review queue reads them once per statement (pointAskedUnreadSql), a few dozen
+-- rows where the index above holds every arrival of every kind.
+CREATE INDEX IF NOT EXISTS idx_source_records_unread_parts ON source_records(experience_id)
+  WHERE source_id = 10 AND whole_id IS NOT NULL AND curation_state = 'pending';
 CREATE INDEX IF NOT EXISTS idx_source_records_held ON source_records(experience_id) WHERE pending_change_sync_log_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_source_records_iconic ON source_records(kind_id) WHERE is_iconic;
 CREATE INDEX IF NOT EXISTS idx_source_records_label ON source_records(reported_label);
@@ -5556,8 +5561,12 @@ CREATE TRIGGER trg_parts_follow_records_update
 -- placements): another kind's point on a part merged with that kind's place
 -- (Ephesus's Archaeology point) is that kind's, never the line's. The rule
 -- recordOfPointSql (partFieldsWriter.ts) reads for the record's reference.
+--
+-- Parallel safe, since it only reads: the review queue composes it into its
+-- statements (pointAskedUnreadSql), and a function left parallel unsafe keeps
+-- the whole statement out of a parallel plan.
 CREATE OR REPLACE FUNCTION is_part_line_point(point INTEGER, whole INTEGER) RETURNS BOOLEAN
-LANGUAGE sql STABLE AS $$
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
   SELECT NOT EXISTS (SELECT 1 FROM experience_location_placements pl WHERE pl.location_id = point)
       OR EXISTS (SELECT 1 FROM experience_location_placements pl
                    JOIN source_records site ON site.id = pl.membership_id
