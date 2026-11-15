@@ -123,6 +123,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   user_visit_trips: 'serving',
   user_visited_regions: 'serving',
   users: 'serving',
+  whole_leaves: 'serving',
   wikidata_cache_policy: 'workbench',
   wikidata_claims: 'workbench',
   wikidata_class_closure: 'workbench',

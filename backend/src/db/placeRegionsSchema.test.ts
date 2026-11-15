@@ -25,6 +25,9 @@ const schema = collapse(readFileSync(repoFile('db', 'init', '01-schema.sql'), 'u
 const migration = collapse(
   readFileSync(repoFile('db', 'migrations', '231-a-place-has-one-region-junction.sql'), 'utf8'),
 );
+const leavesMigration = collapse(
+  readFileSync(repoFile('db', 'migrations', '247-a-whole-knows-its-leaves.sql'), 'utf8'),
+);
 
 /** The body of one function, from its CREATE to the end of its dollar quote. */
 function functionBody(sql: string, name: string): string {
@@ -131,5 +134,69 @@ describe('the migration', () => {
     const before = migration.slice(0, backfill);
     expect(before.lastIndexOf('COMMIT;')).toBeGreaterThan(before.indexOf('ALTER TABLE experience_regions'));
     expect(before.lastIndexOf('BEGIN;')).toBeGreaterThan(before.lastIndexOf('COMMIT;'));
+  });
+});
+
+describe("a whole's leaves (ADR-0206)", () => {
+  const expected = functionBody(schema, 'whole_leaves_expected');
+  const refresh = functionBody(schema, 'refresh_whole_leaves');
+
+  it('are offered by the visible point the region refresh places by', () => {
+    // A whole counting a place no reader is shown would read "1 of 34" where the list holds 33.
+    expect(expected).toContain(collapse(offeredLocationSql('el')));
+    expect(expected).toContain('el.refused_at IS NULL');
+    expect(expected).toContain(collapse(publishedContentSql('el')));
+  });
+
+  it('are written by a refresh of their own, which the region refresh never calls nor is called by', () => {
+    expect(refresh).not.toContain('refresh_place_regions');
+    expect(functionBody(schema, 'refresh_place_regions')).not.toContain('whole_leaves');
+  });
+
+  it('lock every place they rewrite, on the region keys and in key order, before computing', () => {
+    expect(refresh).toContain('WHERE NOT (p % 1024) = ANY(held) ORDER BY 1)');
+    expect(refresh).toContain('PERFORM pg_advisory_xact_lock(1197, place_key)');
+    expect(refresh).toContain('UNION SELECT place_ancestors(places)');
+    expect(refresh.indexOf('pg_advisory_xact_lock')).toBeLessThan(refresh.indexOf('whole_leaves_expected'));
+  });
+
+  it('follow a part relation and a point by statement, before the region triggers take their keys', () => {
+    const triggers = ['part_insert', 'part_update', 'part_delete', 'point_insert', 'point_update', 'point_delete'];
+    for (const suffix of triggers) {
+      const at = schema.indexOf(`CREATE TRIGGER trg_place_leaves_${suffix}`);
+      expect(at, `trg_place_leaves_${suffix} is declared`).toBeGreaterThanOrEqual(0);
+      expect(schema.slice(at, schema.indexOf(';', at))).toContain('FOR EACH STATEMENT');
+    }
+    // Postgres fires the triggers of one timing and event on one table in name
+    // order, so each leaf trigger must sort before the region trigger declared
+    // beside it. A point added has no region twin: placement refreshes its rows.
+    const declared = [...schema.matchAll(/CREATE TRIGGER (trg_place_(?:leaves|regions)_\w+) (AFTER|BEFORE) ([A-Z ]+?) ON (\w+)/g)]
+      .map(([, name, timing, events, table]) => ({ name, timing, events: events.split(' OR '), table }));
+    const leaves = declared.filter(t => t.name.startsWith('trg_place_leaves_'));
+    expect(leaves.map(t => t.name).sort()).toEqual(triggers.map(suffix => `trg_place_leaves_${suffix}`).sort());
+    const alone: string[] = [];
+    for (const leaf of leaves) {
+      const twins = declared.filter(t => t.name.startsWith('trg_place_regions_') && t.table === leaf.table
+        && t.timing === leaf.timing && t.events.some(event => leaf.events.includes(event)));
+      if (twins.length === 0) alone.push(leaf.name);
+      for (const twin of twins) expect(leaf.name < twin.name, `${leaf.name} fires before ${twin.name}`).toBe(true);
+    }
+    expect(alone).toEqual(['trg_place_leaves_point_insert']);
+  });
+
+  it('follow every column of a point the region refresh follows', () => {
+    const body = functionBody(schema, 'whole_leaves_follow_points');
+    for (const column of ['experience_id', 'curation_state', 'refused_at', 'missing_since', 'existence', 'merged_into_id']) {
+      expect(body).toContain(`o.${column}`);
+      expect(body).toContain(`n.${column}`);
+    }
+  });
+
+  it('are declared by their migration as the schema declares them, and backfilled once', () => {
+    for (const name of ['place_ancestors', 'whole_leaves_expected', 'refresh_whole_leaves',
+      'whole_leaves_follow_parts', 'whole_leaves_follow_points']) {
+      expect(functionBody(leavesMigration, name)).toBe(functionBody(schema, name));
+    }
+    expect(leavesMigration).toContain('SELECT refresh_whole_leaves(NULL)');
   });
 });
