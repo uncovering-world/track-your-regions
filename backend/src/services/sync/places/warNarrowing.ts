@@ -49,6 +49,7 @@ import type { CommemoratedSubject, Commemorates, CommemorationVia, WarNarrowing 
 import { WARS_NARROWED_BY_EVENT, WARS_NARROWED_BY_LEAD, WARS_NARROWED_TO_PERSON } from '@tyr/shared/commemorates';
 import { askWikipediaOnce, enwikiTitleOf, LOG_PREFIX, pagesOf, type CategoryOptions } from '../wikipediaCategories.js';
 import { WaitBudget } from '../wikidataUtils.js';
+import { RobotsRefusal } from '../../robots/robotsSignals.js';
 import { articleUrl } from '../subset/values.js';
 import type { CommemorationPlace, CommemorationWiki, PlaceReading, SubjectClaims, SubjectKind } from './commemorates.js';
 import { wholeNameInPlace } from './placeNames.js';
@@ -108,10 +109,26 @@ function withoutFiles(text: string): string {
   return out + text.slice(at);
 }
 
-/** Where the next file link starts, at or after `from`, or -1. */
+/** English Wikipedia's file link. */
+const ENGLISH_FILE_LINK = /\[\[(?:File|Image):/i;
+
+/** A namespaced link's target, up to its options or its close: `[[Datei:Ehrenmal.jpg|mini|…]]` captures `Datei:Ehrenmal.jpg`. */
+const NAMESPACED_TARGET = /\[\[([^[\]|:\n]+:[^[\]|\n]+)(?:\||\]\])/g;
+
+/** A media file's name, by its extension. */
+const MEDIA_FILE = /\.(?:jpe?g|png|svg|gif|tiff?|webp|og[gva]|webm|pdf|djvu)$/i;
+
+/**
+ * Where the next file link starts, at or after `from`, or -1: English
+ * Wikipedia's `File:` or `Image:`, or any namespaced target naming a media file,
+ * which is how `Datei:`, `Файл:` or `ไฟล์:` read in another edition's lead (#2491).
+ */
 function fileLinkAt(text: string, from: number): number {
-  const match = /\[\[(?:File|Image):/i.exec(text.slice(from));
-  return match ? from + match.index : -1;
+  const rest = text.slice(from);
+  const english = ENGLISH_FILE_LINK.exec(rest)?.index ?? -1;
+  const local = [...rest.matchAll(NAMESPACED_TARGET)].find((match) => MEDIA_FILE.test(match[1].trim()))?.index ?? -1;
+  const found = [english, local].filter((at) => at >= 0);
+  return found.length ? from + Math.min(...found) : -1;
 }
 
 /**
@@ -437,15 +454,32 @@ export interface Lead {
 }
 
 /**
+ * The leads read, by the title asked, and the titles whose read failed: a
+ * lead step tells a lead it could not read this pass from one there is none
+ * of (#2491). A host's refusal (robots, `ai-input=no`) is no failure: that
+ * lead is not there to read, and asking again changes nothing.
+ */
+export class LeadsRead extends Map<string, Lead> {
+  readonly failed = new Set<string>();
+}
+
+/** A lead that could not be read, logged, and named among the failed unless a host refused it. */
+function unread(out: LeadsRead, title: string, error: unknown): void {
+  if (!(error instanceof RobotsRefusal)) out.failed.add(title);
+  console.warn(`${LOG_PREFIX} the lead of ${title} was not read, its war stays: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+/**
  * The wikitext of each article's lead (section 0) and the revision it was
  * read from, by the title asked; an article the API has no page for has no
  * entry. One ask per article, since a
  * section is answered for one page at a time. A lead that cannot be read, its
  * retries spent or the host refusing it, has no entry either and is logged:
- * its war stays as the reading named it. A cancelled run stops here.
+ * its war stays as the reading named it, and a read whose retries were spent
+ * is named among the failed (`LeadsRead`). A cancelled run stops here.
  */
-export async function fetchLeads(titles: readonly string[], options: CategoryOptions): Promise<Map<string, Lead>> {
-  const out = new Map<string, Lead>();
+export async function fetchLeads(titles: readonly string[], options: CategoryOptions): Promise<LeadsRead> {
+  const out = new LeadsRead();
   const budget = options.budget ?? new WaitBudget(0);
   for (const title of titles) {
     if (options.isCancelled?.()) break;
@@ -459,7 +493,7 @@ export async function fetchLeads(titles: readonly string[], options: CategoryOpt
       if (content && revision?.revid) out.set(title, { wikitext: content, revid: revision.revid });
     } catch (error) {
       if (options.isCancelled?.()) throw error;
-      console.warn(`${LOG_PREFIX} the lead of ${title} was not read, its war stays: ${error instanceof Error ? error.message : String(error)}`);
+      unread(out, title, error);
     }
     await options.pause?.();
   }

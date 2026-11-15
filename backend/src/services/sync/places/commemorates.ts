@@ -24,8 +24,11 @@
  * 7. The lead of the place's English Wikipedia article, where two language
  *    models name the same linked article as whom or what the place was raised
  *    for, a person, an occurrence or a group (`leadDedication.ts`, #2472):
- *    the Shaheed Minar in Dhaka → the Bengali language movement. Read after
- *    a war is narrowed, and only where the run has both models' keys.
+ *    the Shaheed Minar in Dhaka → the Bengali language movement; where that
+ *    names none or there is none, the lead of its article in its country's
+ *    language (`ownLanguage.ts`, #2491): the Democracy Monument → the Siamese
+ *    revolution of 1932. Read after a war is narrowed, and only where the run
+ *    has both models' keys.
  *
  * Step 2 also reads English Wikipedia's *Monuments and memorials related to X*
  * or *concerning X*, *X monuments and memorials* and *X memorials in Y*, X a
@@ -101,6 +104,7 @@ import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchLeads, narrowWarReadings, type Lead, type Span } from './warNarrowing.js';
 import { namedInPlace } from './placeNames.js';
 import { readLeadDedications, type LeadDedicationReader } from './leadDedication.js';
+import { fetchOwnLanguageArticles } from './ownLanguage.js';
 import type { SyncProgress } from '../types.js';
 
 const BATCH = 50;
@@ -201,13 +205,20 @@ export interface ResolvedArticle {
  * item of each article titled so or redirected to from that title, and the
  * wikitext of an article's lead with its revision, which narrows a war
  * (`warNarrowing.ts`) and names a dedication no other step does
- * (`leadDedication.ts`).
+ * (`leadDedication.ts`). The lead and the item of a title are also asked of
+ * the edition of a place's own language (#2491).
  */
 export interface CommemorationWiki {
   categories(titles: string[]): Promise<Map<string, string[]>>;
-  articleItems(titles: string[]): Promise<Map<string, ResolvedArticle>>;
-  /** `forModel`: the leads go to a language model, which a site's `ai-input=no` signal refuses (`modelInput`). */
-  leads(titles: string[], forModel?: boolean): Promise<Map<string, Lead>>;
+  /** `host`: another edition than English (`ru`), whose own title-to-item lookup answers (#2491). */
+  articleItems(titles: string[], host?: string): Promise<Map<string, ResolvedArticle>>;
+  /**
+   * `forModel`: the leads go to a language model, which a site's `ai-input=no`
+   * signal refuses (`modelInput`); `host`: another edition than English, the
+   * place's own language's (`ownLanguage.ts`, #2491). `failed` names the
+   * titles whose read failed, a host's refusal aside (`LeadsRead`).
+   */
+  leads(titles: string[], forModel?: boolean, host?: string): Promise<Map<string, Lead> & { readonly failed?: ReadonlySet<string> }>;
 }
 
 /** The place the reading is asked about: its item, and its English Wikipedia article. */
@@ -576,7 +587,13 @@ export async function readCommemorates(
   }
   const kindsOf = (items: string[]) => fetchSubjectKinds(sparql, items);
   await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, kindsOf);
-  if (leads) await readLeadDedications(places, out, { kinds: known, articles }, wiki, kindsOf, leads);
+  if (leads) {
+    await readLeadDedications(places, out, { kinds: known, articles }, wiki, {
+      kindsOf,
+      ownArticles: (qids) => fetchOwnLanguageArticles(sparql, qids),
+      englishArticles: (items) => fetchEnglishArticles(sparql, items),
+    }, leads);
+  }
   for (const reading of out.values()) withoutDedicated(reading);
   for (const [qid, reading] of out) out.set(qid, withRoles(reading, claims.get(qid)?.roles));
   return out;
@@ -624,21 +641,40 @@ function withoutDedicated(reading: PlaceReading): void {
 export function structureWiki(options: CategoryOptions): CommemorationWiki {
   return {
     categories: structureCategories,
-    articleItems: async (titles) => new Map((await structureArticleItems(titles)).map((a) => [a.title, { item: a.item, redirected: a.redirected }])),
-    leads: (titles, forModel) => fetchLeads(titles, forModel ? { ...options, modelInput: true } : options),
+    // The copy holds English Wikipedia alone: another edition's titles are asked of that edition.
+    articleItems: async (titles, host) => (host && host !== 'en'
+      ? liveArticleItems(titles, host, options)
+      : new Map((await structureArticleItems(titles)).map((a) => [a.title, { item: a.item, redirected: a.redirected }]))),
+    leads: (titles, forModel, host) => fetchLeads(titles, leadOptions(options, forModel, host)),
   };
+}
+
+/**
+ * The run's options for a lead: flagged as a model's input where it goes to
+ * one, and sent to another edition's API where a host names one, on the same
+ * transport, User-Agent, pace and wait budget as English Wikipedia's.
+ */
+function leadOptions(options: CategoryOptions, forModel?: boolean, host?: string): CategoryOptions {
+  return {
+    ...options,
+    ...(forModel ? { modelInput: true } : {}),
+    ...(host && host !== 'en' ? { endpoint: `https://${host}.wikipedia.org/w/api.php` } : {}),
+  };
+}
+
+/** Each title's item, asked of the edition `host` names (`pageprops`), which follows a redirect without saying so. */
+async function liveArticleItems(titles: string[], host: string, options: CategoryOptions): Promise<Map<string, ResolvedArticle>> {
+  const resolved = await resolveWikipediaArticles(titles.map((title) => `${host}:${title}`), options);
+  // The live API follows a redirect without saying so: every answer is taken as the title's own.
+  return new Map([...resolved].map(([tag, item]) => [tag.slice(host.length + 1), { item, redirected: false }]));
 }
 
 /** English Wikipedia asked of the live API. */
 function liveWiki(options: CategoryOptions): CommemorationWiki {
   return {
     categories: (titles) => fetchWikipediaCategories(titles, options),
-    articleItems: async (titles) => {
-      const resolved = await resolveWikipediaArticles(titles.map((title) => `en:${title}`), options);
-      // The live API follows a redirect without saying so: every answer is taken as the title's own.
-      return new Map([...resolved].map(([tag, item]) => [tag.slice('en:'.length), { item, redirected: false }]));
-    },
-    leads: (titles, forModel) => fetchLeads(titles, forModel ? { ...options, modelInput: true } : options),
+    articleItems: (titles, host) => liveArticleItems(titles, host ?? 'en', options),
+    leads: (titles, forModel, host) => fetchLeads(titles, leadOptions(options, forModel, host)),
   };
 }
 
