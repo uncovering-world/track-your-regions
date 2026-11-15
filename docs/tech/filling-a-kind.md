@@ -980,8 +980,10 @@ card, `SyncRunOptions.alone`, `docs/tech/experiences.md` § Several kinds from o
 whole and only that kind works out its changes, in minutes rather than the whole pass's
 three quarters of an hour. A second dry run on the same builds, admitted rows and code reads the
 gather and the surroundings pool kept from the first (ADR-0196), and its closing line says so:
-the dry run of the whole pass after a one-kind dry run of the same head, say. A change to any
-kind's rule, classes or surroundings door makes them again (#2448).
+the dry run of the whole pass after a one-kind dry run of the same head, say. A change to a
+kind's verdict, exceptions or world bars, or to a number of this register other than the pool's
+floor (`poolSitelinks`), keeps the gather of places and makes the pool again; a change to what the
+gather asks (a class, an entrance, an edition, the pool's floor) makes both again (ADR-0209).
 Before the change merges, one dry run of the whole pass shows that no other kind moved with it.
 
 The new value goes into the register with its new derivation, evidence and date, and the
