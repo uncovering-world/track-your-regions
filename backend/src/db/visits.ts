@@ -5,17 +5,15 @@
  *
  * A visit is one row of `user_visited_experiences` on the place the traveller
  * ticked: a part, a cast's edition, a place of one point, or a whole ticked
- * as a whole. Nothing is written for a whole when one of its parts is ticked;
- * the whole's state is read from its parts, one level down, as every reader of
- * a place's points shows them (`pointsShownSql`), and its count from its
- * offered leaves at any depth (`whole_leaves`, ADR-0206). A point counts as
- * visited when its own place is. A visit on a place a merge folded is kept for the
- * merge's undo and never read.
+ * as a whole. Nothing is written for a whole when one of its parts is ticked:
+ * the whole is visited once a place below it is, at any depth, and its count
+ * is read from its offered leaves (`whole_leaves`, ADR-0206). A point counts
+ * as visited when its own place is. A visit on a place a merge folded is kept
+ * for the merge's undo and never read.
  */
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from './index.js';
-import { pointsShownSql } from './placePoints.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
 import { badRequest, notFound } from '../middleware/errorHandler.js';
 import { RESTORE_LIMITS, TOO_MUCH_TO_UNDO } from '../types/trips.js';
@@ -100,9 +98,7 @@ export function visitedPlacesCtesSql(user: string): string {
 /**
  * Every place the traveller `user` has visited (`visitedPlacesCtesSql`), with
  * what its row needs: `place_id`, `ticked` (a visit on the place itself),
- * `total` (the points a reader is shown of it, its own and its direct
- * parts') and `visited` (those whose own place the traveller visited);
- * `has_parts` (`showsPartsSql`); and `leaves` (its offered leaves,
+ * `has_parts` (`showsPartsSql`), and `leaves` (its offered leaves,
  * `whole_leaves`) and `leaves_visited` (those the traveller visited), which
  * `wholeProgress` turns into its count (`@tyr/shared/visits`, ADR-0206).
  *
@@ -114,17 +110,12 @@ export function visitStatesSql(user: string): string {
   return `(WITH ${visitedPlacesCtesSql(user)}
       SELECT touched.place_id,
              EXISTS (SELECT 1 FROM ticked WHERE ticked.experience_id = touched.place_id) AS ticked,
-             shown.total, shown.visited, shown.has_parts, leaves.leaves, leaves.leaves_visited
+             leaves.has_parts, leaves.leaves, leaves.leaves_visited
         FROM touched
         CROSS JOIN LATERAL (
-          SELECT count(*)::int AS total,
-                 count(*) FILTER (WHERE shown.experience_id IN (SELECT experience_id FROM ticked))::int AS visited,
-                 ${showsPartsSql('touched.place_id')} AS has_parts
-            FROM ${pointsShownSql('touched.place_id', 'shown')}
-           WHERE ${offeredLocationSql('shown')} AND ${publishedContentSql('shown')}) shown
-        CROSS JOIN LATERAL (
           SELECT count(*)::int AS leaves,
-                 count(*) FILTER (WHERE wl.leaf_id IN (SELECT experience_id FROM ticked))::int AS leaves_visited
+                 count(*) FILTER (WHERE wl.leaf_id IN (SELECT experience_id FROM ticked))::int AS leaves_visited,
+                 ${showsPartsSql('touched.place_id')} AS has_parts
             FROM whole_leaves wl
            WHERE wl.whole_id = touched.place_id AND wl.offered) leaves)`;
 }
