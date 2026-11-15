@@ -5,9 +5,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  *
  * Both refuse nothing while the token is comfortably fresh, and both keep a
  * token that is merely *expiring* when the refresh behind it fails — a refresh
- * runs a minute early, and `refreshSession()` answers `null` for a rejected
- * refresh, a 429 and a network blip alike, so a failure proves nothing about
- * the session. They differ on a token that is actually *spent*:
+ * runs a minute early, and the token in hand is kept whether the refresh was
+ * rejected, met a 429 or a network blip, so these helpers read a failure as
+ * proving nothing about the session. They differ on a token that is actually *spent*:
  * `ensureFreshToken` hands it over anyway, because its SSE callers fail the
  * same way with or without it, while `requireFreshToken` answers `null` so
  * `changePassword` can say "your session is over" instead of sending a dead

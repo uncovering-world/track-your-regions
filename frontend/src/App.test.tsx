@@ -33,7 +33,8 @@ vi.mock('./api', () => ({
 
 vi.mock('./api/fetchUtils', () => ({
   setAccessToken: vi.fn(),
-  refreshSession: vi.fn().mockResolvedValue(null),
+  refreshSession: vi.fn().mockResolvedValue({ failed: 'refused' }),
+  renewed: (result: object) => !('failed' in result),
   setRefreshSuccessListener: vi.fn(),
   getHeldAccount: vi.fn().mockReturnValue(null),
   setHeldAccount: vi.fn(),
