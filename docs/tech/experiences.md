@@ -144,11 +144,16 @@ An experience can have zero, one, or many locations. Location-bound experiences 
   ([ADR-0206](../decisions/0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md));
   derived, see *A whole knows its leaves* below.
 
-**The points a place shows are its own and its parts'** (ADR-0100). Ancient Thebes shows the Luxor
-Temple, its own point, and the Temple of Karnak, the point of a place that is its part, on its map,
-in its "made of N places", in a traveller's progress through it and in the regions it is placed in.
+**The points a place shows are its own and its leaves'** (ADR-0100, ADR-0211). Ancient Thebes shows
+the Luxor Temple, its own point, and the Temple of Karnak, the point of a place that is its part, on
+its map, in its "made of N places", in a traveller's progress through it and in the regions it is
+placed in. A whole's leaves are the places at the bottom of its parts (`whole_leaves`, below), so for
+a whole none of whose parts is a whole they are its parts. A whole nested in another is shown by its
+leaves too: with the Oshino Hakkai ponds under an Oshino Hakkai of their own inside Fujisan, Fujisan's
+pins, card, row and regions are the ponds' and its other places', the places its "k of 25" counts,
+and Oshino Hakkai's own point, where it holds one, is on Oshino Hakkai's card alone.
 `backend/src/db/placePoints.ts` is the one statement of that rule, and every shape of it keeps the
-place's own points and its parts' points as two arms, so the own arm is planned as the read was before
+place's own points and its leaves' points as two arms, so the own arm is planned as the read was before
 parts existed:
 
 - `overPlacePoints` writes a read over many places once per arm and unions the arms at the top of the
@@ -161,7 +166,10 @@ parts existed:
   for a test that one of them meets a condition (a region list's check that a place stands in the
   region, a site's open candidates);
 - `madeOfSql` / `shownBySql` filter by a set of places given as a parameter (a run's writes for one
-  site, a placement for given places), which Postgres computes once. As a filter on an outer row's
+  site, a placement for given places), which Postgres computes once. They hold the places, their
+  direct parts and their leaves: the leaves for what a reader is shown (placing a nested whole places
+  its ponds), the direct parts because a run finds a site's lines there, and a part that is a whole
+  holds its line as its own point, which no reader shows on the site (ADR-0211 decision 5). As a filter on an outer row's
   place the array is computed again for every row the plan meets: on 2026-10-13 that took the region
   list's check to 11.6 s and the review queue's first page to 4.2 s on the development catalogue,
   where the arms answer in 34 ms and 262 ms (71 ms and 260 ms before parts).
@@ -172,7 +180,8 @@ position it gives a place (`readerPositionSql`), the visit reads and writes over
 the review card's "made of N places", the component-items card (its candidates, its points, its
 answers and Jev's suggestions) and region placement, where a site is placed in every region one of
 its parts' points is: `assignRegionsForExperiences` re-places a site's parts' points with it and,
-given a part, writes its whole's rows again (`refresh_place_regions()` walks up, ADR-0197), and a
+given a part, writes the rows of every whole above it again (`refresh_place_regions()` walks up,
+ADR-0197, ADR-0211), and a
 source's rebuild clears and re-places the points its places show, so a World Heritage rebuild
 reaches a part that holds no membership of its own. The
 same rule answers everything else that asks about a site's points (#1428): a traveller's tick on a point, which
@@ -208,7 +217,9 @@ holds still. Statement-level triggers call it, named `trg_place_leaves_*` so the
 region triggers on the same tables and the region refresh after them takes no key out of order:
 on `experience_parts` (any write, the whole and the part locked), and on `experience_locations`
 (an insert, a delete, and an update of the columns the region trigger follows). It is not part of
-`refresh_place_regions()`: the two read the same inputs and neither calls the other. A part
+`refresh_place_regions()`: neither calls the other, and the region refresh reads the leaves
+(`place_shown_points()`) as the leaf triggers, firing first, left them, over the same keys, since
+both walk up to every whole above a change (ADR-0211). A part
 relation written per record, as a run writes its parts, refreshes its whole once per record.
 Measured on 2026-11-15 on a copy of the development catalogue's places, points and part relations
 in a throwaway database: the backfill writes the 5,620 rows in 1.2 s; a refresh of the Rock Art of
@@ -218,7 +229,8 @@ and in one statement it refreshes the site once. The catalogue check `whole-leav
 compares the rows with what the function makes, and `SELECT refresh_whole_leaves(ARRAY[id])`
 settles one whole. Two reads read it, each a probe of `idx_whole_leaves_offered`: a place's N
 (`leafCountSql`, `leaf_count` on the list, tail and detail rows), and a traveller's count of every
-whole they have been to (§ User visits).
+whole they have been to (§ User visits). Every reader of a place's points reads it as well, by its
+primary key (`PLACE_POINT_ARMS`, `place_shown_points()`, above), and so does a row's `has_parts`.
 
 **A part reads as a place** (ADR-0100 decisions 2 and 5, #1425). A part carries no membership of its
 own for its site's kind, so the membership predicates never offer it; `partOfferedSql`
@@ -5952,10 +5964,11 @@ articles, since a subject saved without the article it has would be a line with 
 **A place's rows: one junction, written by one function** ([ADR-0197](../decisions/0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md),
 #2120). `experience_regions` holds the regions of every place with a point, a serial site's
 parts included. A place's automatic rows are the regions of the points it shows: its own and its
-direct parts' (`place_shown_points()`), the two arms every reader of its points reads
-(`PLACE_POINT_ARMS`, `placePoints.ts`), so a region never lists a place whose points no reader is
-shown; what a nested whole shows is #2121's. They are among the points placement places (offered,
-not turned down). Each row carries `listing`:
+leaves' (`place_shown_points()`, which reads `whole_leaves`), the two arms every reader of its points
+reads (`PLACE_POINT_ARMS`, `placePoints.ts`), so a region never lists a place whose points no reader
+is shown, and a nested whole is placed by the places inside the whole nested in it (ADR-0211):
+Fujisan is listed where an Oshino Hakkai pond stands. They are among the points placement places
+(offered, not turned down). Each row carries `listing`:
 
 | `listing` | When | Who finds the place there |
 |---|---|---|
@@ -5964,7 +5977,9 @@ not turned down). Each row carries `listing`:
 | `fallback` | the place shows no visible point anywhere, and its unread points put it here: an arrival waiting for a curator | curators |
 
 A manual row is always `offered`. `refresh_place_regions(places, world_view)` (in
-`db/init/01-schema.sql`) walks up from the places it is given to the wholes they are direct parts of, computes
+`db/init/01-schema.sql`) walks up from the places it is given to every whole above them
+(`place_regions_reach()` over `place_ancestors()`, ADR-0211), so a pond's point withdrawn rewrites
+Fujisan's rows two levels up in the same statement, computes
 the expected rows from the point rows and the rows its geometry gives (`place_regions_expected()`,
 below), and writes only what differs: a
 second call writes nothing, and a manual row is never touched. It reads no geometry, so it is cheap
@@ -6029,7 +6044,7 @@ states the rule, one basis per row:
 | `record` | for a place with no point of its own, the leaf holding the point its kind record reports (`reported_location`) | Wudang, once its own point goes |
 
 `refresh_place_regions()` reads the table and still reads no geometry. The `area`, `line` and
-`nearest` rows of a place and of its direct parts join its points' rows, listed as the place's
+`nearest` rows of a place and of its leaves join its points' rows, listed as the place's
 points are (a whole is in the Wadden Sea's five regions because its parts are); the `record` rows
 join only in a world view where nothing else offers the place to a reader, and are offered there,
 the place's other rows becoming `scope`. A reader's list still composes a record the reader is
@@ -6931,7 +6946,7 @@ France. Nothing is written for a whole when one of its parts is ticked.
 What a traveller has visited is read one way, in `db/visits.ts`, for Map mode and Discover alike:
 
 - a point is visited when its own place has a visit (`liveVisitsSql`), and a place's points are
-  its own and its direct parts', as every reader shows them (`pointsShownSql`);
+  its own and its leaves' (`whole_leaves`, ADR-0211), as every reader shows them (`pointsShownSql`);
 - a place's state has two values (`VISITED_STATUSES`, `@tyr/shared/visits`, ADR-0206 decision
   1): `visited` once the place is ticked itself or a place below it is, at any depth, and
   `not_visited` otherwise. The places visited are one statement, `visitedPlacesCtesSql`: the
@@ -6968,11 +6983,11 @@ What a traveller has visited is read one way, in `db/visits.ts`, for Map mode an
 
 A click never clears a visit the traveller cannot see (ADR-0199 decision 5). A place of no parts
 is ticked and unticked from its row's checkbox in both modes (`markVisited`, `unmarkVisited`). A
-whole, a place the list row marks `has_parts` (a direct part with a point a reader is shown,
-`showsPartsSql` in `db/visits.ts`, so a part still unread tells a reader nothing; one level down,
-as its card lists its points, so a whole whose places all sit inside a whole nested in it keeps
-its checkbox until the slice of #2121 that shows and places a nested whole by its leaves moves
-both to `whole_leaves`), shows its state on its row as a mark that is not a
+whole, a place the list row marks `has_parts` (an offered leaf, `showsPartsSql` in
+`db/visits.ts` over `whole_leaves`, so a part still unread tells a reader nothing; read over the
+leaves as its card lists them, so a whole whose places all sit inside a whole nested in it is read
+by those places and has no checkbox whose untick would take back no visit, ADR-0211), shows its
+state on its row as a mark that is not a
 control, and its parts are ticked one by one on its card or expanded row. On its card in Map
 mode, beside the count of its places in the region, *Mark all in region* and *Unmark all in region* (`markAllLocationsVisited` and
 `unmarkAllLocationsVisited` with the region) reach only the places with a point in that region,
@@ -6985,7 +7000,7 @@ button on the card of a whole that shows no point of its own (`WholeVisitButton`
 names, and a whole showing a point of its own never is. `unmarkVisited` takes back the place's
 own row only, so taking that tick back leaves every part. Discover's panel's *Mark all* and
 *Unmark all* reach every place of the whole, on the whole's own card (`unmarkAllLocationsVisited`
-with no region takes the whole's row and its direct parts'). Every bulk write and untick reaches only
+with no region takes the whole's row and its leaves'). Every bulk write and untick reaches only
 the places with a point the traveller is shown, as *Mark all* finds them (`claimablePointsSql` in
 `locationVisitController.ts`, composed from `claimableToReaderSql`), and so does the untick of one
 point: a visit on a part whose points were withdrawn or are unread stays, and a page left open on a
