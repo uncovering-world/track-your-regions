@@ -79,7 +79,7 @@ The authenticated experience is about reflection and tracking — turning scatte
 Two paths to an account:
 
 - **Email/password** — register with a display name (one that is more than spaces, stored without the spaces around it), email, and password. The app sends a verification email with a one-time link. Clicking the link verifies the email and logs you in. Until verified, login is blocked. The verification link expires after 24 hours; users can request a fresh one via "Resend verification email"
-- **OAuth** — sign in with Google (or Apple). No email verification needed — the provider has already verified the address. Instant access
+- **OAuth** — sign in with Google (or Apple). No email verification needed — the provider has already verified the address. Instant access. After a Google sign-in, the next sign-in offers the same account first, until you sign out: signing out leaves no address of yours on the device
 
 Every password field, at sign-in, at registration and on the Account page, has an eye button at its end that shows what you typed and hides it again; each field is masked when it opens and again once the form is sent, and showing one does not show the others.
 

@@ -23,6 +23,8 @@ Just copy the verification link from the terminal and paste it into your browser
 
 ## Production Setup
 
+A production server does not start without `SMTP_HOST`, `SMTP_USER` and `SMTP_PASS` (`collectEnvIssues` in `backend/src/config/validateEnv.ts`): the console stand-in would print each address and its one-time link into the log, and a server that sends nothing would verify no one.
+
 ### Option 1: Resend (Recommended)
 
 [Resend](https://resend.com) offers a generous free tier (100 emails/day) and excellent deliverability.
