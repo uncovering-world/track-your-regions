@@ -75,8 +75,8 @@ Run a security audit of the codebase against OWASP ASVS 5.0 requirements.
 
 - **V8 (Authorization)** — service has no auth currently; verify the deployment relies on Docker network isolation and `--host` binding is justified. If the service is ever moved out of the internal network, add a bearer/shared-secret check via `Depends`
 - **V13 (Configuration)** — Dockerfile must run as non-root (currently `appuser`), pin the base image, no secrets baked in, no debug routes exposed
-- **V13.4 (Error handling)** — workers stream errors via NDJSON (`{"type":"error","message":...}`). Verify the message is sanitised; raw `str(exception)` leaks paths and stack info. Add an exception handler that strips internals
-- **V2.4 (Input validation)** — `params: str = Form(...)` + `json.loads()` is unvalidated. Wrap in a Pydantic model so schema violations return 422 instead of crashing the worker
+- **V16.5 (Error handling)** — workers stream errors via NDJSON (`{"type":"error","message":...}`). Verify the message is sanitised; raw `str(exception)` leaks paths and stack info. Add an exception handler that strips internals
+- **V2.2 (Input validation)** — `params: str = Form(...)` + `json.loads()` is unvalidated. Wrap in a Pydantic model so schema violations return 422 instead of crashing the worker
 - **V5 (File uploads)** — see "File Handling" above
 - **V11/V12** — N/A (no crypto or external traffic from cv-python)
 - **V16 (Logging)** — the service logs through stdlib `logging` to stdout, collected by Docker (`app/logging_config.py`, level from `CV_LOG_LEVEL`). Verify that no log line carries an uploaded image's contents or a caller's precise coordinates. Structured fields and a per-upload request id are not there yet
