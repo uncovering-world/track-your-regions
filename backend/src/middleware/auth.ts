@@ -21,8 +21,9 @@ export interface AuthenticatedRequest extends Request {
  * And marks the response the caller's own, so no cache keeps it — the
  * browser's included. What sits behind this middleware is one reader's data:
  * their visited regions and experiences, their profile with its email, an
- * admin's or a curator's screen — what `docs/security/asvs-checklist.yaml`
- * V14.1.1 classifies as sensitive. A shared cache is already kept out of most
+ * admin's or a curator's screen — a traveller's history and personal contacts,
+ * the levels only their owner reads (`docs/security/SECURITY.md` § Data
+ * Classification). A shared cache is already kept out of most
  * of it by RFC 9111 § 3.5, which excludes the answer to a request that carried
  * `Authorization` — though not from everything this middleware fronts: it
  * takes the token from the query string too (below), for the one caller that
