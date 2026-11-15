@@ -13,8 +13,8 @@ import { getVisitedRegions, getVisitedRegionsInWorldView } from '../controllers/
 /**
  * A traveller's visit is one row on the place they ticked, and a whole is read
  * through its parts (#2120), against PostgreSQL. Map mode and Discover read
- * the same state, so a serial site with two of its three monasteries visited
- * reads partly visited in both, as Haghpat and Sanahin does.
+ * the same state, so a serial site with one of its three monasteries visited
+ * reads visited in both, as Haghpat and Sanahin does (ADR-0206).
  *
  * The fixture: a serial site (9431) of three parts with no kind of their own
  * (9432–9434), one of them also a museum holding a work, as Antwerp Cathedral
@@ -94,13 +94,10 @@ async function nestSite(): Promise<void> {
   await place(GRAND, 'A whole above the serial site (visits fixture)', true);
   await pool.query(`INSERT INTO experience_parts (whole_id, part_id, reason) VALUES ($1, $2, 'curator')`, [GRAND, SITE]);
 }
-/** Discover's read: the fixture's places visited, and those only partly visited. */
-async function states(): Promise<{ visited: number[]; partial: number[] }> {
+/** Map mode's and Discover's read: the fixture's places visited. */
+async function states(): Promise<number[]> {
   const answer = await getVisitedIds({ query: {}, caller: traveller() });
-  return {
-    visited: answer.visitedIds.filter(id => PLACES.includes(id)).sort(),
-    partial: answer.partialIds.filter(id => PLACES.includes(id)).sort(),
-  };
+  return answer.visitedIds.filter(id => PLACES.includes(id)).sort();
 }
 
 beforeEach(async () => {
@@ -146,33 +143,38 @@ afterAll(async () => {
 });
 
 describe("a traveller's visits, one row on the place ticked (#2120)", () => {
-  it('reads a site with two of its three parts visited as partly visited, and its folded twin nowhere', async () => {
+  it('reads a site with two of its three parts visited as visited, and its folded twin nowhere', async () => {
     // Haghpat and Sanahin: two monasteries visited, the bridge not, and a
     // visit left on a twin a merge folded into the first monastery.
     await visit(PART_A);
     await visit(PART_B);
     await visit(FOLDED_TWIN);
 
-    expect(await states()).toEqual({ visited: [SITE, PART_A, PART_B], partial: [SITE] });
+    expect(await states()).toEqual([SITE, PART_A, PART_B]);
     expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
-      .toMatchObject({ visitedStatus: 'partial', visitedLocations: 2, totalLocations: 3 });
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 2, totalLocations: 3 });
     const ticks = await getVisitedLocationIds({ query: { experienceId: SITE }, caller: traveller() });
     expect(ticks.visitedLocationIds.sort()).toEqual([points[PART_A][0], points[PART_B][0]].sort());
   });
 
-  it('reads the site visited once every part is', async () => {
+  it('reads the site visited after one part, and not visited once that visit is taken back', async () => {
+    // The Struve Geodetic Arc after one station of 34 (ADR-0206 decision 1).
     await visit(PART_A);
-    await visit(PART_B);
-    await visit(PART_C);
+    expect(await states()).toEqual([SITE, PART_A]);
+    expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 1, totalLocations: 3 });
 
-    expect(await states()).toEqual({ visited: [SITE, PART_A, PART_B, PART_C], partial: [] });
+    await unmarkVisited({ params: { experienceId: PART_A }, caller: traveller() });
+    expect(await states()).toEqual([]);
+    expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'not_visited', visitedLocations: 0 });
   });
 
   it('marks the cathedral where a work was seen, and neither the other parts nor the site itself', async () => {
     await markTreasureViewed({ params: { treasureId: workId }, body: { experienceId: PART_A }, caller: traveller() });
 
     expect(await held()).toEqual([PART_A]);
-    expect(await states()).toEqual({ visited: [SITE, PART_A], partial: [SITE] });
+    expect(await states()).toEqual([SITE, PART_A]);
   });
 
   it("takes back only a site's own tick, and its card's Unmark all clears its parts too", async () => {
@@ -182,11 +184,11 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
 
     await unmarkVisited({ params: { experienceId: SITE }, caller: traveller() });
     expect(await held()).toEqual([PART_A, PART_B]);
-    expect(await states()).toEqual({ visited: [SITE, PART_A, PART_B], partial: [SITE] });
+    expect(await states()).toEqual([SITE, PART_A, PART_B]);
 
     await unmarkAllLocationsVisited({ params: { experienceId: SITE }, query: {}, caller: traveller() });
     expect(await held()).toEqual([]);
-    expect(await states()).toEqual({ visited: [], partial: [] });
+    expect(await states()).toEqual([]);
   });
 
   it("keeps a visit on a part the traveller is not shown when the site's places are all unmarked", async () => {
@@ -211,26 +213,22 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
     expect(await held()).toEqual([FOLDED_TWIN]);
   });
 
-  it("reads a site with a point of its own visited once that point is ticked too, and lists no tick 'as a whole' for it", async () => {
+  it("records a tick on a site's own point on the site, visited, and lists no tick 'as a whole' for it", async () => {
     // The City of Graz: a point named for the whole site beside its parts.
     await point(SITE, 44.69);
-    await visit(PART_A);
-    await visit(PART_B);
-    await visit(PART_C);
-    expect(await states()).toEqual({ visited: [SITE, PART_A, PART_B, PART_C], partial: [SITE] });
 
     // Its own point's tick is the site's own row, and the site is visited.
     await markLocationVisited({ params: { locationId: points[SITE][0] }, body: {}, caller: traveller() });
-    expect(await held()).toEqual([SITE, PART_A, PART_B, PART_C]);
-    expect(await states()).toEqual({ visited: [SITE, PART_A, PART_B, PART_C], partial: [] });
+    expect(await held()).toEqual([SITE]);
+    expect(await states()).toEqual([SITE]);
     const answer = await getVisitedIds({ query: {}, caller: traveller() });
     expect(answer.wholeTickedIds.filter(id => PLACES.includes(id))).toEqual([]);
   });
 
-  it('reads a site ticked as a whole partly visited until its parts are', async () => {
+  it('reads a site ticked as a whole visited before any of its parts is named', async () => {
     await visit(SITE);
 
-    expect(await states()).toEqual({ visited: [SITE], partial: [SITE] });
+    expect(await states()).toEqual([SITE]);
     const answer = await getVisitedIds({ query: {}, caller: traveller() });
     expect(answer.wholeTickedIds.filter(id => PLACES.includes(id))).toEqual([SITE]);
   });
@@ -243,8 +241,21 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
 
     await visit(PART_A);
     expect(await counts()).toEqual({ [SITE]: { visited: 1, total: 3 }, [GRAND]: { visited: 1, total: 3 } });
-    // The state is still read the old way until the count replaces it (#2121).
-    expect(await states()).toEqual({ visited: [SITE, PART_A], partial: [SITE] });
+    // Visited at every level of nesting (ADR-0206 decision 1).
+    expect(await states()).toEqual([SITE, PART_A, GRAND]);
+  });
+
+  it("reads a whole above the site visited in its own read, though none of the points it shows is", async () => {
+    // Fujisan after a pond of Oshino Hakkai, which shows a point of its own:
+    // that is the one point Fujisan shows one level down, and it is not ticked.
+    await nestSite();
+    await point(SITE, 44.69);
+    expect(await getExperienceVisitedStatus({ params: { id: GRAND }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'not_visited', visitedLocations: 0, totalLocations: 1 });
+
+    await visit(PART_A);
+    expect(await getExperienceVisitedStatus({ params: { id: GRAND }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 0, totalLocations: 1 });
   });
 
   it('reads a whole ticked as a whole, or through a whole inside it, as ? of N', async () => {
@@ -259,6 +270,11 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
     await visit(PART_C);
 
     expect(await counts()).toEqual({ [SITE]: { visited: null, total: 2 } });
+    // The traveller was at the site, at a place its list no longer names, and
+    // the site's own read says so though none of the points it shows is ticked.
+    expect(await states()).toEqual([SITE, PART_C]);
+    expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 0, totalLocations: 2 });
   });
 
   it('gives a whole with no offered part, and an edition, no count', async () => {
@@ -315,7 +331,7 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
 
     await markLocationVisited({ params: { locationId: points[PART_A][0] }, body: {}, caller: traveller() });
 
-    expect((await states()).visited).toContain(SITE);
+    expect(await states()).toContain(SITE);
     expect(await counts()).toEqual({ [SITE]: { visited: 1, total: 3 } });
     expect(await getVisitedRegions({ caller: traveller() })).toEqual([]);
     expect(await getVisitedRegionsInWorldView({ params: { worldViewId: worldView }, caller: traveller() })).toEqual([]);

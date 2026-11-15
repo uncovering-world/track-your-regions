@@ -42682,16 +42682,7 @@
               "minimum": -9007199254740991,
               "maximum": 9007199254740991
             },
-            "description": "The objects the reader has visited, wholly or in part."
-          },
-          "partialIds": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            },
-            "description": "Those of them visited in part: a serial site with some of its components, or ticked as a whole."
+            "description": "The objects the reader has visited: those they ticked and every whole above one, at any depth (ADR-0206). The Struve Geodetic Arc after one station is visited."
           },
           "wholeTickedIds": {
             "type": "array",
@@ -42749,13 +42740,12 @@
         },
         "required": [
           "visitedIds",
-          "partialIds",
           "wholeTickedIds",
           "wholeProgress",
           "total"
         ],
         "additionalProperties": false,
-        "description": "The objects the reader has visited, and which of them only in part."
+        "description": "The objects the reader has visited, and how far through each whole of them."
       },
       "VisitedLocationIds": {
         "type": "object",
@@ -42852,10 +42842,9 @@
         "type": "string",
         "enum": [
           "not_visited",
-          "partial",
           "visited"
         ],
-        "description": "How far through an object's places the reader is."
+        "description": "Whether the reader has been to an object: at it, or at any place below it at any depth, one since withdrawn included (ADR-0206)."
       },
       "VisitsRestored": {
         "type": "object",

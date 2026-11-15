@@ -1,22 +1,12 @@
-/** The visit meaning shared by the API and the cards (#2120). */
-export const VISITED_STATUSES = ['not_visited', 'partial', 'visited'] as const;
-export type VisitedStatus = typeof VISITED_STATUSES[number];
-
 /**
- * A place's state from what the traveller has visited of it: `visited` of the
- * `total` points a reader is shown of it (its own and its direct parts'), a
- * point counting when its own place is visited, and whether the place itself
- * is ticked. Every point visited is `visited`, and so is a ticked place a
- * reader is shown no point of. Anything less is `partial`: a serial site with
- * one of its components (Haghpat and Sanahin with two monasteries of three),
- * or a site ticked as a whole. An edition's casts are its own points, so a
- * visit to it marks them all.
+ * The visit meaning shared by the API and the cards (#2120): a place is
+ * visited once it or any place below it has a visit (ADR-0206 decision 1),
+ * which the backend reads in SQL (`visitedPlacesCtesSql`). One station visits
+ * the Struve Geodetic Arc, and how much of it is left is its count
+ * (`wholeProgress`), never a lesser state.
  */
-export function computeVisitedStatus(visited: number, total: number, ticked: boolean): VisitedStatus {
-  if (visited === 0 && !ticked) return 'not_visited';
-  if (visited >= total) return 'visited';
-  return 'partial';
-}
+export const VISITED_STATUSES = ['not_visited', 'visited'] as const;
+export type VisitedStatus = typeof VISITED_STATUSES[number];
 
 /** How far through a whole's offered leaves the traveller is: `visited` of `total`, `visited` null for "?". */
 export interface WholeProgress {

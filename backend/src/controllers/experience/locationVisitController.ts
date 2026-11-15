@@ -16,7 +16,6 @@ import type {
   TickedPlace, VisitedLocationIds,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { computeVisitedStatus } from '@tyr/shared/visits';
 import { placePointsSql, pointNameSql } from '../../db/placePoints.js';
 import type { ExperienceLocationsRow, ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import {
@@ -27,6 +26,7 @@ import {
 } from '../../db/readerPredicates.js';
 import {
   liveVisitsSql, placeAtWriteSql, pointPlaceAtWriteSql, removedVisitsOf, removeVisits, removeVisitsOn, tickedPlaceJsonSql,
+  visitedPlacesCtesSql,
 } from '../../db/visits.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -309,11 +309,10 @@ export async function unmarkAllLocationsVisited(
 
   // The places whose points are cleared, as *Mark all* finds them: in one
   // region, the places of the points there; everywhere, the place itself and
-  // its direct parts, so a site leaves no part that reads it partly visited
-  // again. Only places with a point the traveller is shown: a visit on a part
-  // whose points were withdrawn or are unread is one they cannot see, and a
-  // click never clears it (#2120). One client, so the count reads what the
-  // delete left.
+  // its direct parts, so no part it shows keeps the site visited. Only places
+  // with a point the traveller is shown: a visit on a part whose points were
+  // withdrawn or are unread is one they cannot see, and a click never clears
+  // it (#2120). One client, so the count reads what the delete left.
   const client = await pool.connect();
   let unusable: Error | undefined;
   let locationsUnmarked: number;
@@ -377,12 +376,17 @@ export async function getExperienceVisitedStatus(
   const userId = caller.id;
 
   // The place's points a reader is shown, each with the visit on its own
-  // place: the part's for a part's point, the place's own otherwise.
+  // place: the part's for a part's point, the place's own otherwise. The
+  // place's state is the visit read's (`visitedPlacesCtesSql`): visited once
+  // it or any place below it, at any depth, has a visit, a place since
+  // withdrawn included, which no point here shows (ADR-0206). Asked of `$1`,
+  // not of the row, so it is read once.
   const result = await pool.query<
     Pick<ExperienceLocationsRow, 'name' | 'ordinal'> & Pick<ExperiencesRow, 'cast_points'>
-    & { location_id: number; longitude: number; latitude: number; ticked: boolean }
+    & { location_id: number; longitude: number; latitude: number; visited_place: boolean }
     & { visit_id: number | null; marked_at: UserVisitedExperiencesRow['marked_at']; notes: UserVisitedExperiencesRow['notes'] }
   >(`
+    WITH ${visitedPlacesCtesSql('$2')}
     SELECT
       el.id as location_id,
       e.cast_points,
@@ -394,7 +398,7 @@ export async function getExperienceVisitedStatus(
       uv.id as visit_id,
       uv.marked_at,
       uv.notes,
-      EXISTS (SELECT 1 FROM ${liveVisitsSql('$2')} own WHERE own.experience_id = e.id) AS ticked
+      EXISTS (SELECT 1 FROM touched WHERE touched.place_id = $1) AS visited_place
     FROM ${placePointsSql()} pp
     JOIN experience_locations el ON el.id = pp.location_id
     -- The row this reader is asking about has to be one the catalogue offers:
@@ -418,7 +422,7 @@ export async function getExperienceVisitedStatus(
   const visitedLocations = result.rows.filter(r => r.visit_id !== null).length;
 
   const castPoints = result.rows[0].cast_points;
-  const visitedStatus = computeVisitedStatus(visitedLocations, totalLocations, result.rows[0].ticked);
+  const visitedStatus = result.rows[0].visited_place ? 'visited' : 'not_visited';
 
   return {
     experienceId,
