@@ -70,6 +70,7 @@ describe('the catalogue lint rules', () => {
     ['the curator writer', 'export const q = `UPDATE experiences SET name = $2 WHERE id = $1`;\n', 'src/db/experienceWriter.ts'],
     ['the run\'s upsert', 'export const q = `INSERT INTO experiences (name) VALUES ($1)`;\n', 'src/services/sync/experienceUpsert.ts'],
     ['the picture repair', 'export const q = `UPDATE experiences SET image_url = NULL`;\n', 'src/services/sync/pictureRepair.ts'],
+    ['the line writer', 'export const q = `UPDATE experiences SET path = NULL`;\n', 'src/db/pathWriter.ts'],
   ])('lets a write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WRITE.test(m))).toBe(false);
   });
