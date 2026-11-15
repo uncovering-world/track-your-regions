@@ -8405,6 +8405,31 @@ export interface PlannedKindAnswered {
   belongs: boolean;
 }
 
+export type GuideArticlesArticlesItem = {
+  /** The edition's database name, as the dumps name it: dewikivoyage. */
+  site: string;
+  /** The edition's language, as its host names it: de for de.wikivoyage.org. */
+  language: string;
+  /** The article's title as a reader reads it, spaces and not underscores. */
+  title: string;
+  /** The article on its edition's own host, its title percent-encoded. */
+  url: string;
+};
+
+export interface GuideArticles {
+  /**
+     * The Wikidata item the guide evidence is read for, the one its source knows the place by; null where it has none.
+     * @nullable
+     */
+  item: string | null;
+  /** Whether the Wikivoyage copy in place keeps the articles: false where it was built before they were kept, or where no copy is in place. Then an empty list says nothing of whether a guide uses the item, and a rebuild of the Wikivoyage item usage keeps them. */
+  articlesKept: boolean;
+  /** Every guide article that uses the item, by edition and then by title; empty where none does or none is kept. */
+  articles: GuideArticlesArticlesItem[];
+  /** More articles use the item than the read lists. */
+  truncated: boolean;
+}
+
 /**
  * One place found by name.
  */
@@ -14911,6 +14936,31 @@ return apiFetch<PlannedKindAnswered>(getPostExperiencesByIdPlannedKindAnswerUrl(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(plannedKindAnswerBody)
+  }
+);}
+
+
+
+export const getGetExperiencesReviewGuideArticlesByMembershipIdUrl = (membershipId: number,) => {
+
+
+
+
+  return `/api/experiences/review/guide-articles/${encodeURIComponent(String(membershipId))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary The Wikivoyage articles that use the item a membership's source knows its place by, from the local copy
+ */
+export const getExperiencesReviewGuideArticlesByMembershipId = async (membershipId: number, options?: Parameters<typeof apiFetch>[1]): Promise<GuideArticles> => {
+
+  return apiFetch<GuideArticles>(getGetExperiencesReviewGuideArticlesByMembershipIdUrl(membershipId),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
