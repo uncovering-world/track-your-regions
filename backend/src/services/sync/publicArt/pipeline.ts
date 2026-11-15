@@ -41,6 +41,7 @@ import type { KindFacts, KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, type PoolEntity, type EntityFacts } from './queries.js';
 import type { PlaceKind } from '../places/gather.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
+import { WORLD_FRAME } from '../places/admissionRegister.js';
 import type { WorldCandidate } from '../places/worldBars.js';
 import { chainOf, ownersOf, type Containment } from '../places/containment.js';
 import type { SubjectFacts } from './subjects.js';
@@ -152,7 +153,7 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   // Both kinds admit by the world bars over their own pools (ADR-0175): a
   // public clock with a show is read in few languages — the
   // Rathaus-Glockenspiel has 7 editions — and is a candidate whatever its count.
-  admissionPool: true,
+  admissionPool: WORLD_FRAME.poolSitelinks,
 };
 
 /**

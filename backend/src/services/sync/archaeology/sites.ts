@@ -37,7 +37,7 @@ import type { KeepWkt, OsmObject, OsmReaderName } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import type { FilteredEntity } from '../syncContract.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
-import { ARCHAEOLOGY_WORLD_REGISTER } from '../places/admissionRegister.js';
+import { ARCHAEOLOGY_WORLD_REGISTER, WORLD_FRAME } from '../places/admissionRegister.js';
 import type { WorldCandidate } from '../places/worldBars.js';
 
 const LOG_PREFIX = '[Archaeology Sync]';
@@ -205,7 +205,7 @@ export const ARCHAEOLOGY_SITE_KIND: PlaceKind<ArchaeologyTrees> = {
   trees: fetchArchaeologyTrees,
   poolClasses: (trees) => ({ broad: [SITE_POOL_ROOT], narrow: [...trees.site].filter((cls) => cls !== SITE_ROOT) }),
   readsContainers: false,
-  admissionPool: true,
+  admissionPool: WORLD_FRAME.poolSitelinks,
 };
 
 /**

@@ -19,6 +19,7 @@ import { worshipVerdict } from './worshipTest.js';
 import { fetchWorshipTrees } from './queries.js';
 import { BROAD_WORSHIP_ROOTS, type WorshipTrees, type WorshipType } from './classes.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions } from '../places/worldTier.js';
+import { WORLD_FRAME } from '../places/admissionRegister.js';
 import type { WorldCandidate } from '../places/worldBars.js';
 import type { FilteredEntity } from '../syncContract.js';
 
@@ -72,7 +73,7 @@ export const WORSHIP_KIND: PlaceKind<WorshipTrees> = {
   poolClasses: (trees) => ({ broad: BROAD_WORSHIP_ROOTS, narrow: [...trees.worship, ...trees.parts] }),
   // A holy object is the place it is kept in (`worshipVerdict`).
   readsContainers: true,
-  admissionPool: true,
+  admissionPool: WORLD_FRAME.poolSitelinks,
 };
 
 const candidateOf = (entity: PoolEntity): WorldCandidate => ({ qid: entity.qid, editions: entity.sitelinks });

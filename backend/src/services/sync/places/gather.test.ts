@@ -168,7 +168,7 @@ describe('gatherPlaces', () => {
     trees: vi.fn(async () => ({ locks: [LOCK] })),
     poolClasses: (trees) => ({ broad: [], narrow: trees.locks }),
     readsContainers: false,
-    admissionPool: true,
+    admissionPool: 3,
   };
   const LOCKY_ART: PlaceKind<{ admitting: string[] }> = { ...ART, trees: vi.fn(async () => ({ admitting: [STATUE, LOCK] })) };
 
