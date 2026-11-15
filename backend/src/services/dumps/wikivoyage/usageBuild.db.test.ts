@@ -6,11 +6,16 @@ import type { DumpConsumer } from '../read.js';
  * The Wikidata items each Wikivoyage edition uses (#1768, decided on #1718), against
  * PostgreSQL, with the dump files' lines stood in, shaped as the 2026-10-01
  * `wbc_entity_usage` and `page` tables wrote them. English Wikivoyage's Bath
- * article uses the Roman Baths twice over (two aspects) and a property, and a
- * user's draft uses Stapleton International Airport; German Wikivoyage's Arles
- * article uses the Arles Amphitheatre; Russian Wikivoyage's register of
- * Belarus's heritage uses an item, and a redirect uses another. Every
- * other edition's tables are empty.
+ * article uses the Roman Baths twice over (two aspects) and a property, its
+ * Somerset article lists them too, and a user's draft uses Stapleton
+ * International Airport; German Wikivoyage's Arles article uses the Arles
+ * Amphitheatre and its Bath article the Roman Baths; Russian Wikivoyage's
+ * register of Belarus's heritage uses an item, and a redirect uses another.
+ * Every other edition's tables are empty.
+ *
+ * The usage is one row per item and edition, so the Roman Baths stand in two
+ * editions however many English articles use them (ADR-0177), and the
+ * articles that use each item are kept beside it (#2520).
  */
 
 const DATE = '20261001';
@@ -40,10 +45,11 @@ const rowsOf = (lines: string[]) => lines.map((line, i) => `${line}${i === lines
 
 const FILES: Record<string, string[]> = {
   'enwikivoyage-wbc_entity_usage': [...created('wbc_entity_usage', USAGE),
-    ...rowsOf([`(1,'${BATHS}','C.P625',17)`, `(2,'${BATHS}','S',17)`, "(3,'P1082','L.en',17)", `(4,'${STAPLETON}','T',90)`])],
-  'enwikivoyage-page': [...created('page', PAGE), ...rowsOf([page(17, 0, 'Bath'), page(90, 2, 'Someone/Denver')])],
-  'dewikivoyage-wbc_entity_usage': [...created('wbc_entity_usage', USAGE), ...rowsOf([`(1,'${ARLES}','O',40)`])],
-  'dewikivoyage-page': [...created('page', PAGE), ...rowsOf([page(40, 0, 'Arles')])],
+    ...rowsOf([`(1,'${BATHS}','C.P625',17)`, `(2,'${BATHS}','S',17)`, "(3,'P1082','L.en',17)", `(4,'${STAPLETON}','T',90)`,
+      `(5,'${BATHS}','O',23)`])],
+  'enwikivoyage-page': [...created('page', PAGE), ...rowsOf([page(17, 0, 'Bath'), page(90, 2, 'Someone/Denver'), page(23, 0, 'Somerset')])],
+  'dewikivoyage-wbc_entity_usage': [...created('wbc_entity_usage', USAGE), ...rowsOf([`(1,'${ARLES}','O',40)`, `(2,'${BATHS}','O',41)`])],
+  'dewikivoyage-page': [...created('page', PAGE), ...rowsOf([page(40, 0, 'Arles'), page(41, 0, 'Bath_(England)')])],
   'ruwikivoyage-wbc_entity_usage': [...created('wbc_entity_usage', USAGE), ...rowsOf([`(1,'${REGISTERED}','O',5)`, "(2,'Q99768002','O',6)"])],
   'ruwikivoyage-page': [...created('page', PAGE),
     ...rowsOf([page(5, 0, 'Культурное_наследие_Беларуси/Брестская_область'), page(6, 0, 'Старый_Брест', 1)])],
@@ -79,7 +85,7 @@ vi.mock('../catalog.js', async (importOriginal) => ({
 
 const { pool } = await import('../../../db/index.js');
 const { buildUsage, WIKIVOYAGE_EDITIONS } = await import('./usageBuild.js');
-const { latestUsage, usedByAGuide } = await import('./usageTables.js');
+const { guideEditions, latestUsage, usedByAGuide } = await import('./usageTables.js');
 
 let buildId = 0;
 
@@ -92,7 +98,7 @@ async function build(): Promise<Awaited<ReturnType<typeof buildUsage>>> {
 }
 
 async function clear(): Promise<void> {
-  await pool.query('TRUNCATE wikivoyage_usage_builds, wikivoyage_usage');
+  await pool.query('TRUNCATE wikivoyage_usage_builds, wikivoyage_usage, wikivoyage_articles');
   await pool.query("DELETE FROM dump_builds WHERE dump = 'wikivoyage-usage'");
 }
 
@@ -114,18 +120,38 @@ const rows = async (sql: string) => (await pool.query(sql)).rows;
 describe('buildUsage (#1768)', () => {
   it("keeps each item an edition's guide articles use once, and no property, draft, redirect or register, and records the build", async () => {
     const result = await build();
-    expect(await rows('SELECT item, site FROM wikivoyage_usage ORDER BY site')).toEqual([
+    expect(await rows('SELECT item, site FROM wikivoyage_usage ORDER BY site, item')).toEqual([
       { item: ARLES, site: 'dewikivoyage' },
+      { item: BATHS, site: 'dewikivoyage' },
       { item: BATHS, site: 'enwikivoyage' },
     ]);
     expect(read).toHaveLength(WIKIVOYAGE_EDITIONS.length * 2);
     expect(read.slice(0, 2)).toEqual([`enwikivoyage-${DATE}-page.sql.gz`, `enwikivoyage-${DATE}-wbc_entity_usage.sql.gz`]);
     const [record] = await rows('SELECT dump_date::text AS date, editions FROM wikivoyage_usage_builds');
     expect(record.date).toBe('2026-10-01');
-    expect(record.editions).toMatchObject({ enwikivoyage: 1, dewikivoyage: 1, ruwikivoyage: 0, itwikivoyage: 0 });
-    expect(result.summary).toMatch(/kept 2 items that 27 Wikivoyage editions use \(English 1\)/);
+    expect(record.editions).toMatchObject({ enwikivoyage: 1, dewikivoyage: 2, ruwikivoyage: 0, itwikivoyage: 0 });
+    expect(result.summary).toMatch(/kept 3 items that 27 Wikivoyage editions use \(English 1\) in 4 articles/);
     expect(await latestUsage()).toMatchObject({ dumpDate: '2026-10-01', needs: 'nothing' });
     expect(await usedByAGuide([BATHS, ARLES, STAPLETON, REGISTERED])).toEqual(new Set([BATHS, ARLES]));
+  });
+
+  it('keeps each article that uses an item once, and counts the editions, not the articles (#2520)', async () => {
+    await build();
+    expect(await rows('SELECT item, site, page_id, title FROM wikivoyage_articles ORDER BY item, site, page_id')).toEqual([
+      { item: ARLES, site: 'dewikivoyage', page_id: 40, title: 'Arles' },
+      { item: BATHS, site: 'dewikivoyage', page_id: 41, title: 'Bath (England)' },
+      { item: BATHS, site: 'enwikivoyage', page_id: 17, title: 'Bath' },
+      { item: BATHS, site: 'enwikivoyage', page_id: 23, title: 'Somerset' },
+    ]);
+    // Two English articles and one German use the Roman Baths: two editions, as fame reads them.
+    expect(await guideEditions([BATHS, ARLES, STAPLETON])).toEqual(new Map([[BATHS, 2], [ARLES, 1]]));
+  });
+
+  it('asks for a rebuild of a copy built before the articles were kept (#2520)', async () => {
+    await build();
+    await pool.query('TRUNCATE wikivoyage_articles');
+    expect(await latestUsage()).toMatchObject({ dumpDate: '2026-10-01', needs: 'rebuild' });
+    expect(await usedByAGuide([BATHS])).toEqual(new Set([BATHS]));
   });
 
   it("swaps nothing in while an edition's table of the date is not finished, and names it", async () => {
@@ -134,7 +160,8 @@ describe('buildUsage (#1768)', () => {
     buildId = await newBuild();
     unfinishedWiki = 'dewikivoyage';
     await expect(build()).rejects.toThrow(/has not finished the item usage and page tables of 1 Wikivoyage editions \(dewikivoyage\), so the usage in place stays/);
-    expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_usage')).toEqual([{ n: 2 }]);
+    expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_usage')).toEqual([{ n: 3 }]);
+    expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_articles')).toEqual([{ n: 4 }]);
     expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_usage_builds')).toEqual([{ n: 1 }]);
   });
 
@@ -144,8 +171,11 @@ describe('buildUsage (#1768)', () => {
     buildId = await newBuild();
     damaged = `dewikivoyage-${DATE}-wbc_entity_usage.sql.gz`;
     await expect(build()).rejects.toThrow(/checksum mismatch/);
-    expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_usage')).toEqual([{ n: 2 }]);
-    expect(await rows("SELECT count(*)::int AS n FROM pg_tables WHERE tablename = 'wikivoyage_usage_next'")).toEqual([{ n: 0 }]);
+    expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_usage')).toEqual([{ n: 3 }]);
+    expect(await rows('SELECT count(*)::int AS n FROM wikivoyage_articles')).toEqual([{ n: 4 }]);
+    expect(await rows(
+      "SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('wikivoyage_usage_next', 'wikivoyage_articles_next')",
+    )).toEqual([{ n: 0 }]);
   });
 
   it('says no usage is in place before a first build', async () => {

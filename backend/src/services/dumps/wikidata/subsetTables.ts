@@ -478,8 +478,12 @@ export interface IndexDefinition {
   definition: string;
 }
 
-/** The live table's indexes and key constraints, as statements on its `_next` copy; English Wikipedia's structure tables copy theirs the same way (`wikipedia/structureTables.ts`). */
-export async function indexesOf(client: PoolClient, table: string): Promise<IndexDefinition[]> {
+/**
+ * The live table's indexes and key constraints, as statements on its `_next` copy; English Wikipedia's structure
+ * tables copy theirs the same way (`wikipedia/structureTables.ts`). A table is the workbench's unless `schema` names
+ * another: the Wikivoyage articles a curator reads are serving, and swapped in with the usage (`wikivoyage/usageTables.ts`).
+ */
+export async function indexesOf(client: PoolClient, table: string, schema: string = WORKBENCH_SCHEMA): Promise<IndexDefinition[]> {
   const result = await client.query<{ name: string; constraint: 'p' | 'u' | null; index_def: string; constraint_def: string | null }>(
     `SELECT i.relname AS name, con.contype AS constraint, pg_get_indexdef(i.oid) AS index_def,
             pg_get_constraintdef(con.oid) AS constraint_def
@@ -489,7 +493,7 @@ export async function indexesOf(client: PoolClient, table: string): Promise<Inde
        JOIN pg_namespace n ON n.oid = t.relnamespace
        LEFT JOIN pg_constraint con ON con.conindid = i.oid AND con.contype IN ('p', 'u')
       WHERE n.nspname = $2 AND t.relname = $1`,
-    [table, WORKBENCH_SCHEMA],
+    [table, schema],
   );
   return result.rows.map(row => ({
     name: row.name,

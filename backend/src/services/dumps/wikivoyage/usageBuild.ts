@@ -16,6 +16,9 @@
  * Only an article counts, read from the edition's page table of the same
  * date: a user's draft or a project page names an item without sending a
  * visitor to it. A heritage register is not a guide either (`REGISTER_ROOTS`).
+ * Beside each item an edition uses, the build keeps the articles that use it,
+ * with their titles from the same page table (#2520), and the usage stays one
+ * row per item and edition (`editionUsage.ts`).
  *
  * The build starts from English Wikivoyage's usage table, the dump's own file,
  * and reads every other edition's usage table and every edition's page table
@@ -32,8 +35,9 @@ import { USAGE_JOB, USAGE_SUFFIX, wikiRunFile, type DumpFile } from '../catalog.
 import { PAGE_COLUMNS } from '../wikipedia/redirectBuild.js';
 import { fetchText } from '../fetch.js';
 import { numberOf, textOf } from '../wikipedia/sqlInsert.js';
-import { readTable, type TableBuildOptions } from '../wikipedia/tableRead.js';
-import { createNextTable, dropNextTable, indexNextTable, keepUsage, swapIn } from './usageTables.js';
+import { Batches, readTable, type TableBuildOptions } from '../wikipedia/tableRead.js';
+import { EditionUsage, guideTitle } from './editionUsage.js';
+import { createNextTable, dropNextTable, indexNextTable, keepArticles, keepUsage, swapIn, type GuideArticle } from './usageTables.js';
 import { swapWhenNoRunReads } from '../swapGuard.js';
 
 /**
@@ -52,25 +56,8 @@ export const WIKIVOYAGE_EDITIONS = [
 /** The columns a row is read by, which the file's `CREATE TABLE` must name there (`InsertReader`). */
 export const USAGE_COLUMNS = { 1: 'eu_entity_id', 3: 'eu_page_id' } as const;
 
-/**
- * The articles of an edition that are a heritage register's lists, not a
- * guide, by the start of their title as the page table writes it. Russian
- * Wikivoyage keeps the heritage registers of Belarus and Russia and the
- * natural-monument lists of Russia and Central Asia as articles: on
- * 2026-10-01, 8,437 of the 26,357 items it used were used by these lists
- * alone.
- */
-export const REGISTER_ROOTS: Readonly<Partial<Record<string, readonly string[]>>> = {
-  ruwikivoyage: ['Культурное_наследие_', 'Природные_памятники_'],
-  ukwikivoyage: ['Культурна_спадщина_'],
-};
-
-const ARTICLE = 0;
 const PAGE_SUFFIX = 'page.sql.gz';
 const PAGE_JOB = 'pagetable';
-
-/** An item: a property (`P1082`) or a lexeme a page uses says nothing of a place. */
-const ITEM = /^Q\d+$/;
 
 /** The dated directory of a run's file: `enwikivoyage-20261001-wbc_entity_usage.sql.gz` gives `20261001`. */
 const directoryOf = (file: DumpFile) => file.fileName.slice('enwikivoyage-'.length, 'enwikivoyage-'.length + 8);
@@ -105,31 +92,37 @@ async function editionFiles(own: DumpFile, signal: AbortSignal): Promise<Edition
   return files;
 }
 
-/** The ids of an edition's articles that are a guide's: namespace 0, no redirect, no register's list. */
-async function guideArticles(site: string, file: DumpFile, options: TableBuildOptions): Promise<TableRead & { ids: Set<number> }> {
-  const ids = new Set<number>();
-  const roots = REGISTER_ROOTS[site] ?? [];
+/** An edition's guide articles, by page id, with their titles: namespace 0, no redirect, no register's list (`guideTitle`). */
+async function guideArticles(site: string, file: DumpFile, options: TableBuildOptions): Promise<TableRead & { titles: Map<number, string> }> {
+  const titles = new Map<number, string>();
   const read = await readTable(file, 'page', PAGE_COLUMNS, options, false, (row) => {
-    const [id, namespace, title, isRedirect] = [numberOf(row[0]), numberOf(row[1]), textOf(row[2]), numberOf(row[3])];
-    if (id === null || namespace !== ARTICLE || !title || isRedirect === 1) return;
-    if (roots.some(root => title.startsWith(root))) return;
-    ids.add(id);
+    const id = numberOf(row[0]);
+    const title = guideTitle(site, { id, namespace: numberOf(row[1]), title: textOf(row[2]), isRedirect: numberOf(row[3]) });
+    if (id !== null && title !== null) titles.set(id, title);
   }, async () => undefined);
-  return { ...read, ids };
+  return { ...read, titles };
 }
 
-/** Read one edition's usage table and keep each item its guide articles use, once. */
+/**
+ * Read one edition's usage table and keep each item its guide articles use,
+ * once, and each article that uses it, once.
+ */
 async function keepEdition(
-  site: string, file: DumpFile, articles: ReadonlySet<number>, options: TableBuildOptions, ownRead: boolean,
-): Promise<TableRead & { kept: number }> {
-  const items = new Set<string>();
+  site: string, file: DumpFile, articles: ReadonlyMap<number, string>, options: TableBuildOptions, ownRead: boolean,
+): Promise<TableRead & { kept: number; articles: number }> {
+  const usage = new EditionUsage(articles);
+  const batches = new Batches<GuideArticle>(rows => keepArticles(site, rows));
+  let kept = 0;
   const read = await readTable(file, 'wbc_entity_usage', USAGE_COLUMNS, options, ownRead,
-    (row) => {
-      const [item, page] = [textOf(row[1]), numberOf(row[3])];
-      if (item && ITEM.test(item) && page !== null && articles.has(page)) items.add(item);
-    },
-    () => keepUsage(site, [...items]));
-  return { ...read, kept: items.size };
+    (row) => usage.add(textOf(row[1]), numberOf(row[3])),
+    async () => {
+      const items = usage.items();
+      kept = items.length;
+      await keepUsage(site, items);
+      for (const article of usage.articleRows()) await batches.add(article);
+      await batches.flush();
+    });
+  return { ...read, kept, articles: batches.written };
 }
 
 /**
@@ -142,7 +135,7 @@ export async function buildUsage(own: DumpFile, options: TableBuildOptions): Pro
   options.onPhase(`Finding the item usage of ${WIKIVOYAGE_EDITIONS.length} Wikivoyage editions...`);
   const files = await editionFiles(own, options.signal);
   const kept: Record<string, number> = {};
-  const totals = { bytes: 0, lines: 0 };
+  const totals = { bytes: 0, lines: 0, articles: 0 };
   let ownRead: TableRead | null = null;
 
   await createNextTable();
@@ -151,9 +144,10 @@ export async function buildUsage(own: DumpFile, options: TableBuildOptions): Pro
       options.onPhase(`Reading ${pages.fileName} (edition ${at + 1} of ${files.length})...`);
       const articles = await guideArticles(site, pages, options);
       options.onPhase(`Reading ${usage.fileName} (edition ${at + 1} of ${files.length})...`);
-      const read = await keepEdition(site, usage, articles.ids, options, usage === own);
+      const read = await keepEdition(site, usage, articles.titles, options, usage === own);
       if (usage === own) ownRead = read;
       kept[site] = read.kept;
+      totals.articles += read.articles;
       for (const each of [articles, read]) {
         totals.bytes += each.bytes;
         totals.lines += each.lines;
@@ -170,7 +164,8 @@ export async function buildUsage(own: DumpFile, options: TableBuildOptions): Pro
     return {
       ...read,
       summary: `kept ${all.toLocaleString('en')} items that ${files.length} Wikivoyage editions use `
-        + `(English ${(kept.enwikivoyage ?? 0).toLocaleString('en')}), from the ${own.date} dumps; `
+        + `(English ${(kept.enwikivoyage ?? 0).toLocaleString('en')}) in ${totals.articles.toLocaleString('en')} articles, `
+        + `from the ${own.date} dumps; `
         + `read ${files.length * 2} files, ${totals.lines.toLocaleString('en')} lines and ${totals.bytes.toLocaleString('en')} bytes`,
     };
   } catch (error) {
