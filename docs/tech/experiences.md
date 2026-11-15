@@ -373,8 +373,9 @@ name (`GET /:id/part-candidates`). A visitor reads it on a part's own card: `par
 `parts-in-a-loop-or-too-deep` holds the same rule over every relation, whoever wrote it.
 
 **A site's own line** (ADR-0200, #2118). Every line of the World Heritage list is a record. A line
-that is no part's — a site of one component, Kakadu National Park's `147quater-001`, or a component
-that stands for its whole site — is World Heritage components' record of the site in itself:
+that is no part's — a site of one component — is World Heritage components' record of the site in
+itself (a serial site's line named like it is a part since ADR-0210, Kakadu National Park's
+`147quater-001` among them):
 `whole_id` and `experience_id` both the site, under the line's reference, one per site
 (`source_records_one_per_whole`). It places the site in no whole and makes no part
 (`refresh_part_relation` leaves a pair of one place alone), it is no part's record (`partRecordSql`,
@@ -395,9 +396,10 @@ curator takes the choice back. It follows its line: when a later list gives the 
 part, the part takes the record with its item, claims and view (`part_site_components()`); a
 curator's separation of the site's World Heritage membership takes it to the new place
 (`moveSiteLineRecord`, `membershipWriter.ts`); a merge folds it as any record in the folded place
-(`moveWholeRecords`). A site that shows two lines of its own — Ohrid's `99quater-001` and
+(`moveWholeRecords`). A site that showed two lines of its own — Ohrid's `99quater-001` and
 `99quater-002`, Białowieża Forest's `33ter-001` and `33ter-002` on the development catalogue on
-2026-11-12 — records the first, and the other point has no item. Every record of the list holds
+2026-11-12 — recorded the first, and the other point had no item; since ADR-0210 both lines are
+parts, each with its own record. Every record of the list holds
 where its line comes in it (`listing_ordinal`, written with the view). Migration 234 wrote the 807
 sites' records of the development catalogue with the item each line's point read — the seven its
 points carried (Kakadu's Q189657, Prague's Q748211), and for the three sites that are also parts of
@@ -443,11 +445,15 @@ withdrawn, lost or refused point weigh `someoneVisitedPointSql` (`db/visits.ts`:
 point's own place); the catalogue's watch on visits no reader is shown counts visits by place, never
 by person.
 
-**Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place. **A whole has no position** ([ADR-0205](../decisions/0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md), #2122): a place made of parts (`place_is_whole()`), every serial World Heritage site today, answers `latitude` and `longitude` null in the region's list, its own read and the search, and carries `focus` instead, `{ bbox, anchorPoint }`, the frame of the places the caller is shown of it, measured by `geometry_focus()` as a region's frame is (`wholeFocusSql`, `db/placePoints.ts`; `docs/tech/geometry-columns.md` § How a crossing region is told from a global one). The key is absent on every other row, and on a whole that shows no place, which the web then frames nothing for. What follows is the rule for every other place, and the stored anchor it reads. For an object of several places the stored coordinate is no longer the source's but the anchor the run derives, its most central component ([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md), § Serial nominations below) — or, for an edition cast in several cities, its most central cast ([ADR-0145](../decisions/0145-an-edition-is-one-place-with-a-point-at-every-cast.md), § Public Art & Monuments) — so the place a reader is given is that cast, and a whole's anchor is given to no reader; `medoidOf` in `anchorPoint.ts` is the one rule both runs read.
+**Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place. **A dispersed whole has no position** ([ADR-0205](../decisions/0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md), [ADR-0210](../decisions/0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md), #2122): a whole whose `whole_shape` is `dispersed`, every serial World Heritage site today, answers `latitude` and `longitude` null in the region's list, its own read and the search, and carries `focus` instead, `{ bbox, anchorPoint }`, the frame of the places the caller is shown of it, measured by `geometry_focus()` as a region's frame is (`wholeFocusSql`, `db/placePoints.ts`; `docs/tech/geometry-columns.md` § How a crossing region is told from a global one). The key is absent on every other row, and on a dispersed whole that shows no place, which the web then frames nothing for. It stores no coordinate either, and the paragraph **A dispersed whole holds no coordinate** below says what each reader of the column reads for it instead. What follows is the rule for every other place, a container whole included. For an edition cast in several cities the stored coordinate is no longer the source's but the anchor the run derives, its most central cast ([ADR-0145](../decisions/0145-an-edition-is-one-place-with-a-point-at-every-cast.md), § Public Art & Monuments), so the place a reader is given is that cast. `medoidOf` in `anchorPoint.ts` is the one rule an anchor is derived by, the World Heritage run's too, which writes a serial site's anchor to its record alone (`reported_location`, § Serial nominations below).
 
 One rule, and no tolerance in it. For most objects — nine in ten on 2026-09-22 — the coordinate already *is* one of the places, so the distance is zero and nothing moves; of the rest the average move is 9.5 km, and the largest are the ones the issue was opened about — Wet Tropics of Queensland 191 km, Gondwana 171 km, Virgin Komi 144 km. The rule ADR-0028 first proposed — the coordinate when it matches a place to within ADR-0027's ten metres, the medoid otherwise — was measured and dropped: it is discontinuous, moving eight objects over 100 km because their coordinate misses a place by a few hundred metres, the worst of them 2068 km. Nearest is measured in metres, on `geography`, never in degrees: 42 multi-place objects sit above 60° — Struve Geodetic Arc's 34 points reach 70.7°N — where a degree of longitude is a third of a degree of latitude, and degree ordering was measured picking a further place for six objects. A tie is broken by `el.id`, so the two axes always name one place. The places considered are only those the same reader may see, so an object is never positioned at a point that reader is not shown — except that the caller which shows a curator an object the queue has not passed yet relaxes the same gate here, because a curator deciding a coordinate has to preview where publishing will put the pin rather than the anchor they are deciding against. It cost 25 ms on a whole-region read of Europe's 661 experiences and the 3725 places under them, measured 2026-08-19.
 
 `experiences.location` is kept and stays visible to a curator: it is what the source published, and judging a coordinate needs both values. What it stops being is the object's position for a reader.
+
+**A dispersed whole holds no coordinate** ([ADR-0210](../decisions/0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md), #2122). `experiences.location` is NULL exactly on a whole whose `whole_shape` is `dispersed`, every serial World Heritage site among them, and the row constraint `experiences_location_iff_not_dispersed` holds it. `readerPositionSql()` reads the column: a row with no location answers no coordinate and its `focus`, any other (a container whole included) its point. The readers that read the column for one point say what a whole is instead: the review map draws a dispersed whole at the centre of the frame of its standing points, unread ones included (`reviewQueueMapController.ts`); a tick on it answers its kind record's point, else a point it shows (`placeStandsAtSql`, `db/readerPredicates.ts`), and so does a kind separated from it whose own source's view gives no point, where a dispersed whole that shows no place refuses the separation (`insertSeparatedExperience`); a conflict or a held move a run filed about its point before it became one is answered without a write (`releasedOnTheWhole`, `publishHeldFields.ts`), and migration 244 took off the curator's claims on such points with the points; the curator's part search measures a dispersed whole by its parts, as a candidate and as the place looking for a whole of its own (`findPartCandidates`, `partRecordRead.ts`); a curator's correction of its one shown point moves no coordinate of the whole (`anchorToItsPoint`); no source's view of its point is asked (`openViewFieldsSql`); crowding, the border and `held-by-no-region` checks and the finds pass leave it out, its parts standing for it.
+
+**A whole's shape** (ADR-0210). `whole_shape` is `dispersed` (visited a part at a time: its parts, no point of its own) or `container` (one place a traveller stands inside, which keeps its point), NULL on a place that is not a whole. `whole_shape_follows_parts()`, a statement trigger on `experience_parts`, gives a place its shape when it gains its first part (`whole_shape_of()`: dispersed with a World Heritage record, whatever the walk between its parts, or with parts more than 1 km apart; container otherwise) and gives up its point in the same statement when dispersed, with a curator's claim on it. A container is not shaped again as parts come. A whole that loses its last part is a place again, at its kind record's reported point (the World Heritage record's first), else a standing point of its own; with neither it keeps its shape, which `whole-shape-drift` names. All 486 wholes on the development catalogue are dispersed after migration 244 (2026-11-15); the curator's pin of a shape comes with containers (#2125).
 
 **A location is marked, never deleted.** When a run offers an experience without one of its
 stored points, `locationWriter` sets `experience_locations.missing_since` and nulls the row's
@@ -1926,14 +1932,14 @@ it, for a site of one component that component's point (#1803). UNESCO leaves bo
 serial sites and fills `components_list` instead, and where it fills both, the site's value follows its list's ordering: the Danube Limes
 went from Carnuntum to near Linz, 180 km. So for a record of several components
 `resolveMainPoint()` takes the component nearest the components' centroid whatever the export's
-own value, and the run marks it as the place's anchor (`locationIsAnchor`): the upsert writes it
-past the gate, the change set files its move as a minor change written (`pastTheGate`), never a
-held question, a curator's claim on the location still keeps it, and the review card names the
-places an object is made of instead of printing the anchor's numbers. A record of one point keeps
-the export's coordinate. Regions and markers are read from the components, and no reader is given
-the anchor: a whole answers no coordinate and is framed by its places ([ADR-0205](../decisions/0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md), § Location model).
-The anchor stays in `experiences.location`, which the column requires, for the readers of the
-column itself, crowding and the catalogue checks among them. Not the first component (it sat 301 km from
+own value, and the run marks it as an anchor (`locationIsAnchor`). The anchor is the World
+Heritage record's view of the site (`reported_location`), which places a site none of whose parts a
+reader is shown (ADR-0207 decision 2), and never the site's coordinate: a serial site is a dispersed
+whole and holds none ([ADR-0210](../decisions/0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md)).
+The upsert writes no coordinate to a dispersed whole and the change set files no move of one
+(`noCoordinate`); a new site stands at the anchor until the same write parts it, and the review
+card names the places an object is made of instead of printing numbers. A record of one point keeps
+the export's coordinate. Not the first component (it sat 301 km from
 Getbol's former point, far enough to change its region) and not the centroid itself (for parts
 scattered like the Roças of São Tomé it can fall in open water). The dry run of 3 August found
 28 records of this shape, 25 of them new inscriptions that would never have entered the
@@ -1948,16 +1954,18 @@ which points are components and how each becomes a part: the site's own points i
 membership places (or that no membership places, rows from before placements), on a site that has
 parts already or holds two or more standing ones — a withdrawn, lost or refused point, or an arrival
 that replaces a moved one, is no second component (the Pilgrimage Church of Wies, moved once, is one
-place). A component that stands for its whole site is not parted and stays the site's own point:
-`stands_for_whole_site()` reads a point named like the site (folded by `name_match_key()`: markup,
-accents, case and punctuation dropped), one the list gives the site's own reference (Baalbek's `294`),
-or the only standing point, as the site. A part named like its site showed the site twice; migration
-161 folded the 30 such parts the development catalogue held on 2026-10-23 back into their 22 sites,
-the Historic Centre of Prague and Angkor among them: a visit to the part went back to its point as a
-tick on one location, and the part place was marked folded into the site, so a link to it opens the
-site. Should the point stop standing for the site (a renamed site, a renumbered component),
-`part_site_components()` revives that folded place rather than making another (#1899). Each other component
-becomes a place named and placed as its point, and the
+place). Every line is a part, the one named like the site too, so a site whose lines all carry its
+name is a whole of them (ADR-0210): Prague's `616bis-001` is
+the part "Historic Centre of Prague" beside Průhonice Park, and Graz's `931ter-002`, which the list
+names like the site, is a part standing at Schloss Eggenberg. Only a point under the site's own
+reference (Baalbek's `294`, the export's site coordinate from before its list had lines) is no line
+and stays the site's, and an arrival the list withdrew before anyone read it makes no part.
+Migration 161 had folded 30 parts named like their sites back into 22 sites on 2026-10-23;
+`part_site_components()` revives such a folded place rather than making another. Migration 244
+revived 25 of them: the 17 lines of 16 sites still held as the sites' own points, and the 8 lines of
+4 sites whose lines all carry the site's name, one per country (Białowieża Forest in Poland and in
+Belarus), which became wholes. It deleted Wudang's `705`, and left Baalbek's `294` while
+Archaeology's Baalbek is folded into it. A component becomes a place named and placed as its point, and the
 point keeps its id, so its placements, regions, claims, candidates and held decisions follow it, and a
 traveller's visit to the component becomes a visit to the part place (§ A part reads as a place);
 its picture, credit, subtitle and article are the part row's (ADR-0156 decision 3, § A component
@@ -2017,6 +2025,24 @@ an article), the title of the point's English Wikipedia article
 (`wikipedia_article_title()`, which decodes `El_M%C3%A8dol` as *El Mèdol*), else the site's name
 with the reference, *Via Appia. Regina Viarum (1708-003)*, which a link to the part carries as its point's slug
 (`useFoldedCard`).
+**A part named like its site never reads with the site's name** (`component_part_name_apart()`, #2122): a card
+counting "1 of 2" over two places of one name tells a traveller nothing, and every line of a serial site is a
+part, the one named like the site too (ADR-0210). Such a part, whose name folds equal to the site's
+(`name_match_key()`), takes the site's spelling, so Białowieża's lines, which the list spells "Bialowieza
+Forest", keep the Polish letters, and where it stands in parentheses, as the catalogue names a twin
+(`nameTwins.ts`, #1967): the most general GADM division of its point (`divisions_holding()`) that holds no
+other line named like the site and not the site's every other part. A site across several countries reads by
+country (*Białowieża Forest (Poland)* beside *Białowieża Forest (Belarus)*; Ohrid, Koutammakou, Waterton
+Glacier and W-Arly-Pendjari the same), one in a single country by region (*Historic Centre of Prague (Praha
+1)* beside Průhonice Park, *Angkor (Siem Reap)*); where every division holds the site's other parts too, the
+most local one (*Kakadu National Park (West Arnhem)* beside its two islands). Where no division tells it apart
+it keeps the site's name: a reference or any other id is never a name. Every other part reads as its point
+names it, two siblings of one name included (the Rainforests of the Atsinanana's six *Parc National de
+Masoala*). A line counts while its point stands and is no unread arrival, so a part readers see is not renamed
+for one nobody has read. The part-fields writer names every part by it (`partFollowsSql`), and migration 244
+renamed the parts it renames: the 25 it revives, on a copy of the development catalogue of 2026-11-15. Wikidata's label of a
+line's item is not read: the local subset is a workbench table no serving rule reads (ADR-0124), and none of
+the transboundary sites' lines carries an item.
 Among the site's points a reader's point is called by the article title or, without one, by its
 reference (`pointNameSql`). The run records the article after it parts the site, so the trigger
 renames the part when the article arrives. Migration 179 renamed the parts already named "The" or a
@@ -2351,8 +2377,8 @@ path needs.
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, a point carrying the site's own reference, or a point named exactly like
-  its site, folded (`stands_for_whole_site()` in the schema, the rule the parting reads too;
-  "Historic Centre of Siena (Cathedral)" is a part, not the site) — is the site's own item
+  its site, folded (`stands_for_whole_site()` in the schema, which a part named like its site
+  answers too, ADR-0210; "Historic Centre of Siena (Cathedral)" is a part, not the site) — is the site's own item
   (ADR-0088), which carries the site's reference and is never a candidate, and anything near it
   is a building inside; such points are skipped, counted, and their open proposals from an
   earlier pass cleared. A label's trailing qualifier is dropped before names are compared
