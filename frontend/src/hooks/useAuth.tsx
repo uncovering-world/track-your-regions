@@ -19,6 +19,7 @@ import {
   verifyEmail as apiVerifyEmail,
   changePassword as apiChangePassword,
   setLastGoogleEmail,
+  clearLastGoogleEmail,
   type ChangePasswordInput,
 } from '../api/auth';
 import {
@@ -281,6 +282,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // No identity: forget what the last one left (`forgetIdentity`)
     forgetIdentity();
+    // A traveller who signs out leaves no address behind on the device: the
+    // Google sign-in hint is personal contact data, kept between sessions only
+    // until its owner chooses to leave (SECURITY.md § Data Classification, #2554).
+    // A session that expires keeps it, as the account's own hint.
+    clearLastGoogleEmail();
 
     // Then notify server (fire and forget) — server clears cookie
     await apiLogout(endingToken);

@@ -177,7 +177,13 @@ export function getLastGoogleEmail(): string | null {
  * Clear the last used Google email (e.g., when user wants to use different account)
  */
 export function clearLastGoogleEmail(): void {
-  localStorage.removeItem(LAST_GOOGLE_EMAIL_KEY);
+  // A browser that denies storage holds no hint to clear, and sign-out goes on
+  // to revoke the session on the server.
+  try {
+    localStorage.removeItem(LAST_GOOGLE_EMAIL_KEY);
+  } catch {
+    // Storage denied: nothing was kept.
+  }
 }
 
 /**

@@ -19,6 +19,7 @@ vi.mock('../api/auth', () => ({
   verifyEmail: vi.fn(),
   changePassword: vi.fn(),
   setLastGoogleEmail: vi.fn(),
+  clearLastGoogleEmail: vi.fn(),
 }));
 
 import { apiFetch, getAccessToken, getHeldAccount, setAccessToken } from '../api/fetchUtils';
