@@ -47,7 +47,7 @@ vi.mock('../../api/experiences', () => ({
     locations: [{
       id: 100 + experienceId, experience_id: experienceId, name: null, external_ref: null,
       ordinal: 0, latitude: 34.84, longitude: 67.82, created_at: '2026-08-01T00:00:00Z',
-      approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
+      approximate: null, curated_fields: [], in_region: true, own_point: true, curation_state: 'auto', refused_at: null,
       image_url: null, image_credit: null, description: null, wikidata_item: null, wikipedia_url: null, is_part: false,
     }],
   }) satisfies ExperienceLocationsResponse),

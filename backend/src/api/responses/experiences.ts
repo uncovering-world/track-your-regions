@@ -105,6 +105,12 @@ export const ExperienceLocation = z.strictObject({
     'The fields a curator has claimed on the point, such as `name` and `location`, so a row can say it is corrected.',
   ),
   in_region: z.boolean().describe('Whether the point lies in the region the read was asked about. True where none was named.'),
+  own_point: z.literal(true).optional().describe(
+    "Present, and true, where the point is the object's own. Absent where the object shows it as the point of a place"
+    + " inside it, as a serial site shows its components' points (#2534). One point two listed objects share, such as"
+    + " Seville Cathedral's under the cathedral and under its World Heritage site, is one pin, which opens the object it"
+    + ' is own to. Sent only when true, so the two thirds of a region\'s points that are parts\' points carry no key.',
+  ),
   image_url: z.string().nullable().describe(
     "The picture of the point of a serial site's part, the part place's own: a World Heritage component's Wikidata"
     + " picture, a Commons file (#1270, #1946), or one a curator chose, which may be an /images/ path we host. Null where"

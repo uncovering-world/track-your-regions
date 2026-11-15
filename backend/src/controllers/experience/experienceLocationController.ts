@@ -48,8 +48,33 @@ type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' 
   longitude: number;
   latitude: number;
   in_region: boolean;
+  own_point: boolean;
   curated_fields: string[];
 };
+
+/**
+ * Whether the point a row reads is the own point of the place `place` shows
+ * it for (an id expression): read by the place's own arm of
+ * `PLACE_POINT_ARMS`, not for a leaf below it, whose place is never the whole
+ * (`whole_leaves` holds no whole as its own leaf). As the world points read
+ * tells the two apart (`onePerPoint`, its `arm`): one point a place owns and a
+ * whole above it shows is one pin on the map, and it opens the owner (#2534).
+ */
+function ownPointSql(place: string): string {
+  return `(el.experience_id = ${place})`;
+}
+
+/**
+ * Whether the point is the place's own, as the last key of a point: true, or
+ * undefined, which `JSON.stringify` leaves out (#2534). A reader tells the owner
+ * by it alone, so it is sent only when true. It stays the last key, after every
+ * key the rows repeat, so those repeated keys stay in one run for compression,
+ * and every row keeps one object shape whatever its value. ADR-0211 has the
+ * measurement.
+ */
+function ownPointOf(row: LocationRow): true | undefined {
+  return row.own_point ? true : undefined;
+}
 
 /**
  * The keys both reads send, from a row either one selects.
@@ -134,6 +159,7 @@ export async function getRegionExperienceLocations(
       SELECT
         el.id,
         ${placeId} AS experience_id,
+        ${ownPointSql(placeId)} AS own_point,
         ${pointNameSql('el')} AS name,
         el.external_ref,
         el.ordinal,
@@ -190,6 +216,7 @@ export async function getRegionExperienceLocations(
       SELECT
         el.id,
         ${placeId} AS experience_id,
+        ${ownPointSql(placeId)} AS own_point,
         ${pointNameSql('el')} AS name,
         el.external_ref,
         el.ordinal,
@@ -242,7 +269,7 @@ export async function getRegionExperienceLocations(
   const locationsByExperience: Record<string, RegionExperienceLocation[]> = {};
   for (const row of result.rows) {
     const points = locationsByExperience[row.experience_id] ?? [];
-    points.push({ ...locationOf(row), region_path: row.region_path });
+    points.push({ ...locationOf(row), region_path: row.region_path, own_point: ownPointOf(row) });
     locationsByExperience[row.experience_id] = points;
   }
 
@@ -305,6 +332,7 @@ export async function getExperienceLocations(
       -- The place asked about, which shows the point: a site's part's point is
       -- the site's here, as on the map (ADR-0100).
       pp.place_id AS experience_id,
+      ${ownPointSql('pp.place_id')} AS own_point,
       ${pointNameSql('el')} AS name,
       el.external_ref,
       el.ordinal,
@@ -349,6 +377,7 @@ export async function getExperienceLocations(
     description: row.description,
     wikidata_item: row.wikidata_item,
     is_part: row.is_part,
+    own_point: ownPointOf(row),
   }));
 
   return {
