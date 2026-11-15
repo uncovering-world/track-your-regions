@@ -953,9 +953,25 @@ A Wikibase client wiki records, for each page, the Wikidata entities it uses.
 A Wikivoyage article uses the item of every place it lists, since a listing's
 `wikidata=` pulls the place's coordinates and picture. Each edition's two
 tables are read by `InsertReader` (`sqlInsert.ts`): first its `page` table,
-for the ids of its guide articles (`guideArticles`), then its usage table.
-Every item (`Q…`) a guide article uses is kept once per edition in
-`wikivoyage_usage`; a property or a lexeme is left out.
+for the ids and titles of its guide articles (`guideArticles`), then its usage
+table. Every item (`Q…`) a guide article uses is kept once per edition in
+`wikivoyage_usage`; a property or a lexeme is left out. What is a guide article
+and which usage row counts is decided in one module (`guideTitle` and
+`EditionUsage`, `editionUsage.ts`), apart from the files it is read from.
+
+Beside the usage, the build keeps each guide article that uses an item
+(#2520): the item, the edition, the article's page id and its title as a reader
+reads it, once per (item, edition, page), in `wikivoyage_articles`. An article
+that uses an item for its coordinates and again for its picture is one row; two
+articles that use it are two. Mantineia (Q1160195) stands in German and Italian
+Wikivoyage, one article each. The articles are a table of their own, not
+columns on the usage, so the usage stays one row per item and edition: the
+travel-guide witness (`usedByAGuide`) and the edition count fame reads
+(`guideEditions`, ADR-0177) read `wikivoyage_usage` alone and do not change,
+however many articles of one edition use an item. A curator opens the articles
+behind a guide's yes (`GET /api/experiences/review/guide-articles/:membershipId`,
+`docs/tech/experiences.md`), so the table is serving and lives in `public`
+(ADR-0124), though the build writes it.
 
 A guide article is in namespace 0 and is no redirect: a user's draft or a
 project page names items without sending a visitor to any of them. Nor is it
@@ -971,12 +987,26 @@ This is the travel-guide witness of whether a place is one a visitor goes to
 (`usedByAGuide`, #1768). On the 150 judged places of #1718 and #1756 it gives
 exactly what a parse of every listing's `wikidata=` in the articles' text gives.
 
-The rows go to a `_next` copy, given the live table's key once every file is
-read, and swapped in with the build's row in `wikivoyage_usage_builds` in one
-transaction (`swapIn`, `usageTables.ts`), as the redirects are. A file that
-fails its check, or a cancel, drops the copy. Both tables are `UNLOGGED`, so a
-crash empties them and the panel asks for a build (`latestUsage` answers
-none). There is no trial build.
+The rows go to `_next` copies of both tables, given the live tables' keys once
+every file is read (`indexesOf` with the schema each lives in), and swapped in
+together with the build's row in `wikivoyage_usage_builds` in one transaction
+(`swapIn`, `usageTables.ts`), as the redirects are. A file that fails its
+check, or a cancel, drops both copies, and the usage and its articles in place
+stay. The three tables are `UNLOGGED`, so a crash empties them and the panel
+asks for a build (`latestUsage` answers none). There is no trial build.
+
+**A copy built before the articles were kept** holds none in
+`wikivoyage_articles`: migration 248 creates the table empty, and a build that
+keeps no item fails rather than swaps in, so an empty table is that copy and no
+other. `latestUsage` then answers that it needs a rebuild, and the *Wikivoyage
+item usage* card on the Public Dumps page says "The app was updated, and the
+copy needs a full update" with *Update*. That Update, or the next scheduled
+build once a newer dump is out, reads the same page tables and keeps the
+titles; a build of a date whose files are already whole on disk reads them
+from there (§ Stream or local copy). Until then the curator's list says the
+articles are not listed yet, never that no guide uses the place. Migration 248
+goes in before the build runs, since the build makes its `_next` copy like the
+live table.
 
 ## English Wikivoyage's articles
 
