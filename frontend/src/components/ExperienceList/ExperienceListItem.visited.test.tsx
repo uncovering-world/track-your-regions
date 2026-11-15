@@ -107,37 +107,41 @@ describe("the row of a whole", () => {
   it('shows its state by name, with no checkbox to click', () => {
     const toggle = vi.fn();
     const open = vi.fn();
-    renderRow('partial', { whole: true, visited: [FUGLENES], onTogglePlace: toggle, onClick: open });
+    renderRow('visited', { whole: true, visited: [FUGLENES], onTogglePlace: toggle, onClick: open });
 
     expect(screen.queryByRole('checkbox')).toBeNull();
-    const mark = screen.getByRole('img', { name: 'Partly visited' });
+    const mark = screen.getByRole('img', { name: 'Visited' });
     expect(mark.tabIndex).toBe(-1);
     fireEvent.click(mark);
     expect(toggle).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalled();
   });
 
-  it('names each state', () => {
-    renderRow('visited', { whole: true, visited: [RUDI, FUGLENES] });
+  it('names each state, visited after one of its places as after all of them (ADR-0206)', () => {
+    renderRow('visited', { whole: true, visited: [FUGLENES], progress: { visited: 1, total: 34 } });
     expect(screen.getByRole('img', { name: 'Visited' })).toBeTruthy();
+    expect(screen.getByText('Struve Geodetic Arc').dataset.visited).toBe('true');
+    cleanup();
+    renderRow('not_visited', { whole: true, visited: [] });
+    expect(screen.getByRole('img', { name: 'Not visited' })).toBeTruthy();
   });
 
   it('offers no button beside the mark: its places are marked on its card', () => {
-    renderRow('partial', { whole: true, visited: [FUGLENES] });
+    renderRow('visited', { whole: true, visited: [FUGLENES] });
     expect(screen.queryAllByRole('button', { name: /all/ })).toHaveLength(0);
   });
 });
 
 describe("the count on a row (ADR-0206)", () => {
   it("reads the whole's own count in every region's list: the Struve Arc in Moldova's after a station in Finland", () => {
-    renderRow('partial', { whole: true, visited: [FUGLENES], progress: { visited: 1, total: 34 } });
+    renderRow('visited', { whole: true, visited: [FUGLENES], progress: { visited: 1, total: 34 } });
     expect(screen.getByText('1 of 34')).toBeTruthy();
     expect(screen.getByLabelText('1 of 34 places visited')).toBeTruthy();
     expect(screen.queryByText('1/2')).toBeNull();
   });
 
   it('reads "?" for a whole ticked without naming a place', () => {
-    renderRow('partial', { whole: true, visited: [], progress: { visited: null, total: 34 } });
+    renderRow('visited', { whole: true, visited: [], progress: { visited: null, total: 34 } });
     expect(screen.getByText('? of 34')).toBeTruthy();
   });
 

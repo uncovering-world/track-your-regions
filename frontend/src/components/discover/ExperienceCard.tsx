@@ -63,9 +63,8 @@ function computeCardSurfaceStyle(input: CardSurfaceInputs): CardSurfaceStyle {
 
 interface ExperienceCardProps {
   experience: Experience;
+  /** Visited: a whole once one place of it is (ADR-0206). */
   isVisited: boolean;
-  /** Visited in part (#2120): a whole some of whose parts the traveller ticked. */
-  isPartlyVisited?: boolean;
   /** How far through the whole the traveller is (ADR-0206), absent where they have not been. */
   progress?: WholeProgress;
   isHovered?: boolean;
@@ -84,7 +83,6 @@ interface ExperienceCardProps {
 export function ExperienceCard({
   experience,
   isVisited,
-  isPartlyVisited = false,
   progress,
   isHovered = false,
   isSelected = false,
@@ -96,12 +94,9 @@ export function ExperienceCard({
   showCheckbox,
   onCurate,
 }: ExperienceCardProps) {
-  let visitState: VisitedStatus = 'not_visited';
-  if (isPartlyVisited) visitState = 'partial';
-  else if (isVisited) visitState = 'visited';
-  // A card reads as done only when the place is: a whole visited in part keeps
-  // its full colour, title and picture, since parts of it are still ahead (#2120).
-  const isDone = visitState === 'visited';
+  // A whole visited at one of its places reads visited like any place, and
+  // its count says how much of it is left (ADR-0206).
+  const visitState: VisitedStatus = isVisited ? 'visited' : 'not_visited';
   // The count Map mode's row shows, from the same formatter: "1 of 34" for the
   // Struve Arc after one station, in every region's list (ADR-0206).
   let count: VisitCount | null = null;
@@ -114,7 +109,7 @@ export function ExperienceCard({
   const colors = experienceColors(experience.kind_id, experience.type);
   const catStyle = { bg: colors.bg, text: colors.text, border: colors.primary };
 
-  const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited: isDone, isHovered, isSelected, catStyle });
+  const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
   const { bgcolor, borderLeftColor, cardOpacity, titleColor } = cardStyle;
 
   return (
@@ -159,7 +154,7 @@ export function ExperienceCard({
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              filter: isDone ? 'saturate(0.4)' : 'none',
+              filter: isVisited ? 'saturate(0.4)' : 'none',
             }}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
@@ -183,7 +178,7 @@ export function ExperienceCard({
             </Typography>
           </Box>
         )}
-        {isDone && (
+        {isVisited && (
           <CheckCircleIcon
             sx={{
               position: 'absolute',
@@ -221,7 +216,7 @@ export function ExperienceCard({
                 fontWeight: 600,
                 fontSize: '0.8rem',
                 lineHeight: 1.3,
-                textDecoration: (isRejected || isDone) ? 'line-through' : 'none',
+                textDecoration: (isRejected || isVisited) ? 'line-through' : 'none',
                 color: titleColor,
               }}
             >

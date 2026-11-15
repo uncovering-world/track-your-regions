@@ -16,14 +16,14 @@ describe('the visit badge of an edition', () => {
 });
 
 describe('the visit badge of a whole', () => {
-  it("reads the count its row shows: the Struve Arc's 1 of 34", () => {
-    render(<VisitedStatusButton visitedStatus="partial" count={wholeCountLabel(34, { visited: 1, total: 34 }, true)} />);
+  it("reads the count its row shows: the Struve Arc's 1 of 34, visited", () => {
+    render(<VisitedStatusButton visitedStatus="visited" count={wholeCountLabel(34, { visited: 1, total: 34 }, true)} />);
     expect(screen.getByText('1 of 34 visited')).toBeInTheDocument();
     expect(screen.getByLabelText('1 of 34 places visited')).toBeInTheDocument();
   });
 
   it('reads "?" for a whole ticked without naming a place', () => {
-    render(<VisitedStatusButton visitedStatus="partial" count={wholeCountLabel(34, { visited: null, total: 34 }, true)} />);
+    render(<VisitedStatusButton visitedStatus="visited" count={wholeCountLabel(34, { visited: null, total: 34 }, true)} />);
     expect(screen.getByText('? of 34 visited')).toBeInTheDocument();
   });
 });

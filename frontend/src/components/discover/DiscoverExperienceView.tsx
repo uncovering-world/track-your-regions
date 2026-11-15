@@ -176,7 +176,7 @@ export function DiscoverExperienceView({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const { isAuthenticated, isCurator } = useAuth();
-  const { visitedIds, partialIds, progressOf, markVisited, unmarkVisited } = useVisitedExperiences();
+  const { visitedIds, progressOf, markVisited, unmarkVisited } = useVisitedExperiences();
   const visitWritePending = useVisitWritePending();
   const [search, setSearch] = useState('');
 
@@ -560,7 +560,6 @@ export function DiscoverExperienceView({
           hasCuratorScope={hasCuratorScope}
           isAuthenticated={isAuthenticated}
           visitedIds={visitedIds}
-          partialIds={partialIds}
           progressOf={progressOf}
           visitWritePending={visitWritePending}
           selectedExperienceId={selectedExperienceId}

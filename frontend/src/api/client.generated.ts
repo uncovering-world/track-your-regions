@@ -1443,21 +1443,15 @@ export type VisitedExperienceIdsWholeProgressItem = {
 };
 
 /**
- * The objects the reader has visited, and which of them only in part.
+ * The objects the reader has visited, and how far through each whole of them.
  */
 export interface VisitedExperienceIds {
   /**
-     * The objects the reader has visited, wholly or in part.
+     * The objects the reader has visited: those they ticked and every whole above one, at any depth (ADR-0206). The Struve Geodetic Arc after one station is visited.
      * @items.minimum -9007199254740991
      * @items.maximum 9007199254740991
      */
   visitedIds: number[];
-  /**
-     * Those of them visited in part: a serial site with some of its components, or ticked as a whole.
-     * @items.minimum -9007199254740991
-     * @items.maximum 9007199254740991
-     */
-  partialIds: number[];
   /**
      * The wholes the reader ticked as a whole, without naming a part: "I was there, I don't remember which part". Not a whole showing a point of its own, where that tick is the point's (#2120).
      * @items.minimum -9007199254740991
@@ -1782,14 +1776,13 @@ export interface LocationVisitUnmarked {
 }
 
 /**
- * How far through an object's places the reader is.
+ * Whether the reader has been to an object: at it, or at any place below it at any depth, one since withdrawn included (ADR-0206).
  */
 export type VisitedStatus = typeof VisitedStatus[keyof typeof VisitedStatus];
 
 
 export const VisitedStatus = {
   not_visited: 'not_visited',
-  partial: 'partial',
   visited: 'visited',
 } as const;
 

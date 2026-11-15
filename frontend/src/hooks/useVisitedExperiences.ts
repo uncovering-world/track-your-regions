@@ -31,19 +31,16 @@ export function useVisitedExperiences(kindId?: number) {
     staleTime: 60000, // 1 minute
   });
 
-  // Convert to Set for O(1) lookup. `visitedIds` holds the places visited
-  // wholly or in part, `partialIds` those in part (#2120): one read, which
-  // Map mode and Discover both draw from.
+  // Convert to Set for O(1) lookup. `visitedIds` holds the places visited, a
+  // whole once one place below it is (ADR-0206): one read, which Map mode and
+  // Discover both draw from.
   const visitedIdsSet = useMemo(() => {
     return new Set(data?.visitedIds || []);
   }, [data?.visitedIds]);
-  const partialIdsSet = useMemo(() => {
-    return new Set(data?.partialIds || []);
-  }, [data?.partialIds]);
-  const visitedStatusOf = useCallback((experienceId: number): VisitedStatus => {
-    if (!visitedIdsSet.has(experienceId)) return 'not_visited';
-    return partialIdsSet.has(experienceId) ? 'partial' : 'visited';
-  }, [visitedIdsSet, partialIdsSet]);
+  const visitedStatusOf = useCallback(
+    (experienceId: number): VisitedStatus => (visitedIdsSet.has(experienceId) ? 'visited' : 'not_visited'),
+    [visitedIdsSet],
+  );
   // A whole ticked as a whole, its parts not named: what its card's button shows.
   const wholeTickedIdsSet = useMemo(() => new Set(data?.wholeTickedIds || []), [data?.wholeTickedIds]);
   const isWholeTicked = useCallback(
@@ -86,7 +83,6 @@ export function useVisitedExperiences(kindId?: number) {
 
   return {
     visitedIds: visitedIdsSet,
-    partialIds: partialIdsSet,
     visitedStatusOf,
     isWholeTicked,
     progressOf,
@@ -248,7 +244,6 @@ export function useExperienceVisitedStatus(experienceId: number | null) {
   });
 
   return {
-    visitedStatus: data?.visitedStatus || 'not_visited',
     castPoints: data?.castPoints ?? false,
     totalLocations: data?.totalLocations || 0,
     visitedLocations: data?.visitedLocations || 0,

@@ -174,18 +174,6 @@ export function kindColorExpression(): ExpressionSpecification {
 }
 
 // =============================================================================
-// Visited / Checked Status Colors
-// =============================================================================
-
-/**
- * Amber of a partly visited whole's status mark (`VisitStatusMark`): the
- * mark is the state's one sign on screen, so its amber holds 3:1 against the
- * light paper (3.2:1) and the dark (5.2:1), where the lighter #F59E0B reads
- * 2.1:1 on white.
- */
-export const PARTIAL_AMBER = '#D97706';
-
-// =============================================================================
 // Kind Palette (for a kind this file gives no colour of its own)
 // =============================================================================
 
