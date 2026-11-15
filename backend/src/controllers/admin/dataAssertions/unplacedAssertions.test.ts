@@ -116,15 +116,28 @@ describe("a place's region row its points no longer give", () => {
     expect(assertion.describe({
       experience_id: 38881, experience_name: 'Park Güell', region_name: 'Catalonia',
       expected_listing: 'offered', held_listing: null,
-    })).toBe('Park Güell in Catalonia is not listed, but its points list it for readers (experience 38881)');
+    })).toBe('Park Güell in Catalonia is not listed, but where it lies lists it for readers (experience 38881)');
     expect(assertion.describe({
       experience_id: 9645, experience_name: 'A museum', region_name: 'Leaf A',
       expected_listing: 'offered', held_listing: 'scope',
-    })).toBe('A museum in Leaf A is listed for curators only, but its points list it for readers (experience 9645)');
+    })).toBe('A museum in Leaf A is listed for curators only, but where it lies lists it for readers (experience 9645)');
     expect(assertion.describe({
       experience_id: 37452, experience_name: 'Monastery of Haghpat', region_name: 'Lori',
       expected_listing: null, held_listing: 'offered',
-    })).toBe('Monastery of Haghpat in Lori is listed for readers, but its points do not put it there (experience 37452)');
+    })).toBe('Monastery of Haghpat in Lori is listed for readers, but where it lies does not put it there (experience 37452)');
+  });
+});
+
+describe('a place whose outline lies away from its point', () => {
+  const assertion = byId('outline-away-from-its-place');
+
+  it('asks the question placement asks of an outline, so the two cannot disagree (ADR-0207)', () => {
+    expect(collapse(assertion.sql)).toContain('NOT outline_reaches_place(e.boundary, e.location)');
+  });
+
+  it('says how far the outline lies, in the unit a curator reads', () => {
+    expect(assertion.describe({ experience_id: 22747, experience_name: 'Pergamon Altar', metres: 1_826_900 }))
+      .toBe('Pergamon Altar: its outline lies 1826.9 km from its point (experience 22747)');
   });
 });
 
