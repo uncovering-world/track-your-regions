@@ -57,7 +57,9 @@ for line in io.lines(required('OSM_LAYER_PINS')) do
 end
 
 -- 'Q123': the items whose objects are kept whole, which a world-view import
--- matches a region by: its own, and those its page's mapshapes list (ADR-0158).
+-- matches a region by: its own, and those its page's mapshapes list (ADR-0158);
+-- and the items of the bridges, tunnels and dams whose line places them
+-- (ADR-0212).
 local drawnItems = {}
 for line in io.lines(required('OSM_LAYER_DRAWN_ITEMS')) do
   if line ~= '' then drawnItems[line] = true end

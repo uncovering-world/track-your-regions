@@ -19,8 +19,12 @@
  * 4. indexes the copy and swaps it in with the planet's replication timestamp,
  *    which every answer read from the layer carries (decision 5).
  * 5. fills the store of region shapes the world-view match reads from the
- *    objects it kept whole for the items `drawnItems` lists (`layerShapes.ts`,
- *    ADR-0157).
+ *    objects it kept whole for the region items `drawnItems` lists, the
+ *    `named` and `listed` ones (`layerShapes.ts`, ADR-0157);
+ * 6. reads the line of each bridge, tunnel, dam and aqueduct Bridges &
+ *    engineering marvels offers from the objects it kept whole for its
+ *    `lined` items, and places every place a line decides
+ *    (`db/pathWriter.ts`, ADR-0212).
  *
  * An object the catalogue names may since have been deleted from OSM or
  * redrawn under another id. `osmium getid` then exits 1 and names it; the
@@ -44,6 +48,9 @@ import { fetchText } from '../fetch.js';
 import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
 import { drawnFile, drawnItems, type DrawnItems, LAYER_DRAWN, LAYER_SELECTION, pinnedObjects, selectionFile } from './layerSelection.js';
 import { refillRegionShapes } from './layerShapes.js';
+import { placedByLines, writeLines } from '../../../db/pathWriter.js';
+import { BRIDGES_SOURCE_ID } from '../../sync/bridges/source.js';
+import { assignRegionsForExperiences, worldViewsWithGeometry } from '../../sync/regionAssignmentService.js';
 import { STREET_HIGHWAYS, STREET_REACH_M, streetArea, streetItems, streetsFile } from './layerStreets.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextStreetLines, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
@@ -157,7 +164,7 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
   const area = streetArea(streets);
   await writeFile(selection, selectionFile());
   await writeFile(join(work, 'drawn.txt'), drawnFile());
-  const drawn = [...items.named, ...items.listed];
+  const drawn = [...new Set([...items.named, ...items.listed, ...items.lined])];
   await writeFile(join(work, 'drawn-items.txt'), drawn.length > 0 ? `${drawn.join('\n')}\n` : '');
   await writeFile(pins, named.length > 0 ? `${named.join('\n')}\n` : '');
   await writeFile(join(work, STREETS_FILE), streetsFile(streets));
@@ -278,6 +285,40 @@ async function regionShapesFrom(items: DrawnItems, options: LayerBuildOptions): 
   }
 }
 
+/**
+ * Read the lines of the places Bridges & engineering marvels offers from the
+ * layer just swapped in, current to `currentTo`, then place every place a
+ * line decides (`placedByLines`, ADR-0212), and say what happened. Every such
+ * place is placed on every build, not only the ones whose line changed: the
+ * lines commit before placement, so a build stopped in between would
+ * otherwise leave a new line that never placed its place. As for the region
+ * shapes, the layer stands whether or not either step succeeds, and a
+ * failure is a note on the build: lines left as they were are read again by
+ * the next build, and places not placed are placed by it.
+ */
+async function linesFrom(currentTo: string, options: LayerBuildOptions): Promise<string> {
+  options.onPhase('Reading the lines of the bridges, tunnels and dams the layer keeps whole...');
+  let read = '';
+  try {
+    const written = await writeLines(BRIDGES_SOURCE_ID, new Date(currentTo));
+    read = `. ${written.held.toLocaleString('en')} bridges, tunnels and dams hold a line, `
+      + `and ${written.changed.length.toLocaleString('en')} lines changed`;
+  } catch (error) {
+    options.onNote?.(`the lines of the bridges, tunnels and dams were not read from this layer, and their places keep the last build's: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  options.onPhase('Placing the places their lines decide...');
+  try {
+    const places = await placedByLines();
+    if (places.length > 0) {
+      for (const worldView of await worldViewsWithGeometry()) await assignRegionsForExperiences(places, worldView);
+    }
+    return `${read}. ${places.length.toLocaleString('en')} places were placed by their lines`;
+  } catch (error) {
+    options.onNote?.(`the places their lines decide were not placed again, and the next build places them: ${error instanceof Error ? error.message : String(error)}`);
+    return `${read}. The places their lines decide were not placed again`;
+  }
+}
+
 /** Cut the layer from the planet `planetOf` makes ready in the cut's directory, and swap it in. */
 async function cutAndSwap(
   options: LayerBuildOptions, planetOf: (dir: string, work: string) => Promise<Planet>,
@@ -308,13 +349,14 @@ async function cutAndSwap(
       drawn: LAYER_DRAWN, selection: LAYER_SELECTION, streets, streetsLined: lined.items,
     }, signal));
     const shapesSaid = await regionShapesFrom(items, options);
+    const linesSaid = await linesFrom(current, options);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
     return {
       bytes: planet.held?.bytes ?? planet.bytes, lines: 0, checksumActual: planet.held?.checksumActual ?? null,
       summary: `kept ${objects.toLocaleString('en')} OpenStreetMap objects from ${planet.state.base} brought forward with `
         + `${planet.applied} daily diffs to diff ${planet.state.sequence}, current to ${current}, `
         + `with the ${pinned.toLocaleString('en')} objects the catalogue names cut in whatever their tags${goneSaid}, `
-        + `and ${lined.lines.toLocaleString('en')} lines of ${lined.items.toLocaleString('en')} of the ${streets.toLocaleString('en')} streets and squares looked for${shapesSaid}`,
+        + `and ${lined.lines.toLocaleString('en')} lines of ${lined.items.toLocaleString('en')} of the ${streets.toLocaleString('en')} streets and squares looked for${shapesSaid}${linesSaid}`,
     };
   } catch (error) {
     await dropNextTable().catch(() => undefined);

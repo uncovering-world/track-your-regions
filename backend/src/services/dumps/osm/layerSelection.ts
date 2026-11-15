@@ -12,7 +12,9 @@
  */
 
 import { pool } from '../../../db/index.js';
+import { linedItems } from '../../../db/pathWriter.js';
 import { OSM_KEEP_WKT } from '../../sync/archaeology/siteClasses.js';
+import { BRIDGES_SOURCE_ID } from '../../sync/bridges/source.js';
 import type { KeepWkt } from '../../sync/osm/types.js';
 import { CopyRefusal, pageNameFromUrl, PageCopy } from '../../wikivoyageExtract/pageCopy.js';
 import { parseMapshapes } from '../../wikivoyageExtract/parser.js';
@@ -68,7 +70,7 @@ export function selectsVenues(selection: readonly string[] | null): boolean {
  * The objects whose full geometry the layer keeps (ADR-0136): those a kind's
  * keep rule draws, which today is Archaeology's alone — a ruin, a dig, or the
  * protected area drawn around one. The objects that carry an item
- * `drawnItems` lists are kept whole too (ADR-0157). Every
+ * `drawnItems` lists are kept whole too (ADR-0157, ADR-0212). Every
  * other object keeps a point.
  */
 export const LAYER_DRAWN: KeepWkt = OSM_KEEP_WKT;
@@ -104,12 +106,14 @@ export function layerDraws(drawn: KeepWkt | null, keep: KeepWkt): boolean {
 /** A Wikidata item as the store of region shapes keys it, never a Commons map file. */
 const ITEM = /^Q[1-9]\d*$/;
 
-/** The items whose objects the layer keeps whole, in the two lists a build counts apart. */
+/** The items whose objects the layer keeps whole, in the three lists a build counts apart. */
 export interface DrawnItems {
   /** The items the world-view imports name: each region's own. */
   named: string[];
   /** The other items the `{{mapshape}}`s on those regions' Wikivoyage pages list. */
   listed: string[];
+  /** The items of the places Bridges & engineering marvels offers, whose line places them (ADR-0212, `db/pathWriter.ts`). */
+  lined: string[];
 }
 
 /**
@@ -121,7 +125,10 @@ export interface DrawnItems {
  * mapshape match draws a child region as the union of those outlines, most
  * often districts no import names. An item an import names or a page lists
  * for the first time is drawn from the next build; until then the region is
- * matched by its markers.
+ * matched by its markers. Beside them, the items of the bridges, tunnels,
+ * dams and aqueducts Bridges & engineering marvels offers, whose line is
+ * read from the layer after the swap and places them (ADR-0212): those are
+ * no region's, so the store of region shapes never reads them.
  */
 export async function drawnItems(): Promise<DrawnItems> {
   const result = await pool.query<{ item: string | null; source_url: string | null }>(
@@ -130,7 +137,8 @@ export async function drawnItems(): Promise<DrawnItems> {
   const named = new Set(result.rows.map(row => row.item).filter((item): item is string => item !== null && ITEM.test(item)));
   const titles = result.rows.map(row => (row.source_url ? pageNameFromUrl(row.source_url) : null));
   const listed = new Set(await mapshapeItems(titles.filter((title): title is string => title !== null)));
-  return { named: [...named].sort(), listed: [...listed].filter(item => !named.has(item)).sort() };
+  const lined = await linedItems(BRIDGES_SOURCE_ID);
+  return { named: [...named].sort(), listed: [...listed].filter(item => !named.has(item)).sort(), lined };
 }
 
 /**

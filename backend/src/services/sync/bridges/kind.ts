@@ -21,8 +21,7 @@
 import { declaredKind, type DeclaredTrees, type PlaceFacts } from '../places/declaredKind.js';
 import { BRIDGES_DECLARATION, type BridgeType } from './classes.js';
 
-/** The source that fills Bridges & engineering marvels, and the kind it fills (migration 150). */
-export const BRIDGES_SOURCE_ID = 8;
+export { BRIDGES_SOURCE_ID } from './source.js';
 
 const BRIDGES = declaredKind(BRIDGES_DECLARATION);
 

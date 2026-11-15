@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,8 +35,10 @@ let getid: { code: number; stderr: string } = { code: 0, stderr: '' };
 let rowsLoaded: Array<[string, number, string, string | null, string] | [string, number, string, string | null, string, string]> = [];
 /** Squares & streets' candidates the build looks for the lines of (fixture QIDs, not real ones). */
 let streets: Array<{ qid: string; lat: number; lon: number; names: string[] }> = [];
+/** The items file the flex style was handed. */
+let drawnItemsFile = '';
 /** The items the layer keeps whole (fixture QIDs, not real ones). */
-let drawnItems: { named: string[]; listed: string[] } = { named: [], listed: [] };
+let drawnItems: { named: string[]; listed: string[]; lined: string[] } = { named: [], listed: [], lined: [] };
 
 vi.mock('../fetch.js', () => ({
   fetchText: vi.fn(async (url: string) => {
@@ -63,6 +65,21 @@ vi.mock('./layerStreets.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('./layerStreets.js')>(),
   streetItems: vi.fn(async () => streets),
 }));
+/** Whether placement fails, as a stopped worker leaves it, and the places each placement was asked for. */
+let placementFails = false;
+const placed: number[][] = [];
+vi.mock('../../sync/regionAssignmentService.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../sync/regionAssignmentService.js')>();
+  return {
+    ...real,
+    assignRegionsForExperiences: vi.fn(async (ids: number[], worldView: number) => {
+      if (placementFails) throw new Error('the worker stopped');
+      placed.push(ids);
+      return real.assignRegionsForExperiences(ids, worldView);
+    }),
+    worldViewsWithGeometry: vi.fn(async () => [1]),
+  };
+});
 vi.mock('./layerShapes.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('./layerShapes.js')>();
   return {
@@ -89,6 +106,7 @@ vi.mock('./tools.js', async (importOriginal) => {
           await db.query('CREATE TABLE workbench.osm_layer_middle_nodes (id bigint)');
           throw new Error('osm2pgsql --create failed (1): out of memory');
         }
+        drawnItemsFile = readFileSync(options.env!.OSM_LAYER_DRAWN_ITEMS!, 'utf8');
         await db.query(`CREATE TABLE workbench.${options.env!.OSM_LAYER_TABLE} (osm_type char(1) NOT NULL, osm_id bigint NOT NULL,
           tags jsonb NOT NULL, wikidata text, wikipedia text, geom geometry(Geometry, 4326), street_item text)`);
         await db.query('CREATE TABLE workbench.osm2pgsql_properties (property text, value text)');
@@ -134,8 +152,11 @@ const rows = async (sql: string) => (await pool.query(sql)).rows;
 
 /** A world view of the composites' fixture (#2113), deleted before and after. */
 const WORLD_VIEW = 9810;
+/** A bridge of Bridges & engineering marvels, whose line the layer draws (ADR-0212), deleted before and after. */
+const BRIDGE = 9819;
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id = $1', [BRIDGE]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [WORLD_VIEW]);
   await pool.query('TRUNCATE osm_layer_builds, osm_objects');
   await pool.query('DROP TABLE IF EXISTS workbench.osm_objects_next, workbench.osm2pgsql_properties');
@@ -154,9 +175,11 @@ beforeEach(async () => {
   loadFails = false;
   getid = { code: 0, stderr: '' };
   rowsLoaded = [STONEHENGE, POMPEII, BAKERY];
-  drawnItems = { named: [], listed: [] };
+  drawnItems = { named: [], listed: [], lined: [] };
   streets = [];
   refillFails = false;
+  placementFails = false;
+  placed.length = 0;
   await clear();
   buildId = await newBuild();
 });
@@ -317,7 +340,7 @@ describe('buildLayer (#1437)', () => {
   });
 
   it('keeps the shape of each region an import names and each item a mapshape lists, a relation before a way, and leaves the Commons shapes (#2085, #2105)', async () => {
-    drawnItems = { named: ['Q1000001', 'Q1000002'], listed: ['Q1000004', 'Q1000005'] };
+    drawnItems = { named: ['Q1000001', 'Q1000002'], listed: ['Q1000004', 'Q1000005'], lined: [] };
     rowsLoaded = [STONEHENGE, REGION, REGION_WAY, REGION_POINT, DISTRICT];
     await pool.query(`INSERT INTO wikidata_geoshapes (wikidata_id, geom, licence) VALUES
       ('Q1000003', ST_GeomFromText('MULTIPOLYGON(((0 0,0 1,1 1,1 0,0 0)))', 4326), 'ODbL-1.0'),
@@ -340,7 +363,7 @@ describe('buildLayer (#1437)', () => {
     // Fixture items, not real ones. A coast drawn by no object whose two
     // children are drawn; a province of that coast alone; and a heath one of
     // whose children the layer holds only as a point.
-    drawnItems = { named: ['Q1000001', 'Q1000002', 'Q1000004', 'Q1000006', 'Q1000007', 'Q1000008'], listed: [] };
+    drawnItems = { named: ['Q1000001', 'Q1000002', 'Q1000004', 'Q1000006', 'Q1000007', 'Q1000008'], listed: [], lined: [] };
     rowsLoaded = [STONEHENGE, REGION, REGION_POINT, DISTRICT];
     await pool.query(`INSERT INTO world_views (id, name, is_default) VALUES ($1, 'Composite fixture', false)`, [WORLD_VIEW]);
     await pool.query(
@@ -357,7 +380,7 @@ describe('buildLayer (#1437)', () => {
 
     const result = await build();
 
-    expect(result.summary).toMatch(/; \d+ more have the union of their child regions' shapes, and \d+ with child regions have none, since a child has no shape$/);
+    expect(result.summary).toMatch(/; \d+ more have the union of their child regions' shapes, and \d+ with child regions have none, since a child has no shape\. /);
     expect(await rows(`SELECT wikidata_id, licence, composite_of, round(ST_Area(geom)::numeric, 2)::float AS area FROM wikidata_geoshapes
       WHERE wikidata_id IN ('Q1000006', 'Q1000007', 'Q1000008') ORDER BY wikidata_id`)).toEqual([
       { wikidata_id: 'Q1000006', licence: 'ODbL-1.0', composite_of: 2, area: 2 },
@@ -378,7 +401,7 @@ describe('buildLayer (#1437)', () => {
   });
 
   it('keeps the layer it swapped in when the region shapes cannot be kept, and says so', async () => {
-    drawnItems = { named: ['Q1000001'], listed: [] };
+    drawnItems = { named: ['Q1000001'], listed: [], lined: [] };
     rowsLoaded = [STONEHENGE, REGION];
     refillFails = true;
 
@@ -388,6 +411,57 @@ describe('buildLayer (#1437)', () => {
     expect(notes).toContain("the region shapes were not refreshed from this layer, and the store keeps the last build's: store refused");
     expect(await rows('SELECT count(*)::int AS n FROM osm_objects')).toEqual([{ n: 2 }]);
     expect(await rows("SELECT 1 FROM wikidata_geoshapes WHERE wikidata_id = 'Q1000001'")).toEqual([]);
+  });
+
+  it('keeps whole the objects of each bridge Bridges & engineering marvels offers, and reads its line from them (ADR-0212)', async () => {
+    drawnItems = { named: [], listed: [], lined: ['Q1000009'] };
+    rowsLoaded = [STONEHENGE, ['W', 40, '{"highway":"motorway","wikidata":"Q1000009"}', 'Q1000009', 'LINESTRING(12.0 55.6, 12.1 55.6)']];
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       VALUES ($1, 8, 'Q1000009', 'A crossing (layer fixture)', ST_SetSRID(ST_MakePoint(12.05, 55.6), 4326))`, [BRIDGE],
+    );
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q1000009', 'auto', NOW() FROM experience_sources s WHERE s.id = 8`, [BRIDGE],
+    );
+
+    const result = await build();
+
+    expect(drawnItemsFile).toBe('Q1000009\n');
+    expect(result.summary).toMatch(/\. 1 bridges, tunnels and dams hold a line, and 1 lines changed\. \d+ places were placed by their lines$/);
+    expect(placed.flat()).toContain(BRIDGE);
+    expect(await rows(`SELECT path_source_ref, path_updated_at FROM experiences WHERE id = ${BRIDGE}`)).toEqual([
+      { path_source_ref: 'osm:W40', path_updated_at: new Date('2026-10-22T00:00:00Z') },
+    ]);
+  });
+
+  it('places on the next build a line a build wrote and could not place, though the line no longer changes (ADR-0212)', async () => {
+    drawnItems = { named: [], listed: [], lined: ['Q1000009'] };
+    rowsLoaded = [STONEHENGE, ['W', 40, '{"highway":"motorway","wikidata":"Q1000009"}', 'Q1000009', 'LINESTRING(12.0 55.6, 12.1 55.6)']];
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       VALUES ($1, 8, 'Q1000009', 'A crossing (layer fixture)', ST_SetSRID(ST_MakePoint(12.05, 55.6), 4326))`, [BRIDGE],
+    );
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q1000009', 'auto', NOW() FROM experience_sources s WHERE s.id = 8`, [BRIDGE],
+    );
+    placementFails = true;
+
+    const stopped = await build();
+
+    // The summary says what did not happen, and the note why.
+    expect(stopped.summary).toMatch(/\. 1 bridges, tunnels and dams hold a line, and 1 lines changed\. The places their lines decide were not placed again$/);
+    expect(notes).toContain('the places their lines decide were not placed again, and the next build places them: the worker stopped');
+    expect(placed).toEqual([]);
+
+    placementFails = false;
+    await pool.query("UPDATE dump_builds SET status = 'success' WHERE id = $1", [buildId]);
+    buildId = await newBuild();
+    const next = await build();
+
+    expect(next.summary).toMatch(/\. 1 bridges, tunnels and dams hold a line, and 0 lines changed\. \d+ places were placed by their lines$/);
+    expect(placed.flat()).toContain(BRIDGE);
   });
 
   it('reads the objects the catalogue names from the places as they are stored', async () => {
