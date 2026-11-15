@@ -4,6 +4,7 @@ import { partAssertions } from '../controllers/admin/dataAssertions/partAssertio
 import { CURATOR_REFUSAL_REASON } from '../controllers/experience/curatorRefusalController.js';
 import { queryQueueKeys } from '../controllers/experience/reviewQueueKeys.js';
 import { arrivalOpenSql } from '../controllers/experience/reviewQueuePredicates.js';
+import { partOfferedSql } from './readerPredicates.js';
 import { waitingCountsBySource } from '../controllers/experience/waitingCounts.js';
 
 /**
@@ -230,6 +231,108 @@ describe('a part\'s record asks the review queue nothing of its own', () => {
     expect(await gate(QUARRY.ref)).toMatchObject({ admission: 'refused' });
 
     expect(await quarryKeys()).toEqual([]);
+  });
+});
+
+describe('the review queue and a reader ask a part\'s gate of its record (ADR-0213)', () => {
+  async function adminId(): Promise<number> {
+    return (await pool.query<{ id: number }>(
+      "INSERT INTO users (uuid, display_name, role) VALUES ($1, 'An admin', 'admin') RETURNING id", [ADMIN_UUID],
+    )).rows[0].id;
+  }
+
+  /** The subs of the site's waiting key in an admin's queue: 'contents' while it holds a part nobody has read. */
+  async function siteSubs(admin: number): Promise<string[]> {
+    const { keys } = await queryQueueKeys({
+      userId: admin, isAdmin: true, filters: { q: 'Baalbek (gate fixture)', sort: 'date', limit: 25 },
+    });
+    return keys.filter(key => key.id === SITE && key.kind === 'waiting').flatMap(key => key.subs);
+  }
+
+  async function partOffered(ref: string): Promise<boolean> {
+    return (await pool.query<{ offered: boolean }>(
+      `SELECT ${partOfferedSql('e')} AS offered FROM experiences e WHERE e.id = $1`, [await partOf(ref)],
+    )).rows[0].offered;
+  }
+
+  it('asks the site about a part while its record is unread, whatever its point says', async () => {
+    const admin = await adminId();
+    expect(await siteSubs(admin)).toEqual(['contents']);
+
+    // The temples, read on their point, get a record nobody has read: written
+    // as a new record is, outside the derivation, so only the record says so.
+    const temples = await partOf(TEMPLES.ref);
+    await pool.query('DELETE FROM source_records WHERE source_id = $1 AND whole_id = $2 AND experience_id = $3',
+      [COMPONENTS_SOURCE, SITE, temples]);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, curation_state)
+       VALUES ($1, $2, $3, $4, 'pending')`,
+      [temples, SITE, COMPONENTS_SOURCE, TEMPLES.ref],
+    );
+    await setPoint(QUARRY.ref, "curation_state = 'verified'");
+
+    expect(await gate(TEMPLES.ref)).toMatchObject({ curation_state: 'pending' });
+    expect(await siteSubs(admin)).toEqual(['contents']);
+    expect(await partOffered(TEMPLES.ref)).toBe(false);
+  });
+
+  it('shows a part by its record: withdrawn or turned down on its record, it is not offered', async () => {
+    await setPoint(QUARRY.ref, "curation_state = 'verified'");
+    expect(await partOffered(QUARRY.ref)).toBe(true);
+
+    // Written on the record alone; its point still stands, published.
+    await pool.query(
+      'UPDATE source_records SET missing_since = NOW() WHERE source_id = $1 AND whole_id = $2 AND external_id = $3',
+      [COMPONENTS_SOURCE, SITE, QUARRY.ref],
+    );
+    expect(await partOffered(QUARRY.ref)).toBe(false);
+
+    await pool.query(
+      `UPDATE source_records SET missing_since = NULL, admission = 'refused'
+        WHERE source_id = $1 AND whole_id = $2 AND external_id = $3`,
+      [COMPONENTS_SOURCE, SITE, QUARRY.ref],
+    );
+    expect(await partOffered(QUARRY.ref)).toBe(false);
+  });
+
+  it('hides a part whose line point a curator judged lost, which its record does not follow', async () => {
+    expect(await partOffered(TEMPLES.ref)).toBe(true);
+
+    await setPoint(TEMPLES.ref, "existence = 'lost'");
+
+    expect(await gate(TEMPLES.ref)).toMatchObject({ curation_state: 'auto', admission: 'admitted', missing: false });
+    expect(await partOffered(TEMPLES.ref)).toBe(false);
+  });
+
+  it('hides a part whose every line point a merge folded, which its record does not follow', async () => {
+    await setPoint(QUARRY.ref, "curation_state = 'verified'");
+    expect(await partOffered(TEMPLES.ref)).toBe(true);
+
+    // The temples' point folded into the quarry's, as a merge folds a point into the one it keeps.
+    const kept = (await pool.query<{ id: number }>(
+      'SELECT id FROM experience_locations WHERE experience_id = $1', [await partOf(QUARRY.ref)],
+    )).rows[0].id;
+    await setPoint(TEMPLES.ref, `merged_into_id = ${kept}`);
+
+    expect(await gate(TEMPLES.ref)).toMatchObject({ curation_state: 'auto', missing: false });
+    expect(await partOffered(TEMPLES.ref)).toBe(false);
+  });
+
+  it('shows a part no source records in its whole by a point of its own', async () => {
+    await setPoint(QUARRY.ref, "curation_state = 'verified'");
+    // A curator's word makes the quarry a part, and the list's record goes.
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
+       VALUES ($1, $2, 11, 'curator-9690-1', 'admitted', 'verified', NOW())`,
+      [await partOf(QUARRY.ref), SITE],
+    );
+    const quarry = await partOf(QUARRY.ref);
+    await pool.query('DELETE FROM source_records WHERE source_id = $1 AND whole_id = $2 AND experience_id = $3',
+      [COMPONENTS_SOURCE, SITE, quarry]);
+
+    expect((await pool.query<{ offered: boolean }>(
+      `SELECT ${partOfferedSql('e')} AS offered FROM experiences e WHERE e.id = $1`, [quarry],
+    )).rows[0].offered).toBe(true);
   });
 });
 
