@@ -7,8 +7,9 @@
  * ticked: a part, a cast's edition, a place of one point, or a whole ticked
  * as a whole. Nothing is written for a whole when one of its parts is ticked;
  * the whole's state is read from its parts, one level down, as every reader of
- * a place's points shows them (`pointsShownSql`). A point counts as visited
- * when its own place is. A visit on a place a merge folded is kept for the
+ * a place's points shows them (`pointsShownSql`), and its count from its
+ * offered leaves at any depth (`whole_leaves`, ADR-0206). A point counts as
+ * visited when its own place is. A visit on a place a merge folded is kept for the
  * merge's undo and never read.
  */
 
@@ -60,24 +61,43 @@ export function liveVisitsSql(user: string): string {
  * Every place the traveller `user` has a state in, with what decides it:
  * `place_id`, `ticked` (a visit on the place itself), `total` (the points a
  * reader is shown of it, its own and its direct parts') and `visited` (those
- * whose own place the traveller visited). The places are those they visited
- * and the wholes those are direct parts of. `computeVisitedStatus`
- * (`@tyr/shared/visits`) turns the three into the state.
+ * whose own place the traveller visited), which `computeVisitedStatus` turns
+ * into the state; `has_parts` (`showsPartsSql`); and `leaves` (its offered leaves, `whole_leaves`) and
+ * `leaves_visited` (those the traveller visited), which `wholeProgress` turns
+ * into its count (`@tyr/shared/visits`, ADR-0206). The places are those they
+ * visited and every whole above them, at any depth (`place_ancestors()`).
+ *
+ * The walk up is called in FROM on an aggregated array, not on an `ARRAY(...)`
+ * subquery: an argument holding a subquery keeps Postgres from inlining the
+ * function, and a call it cannot inline is planned as a thousand rows, which
+ * turned the caller's per-row EXISTS into hashes over every offered leaf and
+ * every point (3.9 ms against 1.1 ms for a traveller of ten visits). The
+ * walk is still estimated at a few hundred rows, so `has_parts` is asked
+ * inside the per-place subquery, where it is one probe per place, and not by
+ * the caller over the result, where it was hashed the same way.
  */
 export function visitStatesSql(user: string): string {
   return `(WITH ticked AS MATERIALIZED (SELECT DISTINCT tv.experience_id FROM ${liveVisitsSql(user)} tv),
         touched AS (
           SELECT ticked.experience_id AS place_id FROM ticked
           UNION
-          SELECT prt.whole_id FROM experience_parts prt JOIN ticked ON ticked.experience_id = prt.part_id)
+          SELECT up.place_id FROM (SELECT array_agg(experience_id) AS ids FROM ticked) tk
+           CROSS JOIN LATERAL place_ancestors(tk.ids) AS up(place_id))
       SELECT touched.place_id,
              EXISTS (SELECT 1 FROM ticked WHERE ticked.experience_id = touched.place_id) AS ticked,
-             count(shown.id)::int AS total,
-             count(shown.id) FILTER (WHERE shown.experience_id IN (SELECT experience_id FROM ticked))::int AS visited
+             shown.total, shown.visited, shown.has_parts, leaves.leaves, leaves.leaves_visited
         FROM touched
-        LEFT JOIN LATERAL (SELECT shown.id, shown.experience_id FROM ${pointsShownSql('touched.place_id', 'shown')}
-                            WHERE ${offeredLocationSql('shown')} AND ${publishedContentSql('shown')}) shown ON true
-       GROUP BY touched.place_id)`;
+        CROSS JOIN LATERAL (
+          SELECT count(*)::int AS total,
+                 count(*) FILTER (WHERE shown.experience_id IN (SELECT experience_id FROM ticked))::int AS visited,
+                 ${showsPartsSql('touched.place_id')} AS has_parts
+            FROM ${pointsShownSql('touched.place_id', 'shown')}
+           WHERE ${offeredLocationSql('shown')} AND ${publishedContentSql('shown')}) shown
+        CROSS JOIN LATERAL (
+          SELECT count(*)::int AS leaves,
+                 count(*) FILTER (WHERE wl.leaf_id IN (SELECT experience_id FROM ticked))::int AS leaves_visited
+            FROM whole_leaves wl
+           WHERE wl.whole_id = touched.place_id AND wl.offered) leaves)`;
 }
 
 /**

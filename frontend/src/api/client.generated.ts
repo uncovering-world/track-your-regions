@@ -1426,6 +1426,22 @@ export interface VisitedRegionBody {
   notes?: string;
 }
 
+export type VisitedExperienceIdsWholeProgressItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** The offered leaves the reader visited; null for "?": the whole visited and none of them named. */
+  visited: number | null;
+  /**
+     * The whole's offered leaves, one or more.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+};
+
 /**
  * The objects the reader has visited, and which of them only in part.
  */
@@ -1448,6 +1464,8 @@ export interface VisitedExperienceIds {
      * @items.maximum 9007199254740991
      */
   wholeTickedIds: number[];
+  /** Every whole the reader has been to, at any depth, with its count over its offered leaves (ADR-0206): the Struve Geodetic Arc after one station reads 1 of 34 in every region it is listed in, and ticked as a whole "? of 34". A whole with no offered leaf is not listed. */
+  wholeProgress: VisitedExperienceIdsWholeProgressItem[];
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991

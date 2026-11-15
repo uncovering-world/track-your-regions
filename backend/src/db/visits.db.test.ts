@@ -6,6 +6,7 @@ import {
   getExperienceVisitedStatus, getVisitedLocationIds, markLocationVisited, unmarkAllLocationsVisited, unmarkLocationVisited,
 } from '../controllers/experience/locationVisitController.js';
 import { markTreasureViewed } from '../controllers/experience/experienceTreasureController.js';
+import { getVisitedRegions, getVisitedRegionsInWorldView } from '../controllers/user/visitedRegions.js';
 
 /**
  * A traveller's visit is one row on the place they ticked, and a whole is read
@@ -16,8 +17,9 @@ import { markTreasureViewed } from '../controllers/experience/experienceTreasure
  * The fixture: a serial site (9431) of three parts with no kind of their own
  * (9432–9434), one of them also a museum holding a work, as Antwerp Cathedral
  * is one of the Belfries of Belgium and France; a twin of the first part a
- * merge folded (9435); and an edition cast twice (9436). Deleted before and
- * after; the dependants cascade.
+ * merge folded (9435); an edition cast twice (9436); and a whole the site is
+ * itself a part of (9437), as Oshino Hakkai is named inside Fujisan, for the
+ * tests that nest it. Deleted before and after; the dependants cascade.
  */
 
 const SITE = 9431;
@@ -26,7 +28,9 @@ const PART_B = 9433;
 const PART_C = 9434;
 const FOLDED_TWIN = 9435;
 const EDITION = 9436;
-const PLACES = [SITE, PART_A, PART_B, PART_C, FOLDED_TWIN, EDITION];
+const GRAND = 9437;
+const PLACES = [SITE, PART_A, PART_B, PART_C, FOLDED_TWIN, EDITION, GRAND];
+const WORLD_VIEW = 'Visits fixture world view (#2121)';
 const TRAVELLER = '00000000-0000-4000-8000-000000009431';
 const WORK = 'Q9431-visits-fixture-work';
 
@@ -38,6 +42,7 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [PLACES]);
   await pool.query('DELETE FROM treasures WHERE external_id = $1', [WORK]);
   await pool.query('DELETE FROM users WHERE uuid = $1', [TRAVELLER]);
+  await pool.query('DELETE FROM world_views WHERE name = $1', [WORLD_VIEW]);
 }
 
 async function place(id: number, name: string, offered: boolean): Promise<void> {
@@ -74,6 +79,18 @@ async function held(): Promise<number[]> {
     [userId, PLACES],
   );
   return rows.rows.map(row => row.experience_id);
+}
+/** Each fixture whole's count over its offered leaves, as the visited-ids read answers it (ADR-0206). */
+async function counts(): Promise<Record<number, { visited: number | null; total: number }>> {
+  const answer = await getVisitedIds({ query: {}, caller: traveller() });
+  return Object.fromEntries(answer.wholeProgress
+    .filter(row => PLACES.includes(row.experienceId))
+    .map(row => [row.experienceId, { visited: row.visited, total: row.total }]));
+}
+/** Make the site a part of a whole above it, as Oshino Hakkai inside Fujisan. */
+async function nestSite(): Promise<void> {
+  await place(GRAND, 'A whole above the serial site (visits fixture)', true);
+  await pool.query(`INSERT INTO experience_parts (whole_id, part_id, reason) VALUES ($1, $2, 'curator')`, [GRAND, SITE]);
 }
 /** Discover's read: the fixture's places visited, and those only partly visited. */
 async function states(): Promise<{ visited: number[]; partial: number[] }> {
@@ -214,6 +231,70 @@ describe("a traveller's visits, one row on the place ticked (#2120)", () => {
     expect(await states()).toEqual({ visited: [SITE], partial: [SITE] });
     const answer = await getVisitedIds({ query: {}, caller: traveller() });
     expect(answer.wholeTickedIds.filter(id => PLACES.includes(id))).toEqual([SITE]);
+  });
+
+  it('counts a site k of N over its offered leaves, and a whole above it the same leaves', async () => {
+    // The Struve Geodetic Arc after one station reads 1 of 34, and a whole
+    // nesting it counts the same stations as its own leaves.
+    await nestSite();
+    expect(await counts()).toEqual({});
+
+    await visit(PART_A);
+    expect(await counts()).toEqual({ [SITE]: { visited: 1, total: 3 }, [GRAND]: { visited: 1, total: 3 } });
+    // The state is still read the old way until the count replaces it (#2121).
+    expect(await states()).toEqual({ visited: [SITE, PART_A], partial: [SITE] });
+  });
+
+  it('reads a whole ticked as a whole, or through a whole inside it, as ? of N', async () => {
+    await nestSite();
+    await visit(SITE);
+
+    expect(await counts()).toEqual({ [SITE]: { visited: null, total: 3 }, [GRAND]: { visited: null, total: 3 } });
+  });
+
+  it('reads a visit to a part since withdrawn as ? of the parts still offered, never 0 of them', async () => {
+    await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [points[PART_C][0]]);
+    await visit(PART_C);
+
+    expect(await counts()).toEqual({ [SITE]: { visited: null, total: 2 } });
+  });
+
+  it('gives a whole with no offered part, and an edition, no count', async () => {
+    // No part a reader is shown, as none of Wudang's 45, which all wait for a
+    // curator: here the source no longer lists them.
+    await pool.query(
+      'UPDATE experience_locations SET missing_since = NOW() WHERE experience_id = ANY($1::int[])',
+      [[PART_A, PART_B, PART_C]],
+    );
+    await visit(SITE);
+    await visit(EDITION);
+
+    expect(await counts()).toEqual({});
+  });
+
+  it('marks no region visited when a whole listed in two of them reads visited (ADR-0206 decision 7)', async () => {
+    // The Struve Geodetic Arc is listed in Finland and in Moldova; a station
+    // ticked in Finland makes the Arc visited in both lists, and neither
+    // region visited.
+    const worldView = (await pool.query<{ id: number }>(
+      'INSERT INTO world_views (name) VALUES ($1) RETURNING id', [WORLD_VIEW],
+    )).rows[0].id;
+    const regions = (await pool.query<{ id: number }>(
+      `INSERT INTO regions (world_view_id, name) SELECT $1, n FROM unnest($2::text[]) AS n RETURNING id`,
+      [worldView, ['Finland (visits fixture)', 'Moldova (visits fixture)']],
+    )).rows.map(row => row.id);
+    await pool.query(
+      `INSERT INTO experience_regions (experience_id, region_id, assignment_type)
+       VALUES ($1, $3, 'manual'), ($1, $4, 'manual'), ($2, $3, 'manual')`,
+      [SITE, PART_A, regions[0], regions[1]],
+    );
+
+    await markLocationVisited({ params: { locationId: points[PART_A][0] }, body: {}, caller: traveller() });
+
+    expect((await states()).visited).toContain(SITE);
+    expect(await counts()).toEqual({ [SITE]: { visited: 1, total: 3 } });
+    expect(await getVisitedRegions({ caller: traveller() })).toEqual([]);
+    expect(await getVisitedRegionsInWorldView({ params: { worldViewId: worldView }, caller: traveller() })).toEqual([]);
   });
 
   it('marks every cast of an edition with one tick, and clears them all with one', async () => {

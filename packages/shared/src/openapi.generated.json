@@ -42674,6 +42674,45 @@
             },
             "description": "The wholes the reader ticked as a whole, without naming a part: \"I was there, I don't remember which part\". Not a whole showing a point of its own, where that tick is the point's (#2120)."
           },
+          "wholeProgress": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "experienceId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "visited": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The offered leaves the reader visited; null for \"?\": the whole visited and none of them named."
+                },
+                "total": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The whole's offered leaves, one or more."
+                }
+              },
+              "required": [
+                "experienceId",
+                "visited",
+                "total"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every whole the reader has been to, at any depth, with its count over its offered leaves (ADR-0206): the Struve Geodetic Arc after one station reads 1 of 34 in every region it is listed in, and ticked as a whole \"? of 34\". A whole with no offered leaf is not listed."
+          },
           "total": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -42684,6 +42723,7 @@
           "visitedIds",
           "partialIds",
           "wholeTickedIds",
+          "wholeProgress",
           "total"
         ],
         "additionalProperties": false,

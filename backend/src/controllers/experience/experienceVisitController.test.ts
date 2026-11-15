@@ -145,7 +145,7 @@ describe('the visited ids of one kind', () => {
   beforeEach(() => mockedQuery.mockReset());
 
   it('finds a visited place by any of its memberships, not only the one its first source brought', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ place_id: 6214, ticked: true, total: 1, visited: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ place_id: 6214, ticked: true, total: 1, visited: 1, leaves: 0, leaves_visited: 0 }] });
 
     await answerRoute(routeAt(userRoutes, '/me/visited-experiences/ids'),
       { query: { kindId: '5' }, user: { id: 5 } } as never,
