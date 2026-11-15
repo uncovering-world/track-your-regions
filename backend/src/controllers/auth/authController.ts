@@ -54,7 +54,7 @@ function breachedPassword(breachCount: number): Error {
  * POST /api/auth/register
  * Register a new user with email/password.
  * Always returns the same response regardless of whether the email exists
- * (credential enumeration resistance — OWASP ASVS V6.5.1).
+ * (credential enumeration resistance — OWASP ASVS V6.3.8).
  * No auto-login; user must verify email first.
  */
 export async function register(
@@ -261,7 +261,7 @@ export async function refresh(_input: unknown, { req, res }: RouteExchange): Pro
  */
 export async function logout(_input: unknown, { req, res }: RouteExchange): Promise<LoggedOut> {
   try {
-    // Blacklist the access token so it can't be used for the remaining ~15 min (V7.3.5)
+    // Blacklist the access token so it can't be used for the remaining ~15 min (V7.4.1)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       blacklistAccessToken(authHeader.substring(7));

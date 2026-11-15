@@ -63,7 +63,7 @@ export function generateAccessToken(user: User): string {
 }
 
 // =============================================================================
-// Access Token Blacklist (in-memory, for logout invalidation — ASVS V7.3.5)
+// Access Token Blacklist (in-memory, for logout invalidation — ASVS V7.4.1)
 // =============================================================================
 // Tokens only live 15 minutes, so the blacklist stays small.
 // Entries are auto-cleaned every 5 minutes to remove expired JTIs.
@@ -113,7 +113,7 @@ function isBlacklisted(jti: string): boolean {
 export function verifyAccessToken(token: string): JWTPayload | null {
   const payload = signedLivePayload(token);
   if (!payload) return null;
-  // A logged-out token is refused until it expires (V7.3.5).
+  // A logged-out token is refused until it expires (V7.4.1).
   if (payload.jti && isBlacklisted(payload.jti)) {
     return null;
   }

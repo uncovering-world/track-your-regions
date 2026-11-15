@@ -23,7 +23,7 @@ export function configureLocalStrategy(): void {
           const user = await findUserByEmail(email);
 
           if (!user) {
-            // Perform dummy bcrypt compare to prevent timing oracle (ASVS V6.5.1)
+            // Perform dummy bcrypt compare to prevent timing oracle (ASVS V6.3.8)
             await bcrypt.compare(password, DUMMY_HASH);
             return done(null, false, { message: 'Invalid email or password' });
           }

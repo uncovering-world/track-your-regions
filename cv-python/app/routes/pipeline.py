@@ -123,7 +123,7 @@ def _ndjson_stream(worker_fn: Worker) -> Iterator[str]:
             result = worker_fn(progress, await_review)
             q.put(json.dumps({"type": "result", "data": result}) + "\n")
         except Exception:
-            # ASVS V13.4: log the full exception internally, return a generic
+            # ASVS V16.5: log the full exception internally, return a generic
             # message to the caller. Stack frames / file paths must not leak.
             logger.exception("Pipeline worker failed")
             q.put(json.dumps({"type": "error", "message": "Internal error during processing"}) + "\n")

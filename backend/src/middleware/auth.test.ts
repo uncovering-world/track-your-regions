@@ -137,7 +137,7 @@ describe('optionalAuth on the wire', () => {
  * `requireAuth` is the other half of the same rule (#710). What it fronts is
  * the caller's own data — visited regions and experiences, a profile with its
  * email, an admin's or a curator's screen — which `docs/security/asvs-checklist.yaml`
- * V14.2.1 classifies as sensitive. A shared cache is kept out of most of it by
+ * V14.1.1 classifies as sensitive. A shared cache is kept out of most of it by
  * RFC 9111 § 3.5, since the access token travels in `Authorization` — but not
  * of the one caller that cannot send a header — the streams `EventSource`
  * opens — whose token rides in the query string instead; `private` is what forbids it there. The browser's own cache is kept out by

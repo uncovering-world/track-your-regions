@@ -13,8 +13,8 @@ configure_logging()
 
 app = FastAPI(title="Track Your Regions — CV Service")
 
-# ASVS L2: body-size cap (V4.1.1 / V5.1.1) and sanitised exception responses
-# (V13.4). See app/middleware.py for the rationale.
+# ASVS L2: body-size cap (V5.2.1) and sanitised exception responses
+# (V16.5). See app/middleware.py for the rationale.
 install_security_middleware(app)
 
 app.include_router(pipeline_router)

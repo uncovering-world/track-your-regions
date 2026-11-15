@@ -5,7 +5,7 @@ import numpy as np
 
 
 class InvalidImageBytes(ValueError):
-    """Raised when uploaded bytes don't decode to a valid image (V5.1.2 — file-format validation)."""
+    """Raised when uploaded bytes don't decode to a valid image (V5.2.2 — file-format validation)."""
 
 
 def decode_image(image_bytes: bytes) -> np.ndarray:
