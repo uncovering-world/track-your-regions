@@ -22,6 +22,7 @@
 import { fetchClassTree, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind, type PoolRoot } from './gather.js';
 import { classifyByWorldBars } from './worldTier.js';
+import { WORLD_FRAME } from './admissionRegister.js';
 import type { WorldRead } from './worldBars.js';
 import type { WorldHistory } from './worldMemory.js';
 import { surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './surroundingsTier.js';
@@ -251,7 +252,7 @@ export function declaredKind<Type extends WikidataLandmark['type']>(decl: PlaceK
     trees: (run) => fetchDeclaredTrees(decl, run),
     poolClasses: (trees) => ({ broad: decl.pool, narrow: trees.place }),
     readsContainers: false,
-    admissionPool: true,
+    admissionPool: WORLD_FRAME.poolSitelinks,
   };
   const verdict = (facts: PlaceFacts, trees: DeclaredTrees<Type>) => declaredVerdict(decl, facts, trees);
   const typeOf = (classes: readonly string[], trees: DeclaredTrees<Type>) => declaredType(decl, classes, trees);

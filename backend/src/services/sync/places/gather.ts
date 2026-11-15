@@ -32,7 +32,6 @@ import { emptyContainment, loadContainment, type Containment } from './containme
 import { loadSubjects, type SubjectFacts, type SubjectRunner } from '../publicArt/subjects.js';
 import type { SurroundingsPool } from './surroundingsPool.js';
 import { readsSubset } from '../subset/reader.js';
-import { WORLD_FRAME } from './admissionRegister.js';
 import type { PassWorks } from '../museum/worksGather.js';
 import type { KeptGatherNote } from '../types.js';
 
@@ -77,16 +76,17 @@ export interface PlaceKind<Trees> {
     attach(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void>;
   };
   /**
-   * Whether the kind admits by the world bars of ADR-0175, read over its own
-   * pool: then every class it asks by is asked again at the register's floor
-   * of sitelinks (`WORLD_FRAME.poolSitelinks`), whatever the candidate's
+   * Where the kind admits by the world bars of ADR-0175, read over its own
+   * pool: the floor of sitelinks every class it asks by is asked again at, the
+   * register's (`WORLD_FRAME.poolSitelinks`), whatever the candidate's
    * Wikipedia editions, so the pool the bars are quantiles of is the kind's
    * whole pool — the Asinelli Tower with 9 editions, Munich's Glockenspiel
-   * with 7. Read from the local subset alone, as the surroundings pool is: the
-   * live service cannot answer a question this wide. Only this kind sees what
-   * the shared pool did not name.
+   * with 7. The kind names the floor, so the gather reads no register: it is
+   * what the gather is asked, never how a kind decides. Read from the local
+   * subset alone, as the surroundings pool is: the live service cannot answer
+   * a question this wide. Only this kind sees what the shared pool did not name.
    */
-  admissionPool?: boolean;
+  admissionPool?: number;
   /**
    * Candidates named by what they are filed under rather than by a class, by
    * the door that names them: a street-art place is typed a wall, a road or a
@@ -304,17 +304,18 @@ async function collectAdmissionPools(
   run: QueryRunner, requests: GatherRequest[], classesOf: Map<PlaceKind<unknown>, Set<string>>, pooled: Map<string, PoolEntity>,
 ): Promise<Map<PlaceKind<unknown>, Map<string, PoolEntity>>> {
   const out = new Map<PlaceKind<unknown>, Map<string, PoolEntity>>();
-  const asking = requests.filter(({ kind }) => kind.admissionPool);
+  const asking = requests.filter(({ kind }) => kind.admissionPool !== undefined);
   if (!asking.length) return out;
   if (!readsSubset(run.sparql)) {
     console.log(`[Place pass] The admission pools are read from the local subset alone (ADR-0175); this run read the live service, so none was read`);
     return out;
   }
   for (const { kind } of asking) {
-    run.phase(`Reading ${kind.name} at ${WORLD_FRAME.poolSitelinks} sitelinks or more from the local subset...`);
+    const floor = kind.admissionPool!;
+    run.phase(`Reading ${kind.name} at ${floor} sitelinks or more from the local subset...`);
     await run.step();
     const own = new Map<string, PoolEntity>();
-    for (const entity of await fetchAdmissionPool(run, [...classesOf.get(kind)!], WORLD_FRAME.poolSitelinks, pooled)) own.set(entity.qid, entity);
+    for (const entity of await fetchAdmissionPool(run, [...classesOf.get(kind)!], floor, pooled)) own.set(entity.qid, entity);
     out.set(kind, own);
   }
   return out;
