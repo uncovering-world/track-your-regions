@@ -1249,6 +1249,13 @@ export interface UsersRow {
   last_seen_at: Date | null;
 }
 
+/** The table `whole_leaves`. */
+export interface WholeLeavesRow {
+  whole_id: number;
+  leaf_id: number;
+  offered: boolean;
+}
+
 /** The table `wikidata_cache_policy`. */
 export interface WikidataCachePolicyRow {
   source_id: number;
@@ -1517,6 +1524,7 @@ export const RELATION_SCHEMAS = {
   user_visited_experiences: "public",
   user_visited_regions: "public",
   users: "public",
+  whole_leaves: "public",
   wikidata_cache_policy: "workbench",
   wikidata_claims: "workbench",
   wikidata_class_closure: "workbench",
