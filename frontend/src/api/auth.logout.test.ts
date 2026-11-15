@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * would rotate the cookie that is about to be revoked (#1110, ADR-0073).
  */
 
-import { logout } from './auth';
+import { clearLastGoogleEmail, logout } from './auth';
 
 describe('logout', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
@@ -44,5 +44,18 @@ describe('logout', () => {
     fetchSpy.mockRejectedValueOnce(new Error('offline'));
 
     await expect(logout('the-session-token')).resolves.toBeUndefined();
+  });
+});
+
+describe('clearLastGoogleEmail', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('does not throw where the browser denies storage, so sign-out still reaches the server', () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    expect(() => clearLastGoogleEmail()).not.toThrow();
   });
 });

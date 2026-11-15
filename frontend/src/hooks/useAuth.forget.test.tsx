@@ -19,6 +19,7 @@ vi.mock('../api/auth', () => ({
   verifyEmail: vi.fn(),
   changePassword: vi.fn(),
   setLastGoogleEmail: vi.fn(),
+  clearLastGoogleEmail: vi.fn(),
 }));
 vi.mock('../components/shared/trips/visitTrips', () => ({
   default: (props: { part: string }) => <p>{`chunk: ${props.part}`}</p>,

@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
  */
 
 const apiLogout = vi.fn(async (_token: string | null) => undefined);
+const clearHint = vi.fn();
 
 vi.mock('../api/auth', () => ({
   login: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('../api/auth', () => ({
   verifyEmail: vi.fn(),
   changePassword: vi.fn(),
   setLastGoogleEmail: vi.fn(),
+  clearLastGoogleEmail: () => clearHint(),
 }));
 
 import { getAccessToken, setAccessToken } from '../api/fetchUtils';
@@ -57,6 +59,14 @@ describe('useAuth logout', () => {
 
     expect(apiLogout).toHaveBeenCalledWith('the-session-token');
     expect(getAccessToken()).toBeNull();
+  });
+
+  it('leaves no Google sign-in hint on the device once the traveller signs out (#2554)', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    clearHint.mockClear();
+    await act(async () => { await result.current.logout(); });
+    expect(clearHint).toHaveBeenCalledTimes(1);
   });
 
   it('sends no token when none is held', async () => {
