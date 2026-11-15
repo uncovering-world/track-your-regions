@@ -4465,6 +4465,50 @@ CREATE TABLE IF NOT EXISTS experience_parts (
 CREATE INDEX IF NOT EXISTS idx_experience_parts_part ON experience_parts(part_id);
 COMMENT ON TABLE experience_parts IS 'A place that is part of another (ADR-0046 decision 6, ADR-0100), derived from the source records that claim it (ADR-0198 decision 5) by parts_follow_records(), its one writer: a pair stands while a record in the whole claims it, and a curator''s record decides alone where there is one. reason names the strongest claim: a component of a serial World Heritage site (component), a Wikidata part-of statement (wikidata_part_of), or a curator alone (curator).';
 
+-- whole_leaves holds, for every whole, the places at the bottom of its parts:
+-- the Struve Geodetic Arc's 34 stations, Fujisan's 25 places with the 8
+-- Oshino Hakkai ponds among them where Oshino Hakkai is a whole of its own.
+-- A leaf is a place, not a point, so a part holding two points counts once,
+-- and a whole's own points are not leaves. offered says whether a reader is
+-- shown a point of the leaf. What a whole's "k of N" counts (#2121).
+--
+-- It is derived, and written by refresh_whole_leaves() alone, from the
+-- triggers that follow a part relation and a point's state, under the same
+-- region keys refresh_place_regions() takes: neither refresh calls the other,
+-- and the leaf triggers fire first, so the region refresh reads the leaves
+-- (place_shown_points) as the statement left them. Declared here, beside the
+-- part relations it is derived from, since place_shown_points() reads it;
+-- its functions and triggers are under "A whole's leaves" below.
+CREATE TABLE IF NOT EXISTS whole_leaves (
+    whole_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    leaf_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    offered BOOLEAN NOT NULL,
+    PRIMARY KEY (whole_id, leaf_id),
+    CHECK (whole_id <> leaf_id)
+);
+CREATE INDEX IF NOT EXISTS idx_whole_leaves_leaf ON whole_leaves(leaf_id);
+CREATE INDEX IF NOT EXISTS idx_whole_leaves_offered ON whole_leaves(whole_id) WHERE offered;
+COMMENT ON TABLE whole_leaves IS 'The leaves of every whole (ADR-0206): the places reached down experience_parts, at any depth, that have no parts of their own, once per whole, each with whether a reader is shown one of its points (offered). Written by refresh_whole_leaves() alone, from the triggers that follow a part relation and a point''s state; what a whole''s k of N counts.';
+
+-- The wholes above the places `places`, at any depth: the wholes they are
+-- parts of, the wholes those are parts of, and so on. A part relation is
+-- derived from records with no loop guard of their own (parts_follow_records),
+-- so the walk carries its path and never steps onto a place already on it,
+-- and stops eight levels up; a curator's word refuses a chain deeper than
+-- four (partRecordController.ts, MOST_LEVELS).
+CREATE OR REPLACE FUNCTION place_ancestors(places INTEGER[]) RETURNS SETOF INTEGER
+LANGUAGE sql STABLE AS $$
+  WITH RECURSIVE up (place_id, path) AS (
+    SELECT prt.whole_id, ARRAY[prt.part_id, prt.whole_id]
+      FROM experience_parts prt WHERE prt.part_id = ANY(places)
+    UNION ALL
+    SELECT prt.whole_id, up.path || prt.whole_id
+      FROM up JOIN experience_parts prt ON prt.part_id = up.place_id
+     WHERE NOT prt.whole_id = ANY(up.path) AND cardinality(up.path) <= 8)
+  SELECT DISTINCT up.place_id FROM up
+$$;
+COMMENT ON FUNCTION place_ancestors(INTEGER[]) IS 'The wholes above these places at any depth, the places themselves left out (ADR-0206): cycle-safe, eight levels at most. What refresh_whole_leaves() and refresh_place_regions() lock and rewrite above a change (ADR-0211).';
+
 -- Where a component the World Heritage list placed only roughly may stand
 -- (#1853), worked out by the Find component items pass from the subset and the
 -- OpenStreetMap layer, which no curator route reads (ADR-0124): the coordinate
@@ -5589,18 +5633,21 @@ CREATE TRIGGER trg_whole_shape_part_delete
 -- A place's regions (ADR-0197)
 -- =============================================================================
 -- experience_regions holds, for every place with a point, the regions of the
--- points it shows: its own and its parts' (Haghpat and Sanahin for their
--- serial site). Placement writes where each point lies
+-- points it shows: its own and its leaves' (Haghpat and Sanahin for their
+-- serial site, ADR-0211). Placement writes where each point lies
 -- (experience_location_regions); refresh_place_regions() writes each place's
 -- rows from those, so no geometry is read here. Each row says whether a
 -- reader finds the place there (experience_regions.listing).
 
 -- The points the places `places` show, each once per place, with whether a
--- reader may see it: a place's own points and its direct parts' points, the
--- two arms every reader of a place's points reads (PLACE_POINT_ARMS in
+-- reader may see it: a place's own points and its leaves' points (whole_leaves,
+-- the places at the bottom of its parts at any depth), the two arms every
+-- reader of a place's points reads (PLACE_POINT_ARMS in
 -- backend/src/db/placePoints.ts), so a region never lists a place whose
--- points a reader is not shown. A part's parts are not a whole's points
--- (#2121 decides what a nested whole shows). The points placement places:
+-- points a reader is not shown. A nested whole is shown by its leaves
+-- (ADR-0211): Fujisan by the Oshino Hakkai ponds once a curator nests them,
+-- and the nested whole's own point by the nested whole alone, as its count
+-- counts its leaves (ADR-0206). The points placement places:
 -- offered, and not turned down (ADR-0053). Visible adds the reader's term,
 -- published (ADR-0025). The two are offeredLocationSql and
 -- publishedContentSql (backend/src/db/readerPredicates.ts), held to these by
@@ -5611,19 +5658,18 @@ LANGUAGE sql STABLE AS $$
   WITH made_of (place_id, member_id) AS (
     SELECT p, p FROM unnest(places) AS p WHERE p IS NOT NULL
     UNION
-    SELECT prt.whole_id, prt.part_id
-      FROM experience_parts prt WHERE prt.whole_id = ANY(places))
+    SELECT wl.whole_id, wl.leaf_id FROM whole_leaves wl WHERE wl.whole_id = ANY(places))
   SELECT DISTINCT made_of.place_id, el.id, el.curation_state <> 'pending'
     FROM made_of JOIN experience_locations el ON el.experience_id = made_of.member_id
    WHERE el.missing_since IS NULL AND el.existence <> 'lost' AND el.merged_into_id IS NULL
      AND el.refused_at IS NULL
 $$;
-COMMENT ON FUNCTION place_shown_points(INTEGER[]) IS 'The points these places show, their own and their direct parts'', as readers show them (PLACE_POINT_ARMS), each with whether a reader may see it (ADR-0197): what place_regions_expected() places a place by.';
+COMMENT ON FUNCTION place_shown_points(INTEGER[]) IS 'The points these places show, their own and their leaves'' (whole_leaves), as readers show them (PLACE_POINT_ARMS), each with whether a reader may see it (ADR-0197, ADR-0211): what place_regions_expected() places a place by.';
 
 -- The automatic rows the places `places` are expected to hold, in one world
 -- view or in all, with the listing each row carries (ADR-0197, ADR-0207):
--- the regions of the points each shows, its own and its direct parts', and
--- the regions its own geometry and its parts' put it in
+-- the regions of the points each shows, its own and its leaves' (ADR-0211),
+-- and the regions its own geometry and its leaves' put it in
 -- (experience_shape_regions: an outline, a line, the nearest leaf of a point
 -- no region holds), each listed as its place's points are. Where none of
 -- those offers the place to a reader in a world view, the leaf of its kind
@@ -5692,18 +5738,19 @@ LANGUAGE sql STABLE AS $$
 $$;
 COMMENT ON FUNCTION places_with_regions() IS 'Every place that holds automatic experience_regions rows or may need some (ADR-0197): what refresh_place_regions(NULL) and the catalogue check place-regions-out-of-step go over.';
 
--- The places a change of `places` reaches: themselves and the wholes they
--- are direct parts of, whose rows their points give (place_shown_points);
--- NULL names every place. What a refresh rewrites, and what its keys are
--- taken for.
+-- The places a change of `places` reaches: themselves and every whole above
+-- them, at any depth (place_ancestors), whose rows their points give
+-- (place_shown_points: a whole shows its leaves', ADR-0211); NULL names every
+-- place. What a refresh rewrites, and what its keys are taken for: the keys
+-- refresh_whole_leaves() takes for the same change.
 CREATE OR REPLACE FUNCTION place_regions_reach(places INTEGER[]) RETURNS INTEGER[]
 LANGUAGE sql STABLE AS $$
   SELECT CASE WHEN places IS NULL THEN places_with_regions() ELSE ARRAY(
     SELECT p FROM unnest(places) AS p WHERE p IS NOT NULL
     UNION
-    SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = ANY(places)) END
+    SELECT place_ancestors(places)) END
 $$;
-COMMENT ON FUNCTION place_regions_reach(INTEGER[]) IS 'These places and the wholes they are direct parts of; NULL names every place (ADR-0197): what refresh_place_regions() rewrites and lock_place_regions() locks.';
+COMMENT ON FUNCTION place_regions_reach(INTEGER[]) IS 'These places and every whole above them; NULL names every place (ADR-0197, ADR-0211): what refresh_place_regions() rewrites and lock_place_regions() locks.';
 
 -- Locks, for the transaction, the places a refresh of `places` would
 -- rewrite, before anything is computed or written for them: one key per
@@ -5743,8 +5790,8 @@ END;
 $$;
 COMMENT ON FUNCTION lock_place_regions(INTEGER[]) IS 'Locks for the transaction, in key order, the places a refresh of these would rewrite (ADR-0197), and returns them: what refresh_place_regions() takes before computing, and what a writer of a place''s experience_regions row takes before writing it.';
 
--- Rewrites the automatic rows of the places `places` and of the wholes they
--- are direct parts of, as place_regions_expected() makes them, in one
+-- Rewrites the automatic rows of the places `places` and of every whole
+-- above them, as place_regions_expected() makes them, in one
 -- world view or in all; NULL names every place. Writes only what differs, so a
 -- second call writes nothing, and never touches a curator's manual row.
 -- Returns how many rows it wrote or removed.
@@ -5788,7 +5835,7 @@ BEGIN
   RETURN written;
 END;
 $$;
-COMMENT ON FUNCTION refresh_place_regions(INTEGER[], INTEGER) IS 'Rewrites the automatic experience_regions rows of these places and of the places they are parts of, as place_regions_expected() makes them (ADR-0197); NULL names every place. Called by placement and by the triggers that follow a point''s state and a part relation.';
+COMMENT ON FUNCTION refresh_place_regions(INTEGER[], INTEGER) IS 'Rewrites the automatic experience_regions rows of these places and of every whole above them, as place_regions_expected() makes them (ADR-0197, ADR-0211); NULL names every place. Called by placement and by the triggers that follow a point''s state and a part relation.';
 
 -- Whether an outline is the place's own: it holds the place's point or lies
 -- within a kilometre of it. One farther away is another object of the same
@@ -6046,46 +6093,8 @@ CREATE TRIGGER trg_whole_identifiers_part_delete
 -- =============================================================================
 -- A whole's leaves (ADR-0206)
 -- =============================================================================
--- whole_leaves holds, for every whole, the places at the bottom of its parts:
--- the Struve Geodetic Arc's 34 stations, Fujisan's 25 places with the 8
--- Oshino Hakkai ponds among them where Oshino Hakkai is a whole of its own.
--- A leaf is a place, not a point, so a part holding two points counts once,
--- and a whole's own points are not leaves. offered says whether a reader is
--- shown a point of the leaf. What a whole's "k of N" counts (#2121).
---
--- It is derived, and written by refresh_whole_leaves() alone, from the
--- triggers that follow a part relation and a point's state, under the same
--- region keys refresh_place_regions() takes: the two refreshes read the same
--- inputs and neither calls the other.
-CREATE TABLE IF NOT EXISTS whole_leaves (
-    whole_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    leaf_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    offered BOOLEAN NOT NULL,
-    PRIMARY KEY (whole_id, leaf_id),
-    CHECK (whole_id <> leaf_id)
-);
-CREATE INDEX IF NOT EXISTS idx_whole_leaves_leaf ON whole_leaves(leaf_id);
-CREATE INDEX IF NOT EXISTS idx_whole_leaves_offered ON whole_leaves(whole_id) WHERE offered;
-COMMENT ON TABLE whole_leaves IS 'The leaves of every whole (ADR-0206): the places reached down experience_parts, at any depth, that have no parts of their own, once per whole, each with whether a reader is shown one of its points (offered). Written by refresh_whole_leaves() alone, from the triggers that follow a part relation and a point''s state; what a whole''s k of N counts.';
-
--- The wholes above the places `places`, at any depth: the wholes they are
--- parts of, the wholes those are parts of, and so on. A part relation is
--- derived from records with no loop guard of their own (parts_follow_records),
--- so the walk carries its path and never steps onto a place already on it,
--- and stops eight levels up; a curator's word refuses a chain deeper than
--- four (partRecordController.ts, MOST_LEVELS).
-CREATE OR REPLACE FUNCTION place_ancestors(places INTEGER[]) RETURNS SETOF INTEGER
-LANGUAGE sql STABLE AS $$
-  WITH RECURSIVE up (place_id, path) AS (
-    SELECT prt.whole_id, ARRAY[prt.part_id, prt.whole_id]
-      FROM experience_parts prt WHERE prt.part_id = ANY(places)
-    UNION ALL
-    SELECT prt.whole_id, up.path || prt.whole_id
-      FROM up JOIN experience_parts prt ON prt.part_id = up.place_id
-     WHERE NOT prt.whole_id = ANY(up.path) AND cardinality(up.path) <= 8)
-  SELECT DISTINCT up.place_id FROM up
-$$;
-COMMENT ON FUNCTION place_ancestors(INTEGER[]) IS 'The wholes above these places at any depth, the places themselves left out (ADR-0206): cycle-safe, eight levels at most. What refresh_whole_leaves() locks and rewrites above a change.';
+-- The table and the walk up (place_ancestors) are declared beside
+-- experience_parts, since the region refresh reads both.
 
 -- The rows the wholes `wholes` are expected to hold in whole_leaves; NULL
 -- names every whole. The walk down is the walk up's mirror, with the same

@@ -29,6 +29,9 @@ const migration = collapse(
 const leavesMigration = collapse(
   readFileSync(repoFile('db', 'migrations', '247-a-whole-knows-its-leaves.sql'), 'utf8'),
 );
+const nestedMigration = collapse(
+  readFileSync(repoFile('db', 'migrations', '249-a-nested-whole-is-shown-by-its-leaves.sql'), 'utf8'),
+);
 const geometryMigration = collapse(readFileSync(
   repoFile('db', 'migrations', '243-a-place-is-placed-by-its-outline-and-its-nearest-region.sql'), 'utf8',
 ));
@@ -54,12 +57,15 @@ describe('the points that place a place', () => {
     expect(body).toContain(collapse(publishedContentSql('el')));
   });
 
-  it('are a place\'s own and its direct parts\', the two arms every reader of its points reads', () => {
-    // A region must never list a place whose points no reader read shows.
+  it('are a place\'s own and its leaves\', the two arms every reader of its points reads (ADR-0211)', () => {
+    // A region must never list a place whose points no reader read shows, and
+    // a nested whole is shown by the leaves its count counts, not its direct parts.
     expect(body).not.toContain('RECURSIVE');
-    expect(body).toContain('SELECT prt.whole_id, prt.part_id FROM experience_parts prt WHERE prt.whole_id = ANY(places)');
+    expect(body).not.toContain('experience_parts');
+    expect(body).toContain('SELECT wl.whole_id, wl.leaf_id FROM whole_leaves wl WHERE wl.whole_id = ANY(places)');
     expect(PLACE_POINT_ARMS).toHaveLength(2);
-    expect(PLACE_POINT_ARMS[1].from).toMatch(/experience_parts prt\s+JOIN experience_locations el ON el\.experience_id = prt\.part_id/);
+    expect(PLACE_POINT_ARMS[1].from).toMatch(/whole_leaves wl\s+JOIN experience_locations el ON el\.experience_id = wl\.leaf_id/);
+    expect(PLACE_POINT_ARMS[1].placeId).toBe('wl.whole_id');
   });
 });
 
@@ -95,10 +101,12 @@ describe('the geometry that places a place (ADR-0207)', () => {
 describe('the refresh', () => {
   const body = functionBody(schema, 'refresh_place_regions');
 
-  it('walks up to the wholes the places are direct parts of, as far as it walks down', () => {
+  it('walks up to every whole above the places, as far as a whole\'s leaves reach down (ADR-0211)', () => {
+    // A pond's point rewrites the mountain two levels up, under the keys the
+    // leaf refresh took for the same change.
     const reach = functionBody(schema, 'place_regions_reach');
-    expect(reach).not.toContain('RECURSIVE');
-    expect(reach).toContain('SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = ANY(places)');
+    expect(reach).toContain('UNION SELECT place_ancestors(places)) END');
+    expect(functionBody(schema, 'refresh_whole_leaves')).toContain('UNION SELECT place_ancestors(places)');
   });
 
   it('never writes over a curator\'s manual row', () => {
@@ -153,9 +161,12 @@ describe('the triggers that call it', () => {
 
 describe('the migration', () => {
   it('declares what the schema declares, each function as the latest migration that declares it', () => {
-    for (const name of ['place_shown_points', 'place_regions_reach', 'lock_place_regions', 'refresh_place_regions',
-      'place_regions_follow_points', 'place_regions_follow_parts']) {
+    for (const name of ['lock_place_regions', 'refresh_place_regions', 'place_regions_follow_points',
+      'place_regions_follow_parts']) {
       expect(functionBody(migration, name)).toBe(functionBody(schema, name));
+    }
+    for (const name of ['place_shown_points', 'place_regions_reach']) {
+      expect(functionBody(nestedMigration, name)).toBe(functionBody(schema, name));
     }
     for (const name of ['place_regions_expected', 'places_with_regions', 'outline_reaches_place',
       'place_shape_regions_expected', 'refresh_place_shape_regions']) {
@@ -170,6 +181,16 @@ describe('the migration', () => {
     expect(backfill).toBeGreaterThan(0);
     const before = migration.slice(0, backfill);
     expect(before.lastIndexOf('COMMIT;')).toBeGreaterThan(before.indexOf('ALTER TABLE experience_regions'));
+    expect(before.lastIndexOf('BEGIN;')).toBeGreaterThan(before.lastIndexOf('COMMIT;'));
+  });
+
+  it('places every whole by its leaves once the functions reading them have committed (ADR-0211)', () => {
+    const refresh = nestedMigration.indexOf(
+      'SELECT refresh_place_regions(ARRAY(SELECT whole_id FROM experience_parts UNION SELECT whole_id FROM whole_leaves))',
+    );
+    expect(refresh).toBeGreaterThan(0);
+    const before = nestedMigration.slice(0, refresh);
+    expect(before.lastIndexOf('COMMIT;')).toBeGreaterThan(before.indexOf('CREATE OR REPLACE FUNCTION place_regions_reach'));
     expect(before.lastIndexOf('BEGIN;')).toBeGreaterThan(before.lastIndexOf('COMMIT;'));
   });
 
