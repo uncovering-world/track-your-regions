@@ -215,7 +215,7 @@ and accepted by it.
 | [0194](0194-the-openstreetmap-layer-keeps-whole-the-lines-of-the-streets-squares-and-streets-reads.md) | The OpenStreetMap layer keeps whole the lines of the streets Squares & streets reads | Accepted — decision 1 narrowed by [0192](0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md) | 2026-11-10 |
 | [0195](0195-every-copy-built-from-a-dump-updates-itself-and-no-swap-lands-under-a-run.md) | Every copy built from a dump updates itself, and no swap lands under a run | Accepted | 2026-11-10 |
 | [0196](0196-a-dry-run-of-the-place-pass-reads-the-shared-steps-kept-on-the-same-inputs.md) | A dry run of the place pass reads the shared steps kept on the same inputs | Accepted | 2026-11-11 |
-| [0197](0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md) | A place's regions are one row per region, written by one function from the points it shows | Accepted | 2026-11-11 |
+| [0197](0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md) | A place's regions are one row per region, written by one function from the points it shows | Accepted — decisions 2 and 3 narrowed by [0207](0207-a-places-regions-come-from-its-own-geometry-and-a-point-no-region-holds-takes-its-nearest.md) | 2026-11-11 |
 | [0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md) | Every source's record of a place is one row, in a kind or in a whole | Accepted — decision 3 narrowed by [0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md); decision 6 answered by [0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md) | 2026-11-12 |
 | [0199](0199-a-visit-is-one-row-on-the-place-ticked-and-a-whole-is-read-through-its-parts.md) | A visit is one row on the place ticked, and a whole is read through its parts | Accepted | 2026-11-12 |
 | [0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md) | Every line of the World Heritage list is a record, and holds its point's item | Accepted | 2026-11-12 |
@@ -225,6 +225,7 @@ and accepted by it.
 | [0204](0204-a-run-chooses-among-its-items-coordinates-by-the-places-outline-and-other-views.md) | A run chooses among its item's coordinates by the place's outline and other views | Accepted | 2026-11-13 |
 | [0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md) | A whole has no coordinate in a reader's answer, and is framed by its places | Accepted | 2026-11-15 |
 | [0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md) | One visited place visits the whole, which reads "k of N" over its offered leaves | Draft | 2026-11-15 |
+| [0207](0207-a-places-regions-come-from-its-own-geometry-and-a-point-no-region-holds-takes-its-nearest.md) | A place's regions come from its own geometry, and a point no region holds takes its nearest | Accepted | 2026-11-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
