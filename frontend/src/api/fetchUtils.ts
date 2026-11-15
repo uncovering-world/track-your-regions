@@ -13,7 +13,7 @@ let accessToken: string | null = null;
 
 // Deduplicates concurrent refresh calls — only one refresh request at a time.
 // Shared across apiFetch and useAuth to prevent token rotation race conditions.
-let pendingRefresh: Promise<SessionStarted | null> | null = null;
+let pendingRefresh: Promise<SessionStarted | RefreshFailed> | null = null;
 
 // Listener notified after every successful refresh — useAuth registers here
 // so its local tokenExpiresAt + user state stays in sync when refreshSession
@@ -36,14 +36,28 @@ export function getAccessToken(): string | null {
 }
 
 /**
+ * Why a refresh renewed nothing: `refused`, the server answered that the
+ * refresh cookie holds no session (401: none, revoked or expired), so the
+ * session is over; `unreachable`, no answer about the session came back (the
+ * network, the server failing, `refreshLimiter`'s 429), so nothing is known
+ * about it and the tab keeps what it holds (#2506).
+ */
+export interface RefreshFailed { failed: 'refused' | 'unreachable' }
+
+/** Whether a refresh renewed the session. */
+export function renewed(result: SessionStarted | RefreshFailed): result is SessionStarted {
+  return !('failed' in result);
+}
+
+/**
  * Centralized token refresh — deduplicates concurrent calls across the entire app.
  * Both apiFetch and useAuth must use this to prevent token rotation race conditions
  * (concurrent refreshes trigger reuse detection which revokes the entire token family).
  */
-export async function refreshSession(): Promise<SessionStarted | null> {
+export async function refreshSession(): Promise<SessionStarted | RefreshFailed> {
   if (pendingRefresh) return pendingRefresh;
 
-  pendingRefresh = (async () => {
+  pendingRefresh = (async (): Promise<SessionStarted | RefreshFailed> => {
     try {
       const response = await fetch(`${API_URL}/api/auth/refresh`, {
         method: 'POST',
@@ -58,9 +72,9 @@ export async function refreshSession(): Promise<SessionStarted | null> {
         onRefreshSuccess?.(data);
         return data;
       }
-      return null;
+      return { failed: response.status === 401 ? 'refused' : 'unreachable' };
     } catch {
-      return null;
+      return { failed: 'unreachable' };
     } finally {
       pendingRefresh = null;
     }
@@ -123,7 +137,7 @@ const ACCOUNT_CHANGED = 'Nothing was sent. Another tab signed in to a different 
 
 // The account the tab holds: the signed-in traveller `useAuth` last committed,
 // or the one a refresh has just returned, and null for none. A call made with
-// no token in hand, as after a failed refresh, is made as this account.
+// no token in hand is made as this account.
 let heldAccount: number | null = null;
 
 export function setHeldAccount(account: number | null): void {
@@ -183,7 +197,7 @@ export async function ensureFreshToken(): Promise<string | null> {
  * sentence about the request, and the two must not be confused.
  *
  * Strict about what is *spent*, not about what is merely *expiring*. A failed
- * refresh is not proof of anything — `refreshSession()` answers `null` for a
+ * refresh is not proof of anything — `refreshSession()` answers a failure for a
  * rejected refresh, for `refreshLimiter`'s 429 and for a network blip alike —
  * so a token with seconds left is still handed over: it reaches the endpoint and
  * gets the real answer. Refusing it would sign someone out of a live session
@@ -195,8 +209,7 @@ export async function requireFreshToken(): Promise<string | null> {
   if (!accessToken) return null;
   if (tokenIsFresh(accessToken)) return accessToken;
 
-  const refreshed = await refreshSession();
-  if (refreshed) return accessToken;
+  if (renewed(await refreshSession())) return accessToken;
 
   return tokenNotExpired(accessToken) ? accessToken : null;
 }
@@ -287,6 +300,9 @@ async function parseJsonResponse<T>(response: Response, noContent: () => T): Pro
   return response.json();
 }
 
+/** What a call says when its session could not be renewed for want of an answer, and nothing was sent again (#2506). */
+const SESSION_UNREACHABLE = 'Your session could not be renewed just now, so nothing was done. Try again in a moment.';
+
 async function authFetchParsed<T>(url: string, options: RequestInit | undefined, noContent: () => T): Promise<T> {
   const madeAs = accountMadeAs();
   // Proactively refresh token before it expires (prevents 401 round-trip)
@@ -299,8 +315,11 @@ async function authFetchParsed<T>(url: string, options: RequestInit | undefined,
   // Token may have expired, try centralized refresh. Uses shared
   // refreshSession() to prevent token rotation race conditions.
   const result = await refreshSession();
-  if (!result) {
-    // Session is completely dead — notify the app so useAuth can clear state.
+  if (!renewed(result)) {
+    // A refused refresh ends the session: the app leaves the signed-in state.
+    // An unreachable one says nothing of it, so the traveller stays signed in
+    // and the call says why nothing was done (#2506).
+    if (result.failed === 'unreachable') throw new ApiError(SESSION_UNREACHABLE, 503, undefined, 'SESSION_UNREACHABLE');
     window.dispatchEvent(new CustomEvent('auth:session-expired'));
     return parseJsonResponse<T>(response, noContent);
   }

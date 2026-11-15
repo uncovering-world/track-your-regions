@@ -22,7 +22,7 @@ import {
   type ChangePasswordInput,
 } from '../api/auth';
 import {
-  getAccessToken as getGlobalAccessToken, getHeldAccount, setAccessToken as setGlobalAccessToken, refreshSession,
+  getAccessToken as getGlobalAccessToken, getHeldAccount, setAccessToken as setGlobalAccessToken, refreshSession, renewed,
   setHeldAccount, setRefreshSuccessListener,
 } from '../api/fetchUtils';
 import { queryKeys } from '../api/queryKeys';
@@ -111,10 +111,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Uses centralized refreshSession() to share deduplication with apiFetch,
     // preventing token rotation race conditions that would revoke the entire family.
     const result = await refreshSession();
-    if (!result) {
-      accessToken = null;
-      setGlobalAccessToken(null);
-      tokenExpiresAt = null;
+    if (!renewed(result)) {
+      // Refused, the session is over: the tab is signed out the way an expired
+      // session is, so no control is offered that would write with nothing.
+      // Unreachable, nothing is known: the tab keeps its traveller and its
+      // token, and a call that cannot renew says so (#2506).
+      if (result.failed === 'refused') {
+        accessToken = null;
+        setGlobalAccessToken(null);
+        tokenExpiresAt = null;
+        if (getHeldAccount() !== null) window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      }
       return false;
     }
 

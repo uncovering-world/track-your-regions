@@ -157,6 +157,63 @@ describe('apiFetch token policies', () => {
   });
 });
 
+describe('a session call answered 401, by what the refresh says (#2506)', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  let expired: ReturnType<typeof vi.fn<() => void>>;
+  const tick = () => apiFetch('/api/experiences/visits', { method: 'POST' });
+  /** The tick answers 401 with the token held, the refresh as given, and the tick again 200. */
+  const answers = (refresh: () => unknown) => fetchSpy.mockImplementation(async (url: string, init: RequestInit) => {
+    if (url.endsWith('/api/auth/refresh')) return refresh();
+    const sentWith = new Headers(init.headers).get('Authorization');
+    return sentWith === 'Bearer renewed'
+      ? { ok: true, status: 200, json: async () => ({ ticked: true }) }
+      : { ok: false, status: 401, json: async () => ({ error: 'Invalid or expired token' }) };
+  });
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    expired = vi.fn<() => void>();
+    window.addEventListener('auth:session-expired', expired);
+    setAccessToken(freshToken());
+  });
+
+  afterEach(() => {
+    window.removeEventListener('auth:session-expired', expired);
+    setAccessToken(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('refused: the session is over, the app is told, and the 401 is the answer', async () => {
+    answers(() => ({ ok: false, status: 401, json: async () => ({ error: 'Invalid or expired refresh token' }) }));
+    await expect(tick()).rejects.toMatchObject({ status: 401 });
+    expect(expired).toHaveBeenCalledTimes(1);
+  });
+
+  it('unreachable: the traveller stays signed in, nothing is sent again, and the call says why nothing was done', async () => {
+    for (const refresh of [
+      () => { throw new TypeError('Failed to fetch'); },
+      () => ({ ok: false, status: 503, json: async () => ({}) }),
+      () => ({ ok: false, status: 429, json: async () => ({}) }),
+    ]) {
+      fetchSpy.mockReset();
+      answers(refresh);
+      await expect(tick()).rejects.toMatchObject({
+        status: 503, code: 'SESSION_UNREACHABLE',
+        message: 'Your session could not be renewed just now, so nothing was done. Try again in a moment.',
+      });
+      expect(fetchSpy.mock.calls.filter(([url]) => !String(url).endsWith('/api/auth/refresh'))).toHaveLength(1);
+    }
+    expect(expired).not.toHaveBeenCalled();
+  });
+
+  it('renewed: the call goes out again with the new token', async () => {
+    answers(() => ({ ok: true, status: 200, json: async () => ({ accessToken: 'renewed', user: { id: 7 } }) }));
+    await expect(tick()).resolves.toEqual({ ticked: true });
+    expect(expired).not.toHaveBeenCalled();
+  });
+});
+
 /**
  * An image route answers a picture, not JSON. The editor's canvas reads its
  * pixels through the proxy, so `apiFetch` hands the Blob back as it came.

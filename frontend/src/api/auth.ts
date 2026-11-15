@@ -133,12 +133,11 @@ export async function fetchMyAccount(): Promise<MyAccount> {
  * the one endpoint where that matters: a wrong *current password* answers 401,
  * the same status an expired access token gets, so the default policy would
  * read it as a dead token and try to refresh. Every wrong attempt would then rotate the
- * refresh family for nothing, and once those refreshes hit `refreshLimiter`
- * (30/min) or a flaky network, the null result makes it dispatch
- * `auth:session-expired` — signing the user out while the form says "Current
- * password is incorrect", which is precisely the message that means the session
- * is fine. Freshening the token first and reading 401 as the endpoint means it
- * keeps the two apart.
+ * refresh family for nothing and be sent again, and once those refreshes hit
+ * `refreshLimiter` (30/min) the form would say the session could not be renewed
+ * instead of "Current password is incorrect", which is precisely the message
+ * that means the session is fine. Freshening the token first and reading 401 as
+ * the endpoint means it keeps the two apart.
  *
  * The session can still be genuinely over, and this feature is what makes that
  * reachable: change the password on one device and every other device's refresh
