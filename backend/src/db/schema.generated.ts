@@ -885,6 +885,23 @@ export interface OsmObjectsRow {
   street_item: string | null;
 }
 
+/** The table `place_dates`. */
+export interface PlaceDatesRow {
+  experience_id: number;
+  slot: string;
+  year: number | null;
+  month: number | null;
+  day: number | null;
+  span: string | null;
+  circa: boolean;
+  ending: string | null;
+  source_id: number;
+  property: string | null;
+  statement: string | null;
+  decided_by: number | null;
+  updated_at: Date;
+}
+
 /** The table `place_identifier_verdicts`. */
 export interface PlaceIdentifierVerdictsRow {
   experience_id: number;
@@ -949,6 +966,20 @@ export interface ReadershipStagingRow {
   views: number;
   mobile: number;
   daily: number[] | null;
+}
+
+/** The table `record_dates`. */
+export interface RecordDatesRow {
+  record_id: number;
+  slot: string;
+  year: number | null;
+  month: number | null;
+  day: number | null;
+  span: string | null;
+  circa: boolean;
+  ending: string | null;
+  property: string | null;
+  statement: string | null;
 }
 
 /** The table `refresh_tokens`. */
@@ -1516,12 +1547,14 @@ export const RELATION_SCHEMAS = {
   membership_fame: "public",
   osm_layer_builds: "workbench",
   osm_objects: "workbench",
+  place_dates: "public",
   place_identifier_verdicts: "public",
   place_identifiers: "public",
   place_venues: "public",
   readership_month_files: "workbench",
   readership_months: "workbench",
   readership_staging: "workbench",
+  record_dates: "public",
   refresh_tokens: "public",
   region_geom_pieces: "public",
   region_image_overlays: "public",
@@ -1790,6 +1823,12 @@ export const COLUMN_WIDTHS = {
   osm_objects: {
     osm_type: 1,
   },
+  place_dates: {
+    slot: 10,
+    span: 10,
+    ending: 12,
+    property: 12,
+  },
   place_identifier_verdicts: {
     scheme: 12,
     value: 64,
@@ -1798,6 +1837,12 @@ export const COLUMN_WIDTHS = {
   place_identifiers: {
     scheme: 12,
     value: 64,
+  },
+  record_dates: {
+    slot: 10,
+    span: 10,
+    ending: 12,
+    property: 12,
   },
   refresh_tokens: {
     token_hash: 255,
@@ -1981,12 +2026,22 @@ export const CHECK_VALUES = {
   import_runs: {
     status: ["running", "matching", "reviewing", "failed"],
   },
+  place_dates: {
+    ending: ["destroyed", "demolished", "removed", "collapsed"],
+    slot: ["began", "rebuilt", "use_ended", "ended"],
+    span: ["decade", "century", "millennium"],
+  },
   place_identifier_verdicts: {
     scheme: ["wikidata", "whc", "osm"],
     verdict: ["identifies", "refers", "removed"],
   },
   place_identifiers: {
     scheme: ["wikidata", "whc", "osm"],
+  },
+  record_dates: {
+    ending: ["destroyed", "demolished", "removed", "collapsed"],
+    slot: ["began", "rebuilt", "use_ended", "ended"],
+    span: ["decade", "century", "millennium"],
   },
   region_image_overlays: {
     image_type: ["image/png", "image/jpeg", "image/webp"],
