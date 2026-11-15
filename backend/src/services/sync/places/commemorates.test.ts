@@ -53,6 +53,9 @@ const LINCOLN_MEMORIAL = 'Q213559';
 const LINCOLN = 'Q91';
 const STATUE_OF_UNITY = 'Q7604504';
 const PATEL = 'Q9455';
+// Karl Marx and Friedrich Engels, whom the Marx-Engels-Forum in Berlin (Q31752) is named after (#2456).
+const MARX = 'Q9061';
+const ENGELS = 'Q34787';
 const HERMANNSDENKMAL = 'Q664245';
 const ARMINIUS = 'Q68880';
 const ALEXANDER_COLUMN = 'Q907366';
@@ -125,6 +128,8 @@ const KINDS = new Map<string, SubjectKind>([
   [LINCOLN, person('Abraham Lincoln')],
   [GODIVA, person('Lady Godiva')],
   [PATEL, person('Sardar Vallabhbhai Patel')],
+  [MARX, person('Karl Marx')],
+  [ENGELS, person('Friedrich Engels')],
   [ARMINIUS, person('Arminius')],
   [ALEXANDER_I, person('Alexander I of Russia')],
   [NELSON, person('Horatio Nelson')],
@@ -173,6 +178,28 @@ describe('the steps of the reading', () => {
   it('takes a memorials category before the main subject, with no article where the item has none', () => {
     expect(subjectsOfPlace(claims({ mainSubjects: [PATEL], depicts: [PATEL] }), filedAs({ memorials: [PATEL] }), KINDS, ARTICLES))
       .toEqual({ via: 'memorials-category', subjects: [{ item: PATEL, label: 'Sardar Vallabhbhai Patel', articleUrl: null }] });
+  });
+
+  it('widens a memorials category to a later statement naming everyone it named and more (#2456)', () => {
+    // The Marx-Engels-Forum is filed under Monuments and memorials to Karl Marx alone; its P138 names both.
+    const forum = subjectsOfPlace(claims({ namedAfter: [MARX, ENGELS] }), filedAs({ memorials: [MARX] }), KINDS, ARTICLES);
+    expect([forum?.via, forum?.subjects.map((s) => s.label)]).toEqual(['named-after', ['Karl Marx', 'Friedrich Engels']]);
+    const bySubject = subjectsOfPlace(claims({ mainSubjects: [MARX, ENGELS] }), filedAs({ memorials: [MARX] }), KINDS, ARTICLES);
+    expect(bySubject?.via).toBe('main-subject');
+  });
+
+  it('keeps a memorials category where a later statement names fewer or other subjects (#2456)', () => {
+    // Named after someone else: the category is whom the place was raised for.
+    expect(subjectsOfPlace(claims({ namedAfter: [ALEXANDER_I] }), filedAs({ memorials: [PATEL] }), KINDS, ARTICLES)?.via).toBe('memorials-category');
+    // Fewer, or the same: nothing to widen.
+    expect(subjectsOfPlace(claims({ namedAfter: [MARX] }), filedAs({ memorials: [MARX, ENGELS] }), KINDS, ARTICLES)?.via).toBe('memorials-category');
+    expect(subjectsOfPlace(claims({ namedAfter: [MARX] }), filedAs({ memorials: [MARX] }), KINDS, ARTICLES)?.via).toBe('memorials-category');
+    // More than the line keeps, with the category's subject past the limit: widening would drop it.
+    const many = Array.from({ length: MAX_COMMEMORATED_SUBJECTS }, (_, i) => `Q${910000001 + i}`);
+    const kinds = new Map([...KINDS, ...many.map((item, i) => [item, person(`Signatory ${i + 1}`)] as const)]);
+    expect(subjectsOfPlace(claims({ namedAfter: [...many, MARX] }), filedAs({ memorials: [MARX] }), kinds, ARTICLES)?.via).toBe('memorials-category');
+    // One more, but not everyone the category named.
+    expect(subjectsOfPlace(claims({ namedAfter: [ENGELS, ALEXANDER_I] }), filedAs({ memorials: [MARX] }), KINDS, ARTICLES)?.via).toBe('memorials-category');
   });
 
   it('keeps at most as many subjects as a curator may save back', () => {

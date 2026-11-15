@@ -2,7 +2,8 @@
  * Whom or what a place commemorates (#2144): the subjects the card of a place
  * Public art or Monuments & memorials offers names on its "Commemorates" line,
  * read in seven steps, the first that names anyone answering. A later step is
- * not read for a place an earlier one answered. Towers, Bridges & engineering
+ * not read for a place an earlier one answered, except that steps 3 and 4 may
+ * widen what step 2 read (below). Towers, Bridges & engineering
  * marvels and Squares & streets read none of it (`WRITTEN_BY_SOURCES`): their
  * namesake is the engineer or the patron, and the Eiffel Tower does not
  * commemorate Gustave Eiffel.
@@ -36,6 +37,10 @@
  * monuments and memorials*): the National Monument of Scotland → the
  * Napoleonic Wars, Mamayev Kurgan (*World War II memorials in Russia*) →
  * World War II, which its lead then narrows to the Battle of Stalingrad.
+ * A category names only the people English Wikipedia has one for, so where
+ * step 3 or 4 names everyone step 2 named and more, that statement answers
+ * instead (`widenedCategory`, #2456): the Marx-Engels-Forum is filed under
+ * Karl Marx alone and named after Marx and Engels.
  *
  * What a work shows is not always whom it was raised for (#2404). A holy
  * figure — a deity in Wikidata's class tree, Jesus Christ among them, or a
@@ -315,6 +320,30 @@ function subjectsOfStep(
   return { dedicated, holy };
 }
 
+/** The statement steps that may widen a category's reading (#2456). */
+const WIDENING_STEPS: ReadonlySet<CommemorationStep> = new Set<CommemorationStep>(['main-subject', 'named-after']);
+
+/**
+ * A category's reading, or a later statement's that names everyone it named
+ * and more (#2456): English Wikipedia files a place only under the people it
+ * has a *Monuments and memorials to* category for, so the Marx-Engels-Forum is
+ * filed under Karl Marx alone while its `P138` names Marx and Engels. A
+ * statement that names fewer, or others, leaves the category's reading.
+ */
+function widenedCategory(
+  category: Commemorates, steps: readonly Step[], kinds: ReadonlyMap<string, SubjectKind>, articles: ReadonlyMap<string, string>,
+): Commemorates {
+  const named = category.subjects.map((subject) => subject.item);
+  for (const [via, lists, ofGroup] of steps) {
+    if (!WIDENING_STEPS.has(via)) continue;
+    // Read within what the line keeps, so a subject the category named is never cut off by the limit.
+    const kept = ofGroup(subjectsOfStep(lists, SHOWS.has(via), kinds, articles)).dedicated.slice(0, MAX_COMMEMORATED_SUBJECTS);
+    const items = new Set(kept.map((subject) => subject.item));
+    if (items.size > named.length && named.every((item) => items.has(item))) return { via, subjects: kept };
+  }
+  return category;
+}
+
 /**
  * The two values of one place: the accepted values of the first step that
  * names a dedication, and what the work shows (the holy figures of the first
@@ -347,6 +376,7 @@ export function readingOfPlace(
     }
     if (!reading.depicts && holy.length) reading.depicts = { via: via as DepictionStep, subjects: holy };
   }
+  if (reading.commemorates?.via === 'memorials-category') reading.commemorates = widenedCategory(reading.commemorates, steps, kinds, articles);
   // Everyone `P180` names follows the holy figures, the people of a scene
   // among them (#2436): the Republic Monument shows its five founders, though
   // it commemorates none of them.
