@@ -159,8 +159,11 @@ interface DrawnPin {
 /**
  * Adds a pin, or folds it into the pin already drawn at its point. One point two
  * listed objects show — a part that is a place of its own kind too — is one pin
- * with both their kinds, and it opens the point's own place, the one not made
- * of parts (#2122).
+ * with both their kinds, and it opens the point's own place (#2122): the object
+ * the region's batch lists it under as its own point (`own_point`), not the
+ * one that lists it for a place below it (#2534). Whether either is made of
+ * parts does not tell them apart once a part is a whole itself. Where neither
+ * row says it is the owner, the pin opens the object drawn first.
  */
 function drawOnce(
   drawn: DrawnPin[], byPoint: Map<number, DrawnPin>, pin: Omit<MarkerData, 'kindColors'>, kinds: ShownKind[],
@@ -172,7 +175,7 @@ function drawOnce(
     if (pin.locationId !== null) byPoint.set(pin.locationId, entry);
     return;
   }
-  const ownFirst = earlier.pin.experience.has_parts && !pin.experience.has_parts;
+  const ownFirst = pin.location?.own_point === true && earlier.pin.location?.own_point !== true;
   earlier.pin = ownFirst
     ? { ...pin, experienceIds: [pin.experienceId, ...earlier.pin.experienceIds] }
     : { ...earlier.pin, experienceIds: [...earlier.pin.experienceIds, pin.experienceId] };
