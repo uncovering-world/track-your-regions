@@ -106,7 +106,8 @@ const READER_PREDICATE_RULES = [
  * (`src/services/sync/experienceUpsert.ts`), whose one statement writes the
  * place and its membership together; the fields of a serial site's part, its
  * name and coordinate among them (`src/db/partFieldsWriter.ts`, ADR-0156),
- * under the site's token; missing
+ * under the site's token; a place's line read from the OpenStreetMap layer
+ * (`src/db/pathWriter.ts`, ADR-0212); missing
  * detection's mark and the picture repair, each a single-purpose module of its
  * own; and the seed. Read in a
  * string's text or a template's literal parts, as the reader-predicate rule is.
@@ -659,6 +660,7 @@ export default [
   {
     files: [
       'src/db/experienceWriter.ts',
+      'src/db/pathWriter.ts',
       'src/services/sync/pictureRepair.ts',
     ],
     rules: {

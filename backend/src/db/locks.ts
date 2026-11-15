@@ -59,11 +59,13 @@
  *   when it began. Outside the order's statement, then, but not outside the
  *   token: `insertCuratedExperience` hands back the token for that row lock,
  *   and the point insert that follows spends it like every other point write.
- * - Missing detection's mark (`flagMissingExperiences`) and the picture repair
- *   (`writeFoundPicture`, `clearUnshowablePicture`) each write `experiences` in
- *   one statement on the pool, with no `BEGIN`. The statement's own row locks
- *   last only as long as it does, so it can wait for an object's lock and never
- *   be half of a cycle — which is why neither takes `lockExperience`'s token.
+ * - Missing detection's mark (`flagMissingExperiences`), the picture repair
+ *   (`writeFoundPicture`, `clearUnshowablePicture`) and the lines read from
+ *   the OpenStreetMap layer (`writeLines`, `pathWriter.ts`) each write
+ *   `experiences` in one statement on the pool, with no `BEGIN`. The
+ *   statement's own row locks last only as long as it does, so it can wait for
+ *   an object's lock and never be half of a cycle — which is why none takes
+ *   `lockExperience`'s token. The lines' statement locks its rows in id order.
  * - `assignExperienceToRegion` and the rejection writers touch
  *   `experience_regions` and `experience_rejections`. A refresh (below) may
  *   wait for one of those rows, and none of these waits for anything after
