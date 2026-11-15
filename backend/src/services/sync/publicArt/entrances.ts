@@ -1,7 +1,8 @@
 /**
  * How Public art's candidates enter the place gather beside its classes
- * (`PlaceKind.entrances`, `places/gather.ts`): the street-art places' entrance
- * (#2035).
+ * (`places/gather.ts`): its editions (`PlaceKind.editions`, #880), and its
+ * entrances (`PlaceKind.entrances`), the street-art places' (#2035) and the
+ * monuments categories' (#2171, `monumentCategories.ts`).
  *
  * The entrance names the places Public art's classes cannot: every article
  * filed directly under an English Wikipedia category of street art or
@@ -18,6 +19,10 @@ import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import { fetchItemsOfClasses, fetchItemsOfGenres } from './streetArtQueries.js';
+import { CAST_GROUP, fetchCastGroupPool, type EntityFacts, type PoolEntity } from './queries.js';
+import { attachCasts, fetchCastItems } from './castGroups.js';
+import { readGardenMakers } from './gardens.js';
+import { enterMonumentCategories, MONUMENTS_CATEGORY_ENTRANCE } from './monumentCategories.js';
 
 const LOG_PREFIX = '[Landmark Sync]';
 
@@ -75,3 +80,46 @@ export async function enterStreetArtPlaces(run: QueryRunner): Promise<string[]> 
     + `category, the rest by the genre, the class or held as street-art places (${held.size})`);
   return [...named];
 }
+
+/**
+ * What the rule reads of a candidate once the facts are in, beside its own
+ * statements: a group's casts, and who made a sculpture garden's works.
+ */
+async function readCastGroupsAndGardens(
+  run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>,
+): Promise<void> {
+  await readCastGroups(run, pool, facts);
+  await readGardenMakers(run, facts);
+}
+
+/**
+ * The casts of every group of casts among the candidates, written onto the
+ * group (#880, ADR-0145 decision 2b): the group carries the fame and enters the
+ * pool, its casts carry the points and the classes the rule reads.
+ */
+async function readCastGroups(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void> {
+  const groups = [...pool.keys()].filter(qid => facts.get(qid)?.classes.includes(CAST_GROUP));
+  if (!groups.length) return;
+  run.phase(`Reading the casts of ${groups.length} groups of casts...`);
+  for (const [group, casts] of await fetchCastItems(run, groups)) {
+    const entity = pool.get(group);
+    if (entity) attachCasts(entity, facts.get(group), casts);
+  }
+}
+
+/** Public art's editions: the groups of casts that enter the pool through their casts, and what the rule reads of them. */
+export const PUBLIC_ART_EDITIONS = {
+  enter: fetchCastGroupPool,
+  attach: readCastGroupsAndGardens,
+};
+
+/**
+ * The street-art places no class names (#2035), which Public art decides by
+ * their own rule, and the monuments English Wikipedia files that Wikidata
+ * types as something else (#2171), which Monuments & memorials decides by its
+ * frame. Each kind skips what only the other's entrance named.
+ */
+export const PUBLIC_ART_ENTRANCES = {
+  [STREET_ART_ENTRANCE]: enterStreetArtPlaces,
+  [MONUMENTS_CATEGORY_ENTRANCE]: enterMonumentCategories,
+};

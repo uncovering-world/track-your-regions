@@ -33,14 +33,12 @@ import {
 import { publicArtVerdict, type FiledAsMonument, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
 import { streetArtGuideOf, type StreetArtReading } from './streetArtPlaces.js';
-import { enterStreetArtPlaces, STREET_ART_ENTRANCE } from './entrances.js';
+import { PUBLIC_ART_EDITIONS, PUBLIC_ART_ENTRANCES, STREET_ART_ENTRANCE } from './entrances.js';
 import {
-  categoryNote, enterMonumentCategories, filedAsMonument, MONUMENTS_CATEGORY_ENTRANCE, type MonumentCategoryReading,
+  categoryNote, filedAsMonument, MONUMENTS_CATEGORY_ENTRANCE, type MonumentCategoryReading,
 } from './monumentCategories.js';
 import type { KindFacts, KindRule } from './kindRules.js';
-import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
-import { attachCasts, fetchCastItems } from './castGroups.js';
-import { readGardenMakers } from './gardens.js';
+import { CAST_GROUP, emptyFacts, type PoolEntity, type EntityFacts } from './queries.js';
 import type { PlaceKind } from '../places/gather.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
 import type { WorldCandidate } from '../places/worldBars.js';
@@ -145,53 +143,17 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   name: 'public art and monuments',
   trees: collectTrees,
   // A group of casts is asked for by its class too, so a group with a point of
-  // its own (the Burghers of Calais) is a candidate; its casts are read below.
+  // its own (the Burghers of Calais) is a candidate; its editions read its casts.
   poolClasses: (trees) => ({ broad: BROAD_ROOTS, narrow: [...trees.admitting, CAST_GROUP] }),
   readsContainers: true,
   readsSubjects: true,
-  editions: {
-    enter: fetchCastGroupPool,
-    attach: readCastGroupsAndGardens,
-  },
-  // The street-art places no class names (#2035), which Public art decides by
-  // their own rule, and the monuments English Wikipedia files that Wikidata
-  // types as something else (#2171), which Monuments & memorials decides by its
-  // frame. Each kind skips what only the other's entrance named.
-  entrances: {
-    [STREET_ART_ENTRANCE]: enterStreetArtPlaces,
-    [MONUMENTS_CATEGORY_ENTRANCE]: enterMonumentCategories,
-  },
+  editions: PUBLIC_ART_EDITIONS,
+  entrances: PUBLIC_ART_ENTRANCES,
   // Both kinds admit by the world bars over their own pools (ADR-0175): a
   // public clock with a show is read in few languages — the
   // Rathaus-Glockenspiel has 7 editions — and is a candidate whatever its count.
   admissionPool: true,
 };
-
-/**
- * What the rule reads of a candidate once the facts are in, beside its own
- * statements: a group's casts, and who made a sculpture garden's works.
- */
-async function readCastGroupsAndGardens(
-  run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>,
-): Promise<void> {
-  await readCastGroups(run, pool, facts);
-  await readGardenMakers(run, facts);
-}
-
-/**
- * The casts of every group of casts among the candidates, written onto the
- * group (#880, ADR-0145 decision 2b): the group carries the fame and enters the
- * pool, its casts carry the points and the classes the rule reads.
- */
-async function readCastGroups(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void> {
-  const groups = [...pool.keys()].filter(qid => facts.get(qid)?.classes.includes(CAST_GROUP));
-  if (!groups.length) return;
-  run.phase(`Reading the casts of ${groups.length} groups of casts...`);
-  for (const [group, casts] of await fetchCastItems(run, groups)) {
-    const entity = pool.get(group);
-    if (entity) attachCasts(entity, facts.get(group), casts);
-  }
-}
 
 /**
  * The row the run writes for an admitted entity: the pool's facts, the
