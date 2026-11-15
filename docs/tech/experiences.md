@@ -6916,7 +6916,7 @@ the whole: the City of Graz's point named for the whole site, beside its histori
 in its list of places, and that row is the whole's. The whole's own tick, "I was there, I don't remember which part", is a
 button on the card of a whole that shows no point of its own (`WholeVisitButton`, offered where
 `offersWholeTick` reads `has_own_point` false off the detail read, `showsOwnPointSql` in
-`db/visits.ts`): one visit on the whole, which `wholeTickedIds` in `GET /visited-experiences/ids`
+`db/visits.ts`, and, once a place of it is named, only while its own tick stands): one visit on the whole, which `wholeTickedIds` in `GET /visited-experiences/ids`
 names, and a whole showing a point of its own never is. `unmarkVisited` takes back the place's
 own row only, so taking that tick back leaves every part. Discover's panel's *Mark all* and
 *Unmark all* reach every place of the whole, on the whole's own card (`unmarkAllLocationsVisited`
