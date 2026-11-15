@@ -14056,6 +14056,56 @@
         }
       }
     },
+    "/api/experiences/review/queue/map/names": {
+      "get": {
+        "operationId": "getExperiencesReviewQueueMapNames",
+        "summary": "Name the places a short list on the review queue's map shows, within the caller's scope",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "type": "string",
+              "maxLength": 1100,
+              "pattern": "^[1-9]\\d{0,8}(?:,[1-9]\\d{0,8}){0,99}$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueMapNames"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/review/set-aside/{syncLogId}": {
       "put": {
         "operationId": "putExperiencesReviewSetAsideBySyncLogId",
@@ -35463,6 +35513,25 @@
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
+      "QueueMapName": {
+        "type": "object",
+        "properties": {
+          "placeId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "placeId",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "A place the map draws, by the name its card carries."
+      },
       "QueueMapPlace": {
         "type": "object",
         "properties": {
@@ -38848,6 +38917,23 @@
         ],
         "additionalProperties": false,
         "description": "The curator's open questions under the queue's filters, as points on a map (#2477)."
+      },
+      "ReviewQueueMapNames": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueueMapName"
+            },
+            "description": "The asked places this curator has an open question about under their scope, by id. A place outside it is left out, as one that does not exist is."
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "additionalProperties": false,
+        "description": "The names of the places a short list on the review queue's map shows (#2501)."
       },
       "ReviewRegionSearchResult": {
         "type": "object",

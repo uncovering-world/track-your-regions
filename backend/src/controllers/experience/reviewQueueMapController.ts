@@ -18,12 +18,21 @@
  * questions on about 15,300 places, read in 1.0 s. The point is the place's
  * `experiences.location`, which the schema requires, so `unplaced` counts a key
  * whose place row is gone by the time the statement reads it, and is 0 there.
+ *
+ * **No names** (#2501). A name on every place would roughly double what the map
+ * costs on the wire (measured on the development catalogue on 2026-11-15:
+ * 204,507 B gzip for 15,330 places, and about 200 kB more with names), for
+ * names a curator reads only when a short list opens. The short list asks for
+ * the names of the places it shows instead (`queryQueueMapNames`):
+ * GET /api/experiences/review/queue/map/names?ids=
  */
 
 import type { z } from 'zod/v4';
-import type { QueueMapPlace, ReviewQueueMap } from '../../api/responses/reviewQueue.js';
+import type {
+  QueueMapName, QueueMapPlace, ReviewQueueMap, ReviewQueueMapNames,
+} from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import type { reviewQueueMapQuerySchema } from '../../types/index.js';
+import type { reviewQueueMapNamesQuerySchema, reviewQueueMapQuerySchema } from '../../types/index.js';
 import { queueSelection } from './reviewQueueController.js';
 import { scopedQuestionsSql, selectedSql, type QueueSelection } from './reviewQueueKeys.js';
 
@@ -72,4 +81,44 @@ export async function getReviewQueueMap(
   { query, caller }: { query: z.output<typeof reviewQueueMapQuerySchema>; caller: Express.User },
 ): Promise<ReviewQueueMap> {
   return queryQueueMap({ userId: caller.id, isAdmin: caller.role === 'admin', selection: queueSelection(query) });
+}
+
+/**
+ * The names of the asked places this curator has an open question about, under
+ * their scope and nothing else (#2501).
+ *
+ * The map's own opening (`scopedQuestionsSql`), so every key carries the caller's
+ * scope, with no chip: a short list names what the map drew under whatever chips,
+ * and those draw a subset of the scope. The batches the caller set aside are in
+ * it, since the map draws them when asked to (`aside=show`). An id outside the
+ * scope, with no open question or naming no place is left out of the answer
+ * rather than refused, so the answer says nothing of a place this caller may not
+ * be asked about, not even that it exists.
+ *
+ * Every key's name is its place's `experiences.name`, the name its card carries.
+ */
+export async function queryQueueMapNames(
+  { userId, isAdmin, ids }: { userId: number; isAdmin: boolean; ids: number[] },
+): Promise<ReviewQueueMapNames> {
+  const params: unknown[] = [userId];
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const scoped = scopedQuestionsSql(isAdmin, { showAside: true }, bind);
+
+  const sql = `${scoped.sql}
+SELECT DISTINCT ON (k.id) k.id AS "placeId", k.name
+FROM scoped k
+WHERE k.id = ANY(${bind(ids)}::int[])
+ORDER BY k.id`;
+
+  const { rows } = await pool.query<QueueMapName>(sql, params);
+  return { names: rows };
+}
+
+export async function getReviewQueueMapNames(
+  { query, caller }: { query: z.output<typeof reviewQueueMapNamesQuerySchema>; caller: Express.User },
+): Promise<ReviewQueueMapNames> {
+  return queryQueueMapNames({ userId: caller.id, isAdmin: caller.role === 'admin', ids: query.ids });
 }

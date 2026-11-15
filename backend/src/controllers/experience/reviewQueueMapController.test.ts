@@ -26,9 +26,14 @@ import { errorHandler } from '../../middleware/errorHandler.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
 import { queryQueueKeys, type QueueSelection } from './reviewQueueKeys.js';
-import { queryQueueMap } from './reviewQueueMapController.js';
+import { queryQueueMap, queryQueueMapNames } from './reviewQueueMapController.js';
+import { QUEUE_MAP_NAMES_MAX } from '@tyr/shared/reviewQueue';
+import { readFileSync } from 'node:fs';
+import { repoFile } from '../../testSupport/repoFile.js';
+import { QUEUE_MAP_NAMES_PATTERN } from '../../types/reviewQueueMapNamesSchema.js';
 
 const getMap = routeAt(experienceCurationRoutes, '/review/queue/map', 'get');
+const getNames = routeAt(experienceCurationRoutes, '/review/queue/map/names', 'get');
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 
@@ -193,6 +198,101 @@ describe('the scope', () => {
   });
 });
 
+
+describe('the names of a short list (#2501)', () => {
+  /** The scope's join, which a curator's statement carries and an admin's does not. */
+  const SCOPE_JOIN = 'JOIN curator_scoped_regions s ON s.id = er.region_id';
+
+  it("reads the map's own union under the caller's scope, and names only the asked places in it", async () => {
+    mockedQuery.mockResolvedValue({ rows: [] });
+    await queryQueueMap({ userId: 7, isAdmin: false, selection: {} });
+    await queryQueueMapNames({ userId: 7, isAdmin: false, ids: [4120, 88213] });
+    const [map] = call(0);
+    const [names, params] = call(1);
+
+    // The opening is the map's, word for word up to the set-aside batches, which the names read keeps.
+    const opening = map.slice(0, map.indexOf('\n, searched AS ('));
+    expect(names.startsWith(opening)).toBe(true);
+    expect(names).toContain(SCOPE_JOIN);
+    expect(params[0]).toBe(7);
+    // The places it names are the scoped keys', and the asked ids narrow them, never widen them.
+    const tail = names.slice(names.lastIndexOf('\nSELECT '));
+    expect(tail).toMatch(/FROM scoped k\s+WHERE k\.id = ANY\(\$\d+::int\[\]\)/);
+    expect(tail).not.toMatch(/\bexperiences\b/);
+    expect(params.at(-1)).toEqual([4120, 88213]);
+  });
+
+  it('takes no chip, so a place the map drew under any chips or with its batch set aside is named', async () => {
+    mockedQuery.mockResolvedValue({ rows: [] });
+    await queryQueueMapNames({ userId: 7, isAdmin: false, ids: [4120] });
+    const [sql, params] = call(0);
+    expect(sql).not.toMatch(/NOT EXISTS \(\s*SELECT 1 FROM curator_queue_set_aside/);
+    expect(sql).not.toContain('region_subtree AS (');
+    expect(sql).not.toContain('ILIKE');
+    // Postgres refuses a statement sent a parameter no expression uses.
+    const referenced = new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+    expect([...referenced].sort((a, b) => a - b)).toEqual(params.map((_, n) => n + 1));
+  });
+
+  it("scopes a curator and not an admin, by the caller's own id and role", async () => {
+    mockedQuery.mockResolvedValue({ rows: [] });
+    await answerRoute(getNames, { user: { id: 31, role: 'curator' } as Express.User, query: { ids: '4120' } }, response());
+    await answerRoute(getNames, { user: { id: 32, role: 'admin' } as Express.User, query: { ids: '4120' } }, response());
+    expect(call(0)[0]).toContain(SCOPE_JOIN);
+    expect(call(0)[1][0]).toBe(31);
+    expect(call(1)[0]).not.toContain(SCOPE_JOIN);
+    expect(call(1)[1][0]).toBe(32);
+  });
+
+  it('answers the rows the statement found, and nothing for an id it did not', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ placeId: 4120, name: 'Pantheon' }] });
+    const res = response();
+    await answerRoute(getNames, { user: { id: 7, role: 'curator' } as Express.User, query: { ids: '4120,88213' } }, res);
+    expect(res.status).not.toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ names: [{ placeId: 4120, name: 'Pantheon' }] });
+  });
+
+  it('takes each id once, and as many as a short list asks for', async () => {
+    mockedQuery.mockResolvedValue({ rows: [] });
+    const many = Array.from({ length: QUEUE_MAP_NAMES_MAX }, (_, n) => n + 1);
+    await answerRoute(getNames, { user: { id: 7, role: 'curator' } as Express.User, query: { ids: '4120,88213,4120' } }, response());
+    await answerRoute(getNames, { user: { id: 7, role: 'curator' } as Express.User, query: { ids: many.join(',') } }, response());
+    expect(call(0)[1].at(-1)).toEqual([4120, 88213]);
+    expect(call(1)[1].at(-1)).toEqual(many);
+  });
+
+  it.each([
+    ['one id past the bound', Array.from({ length: QUEUE_MAP_NAMES_MAX + 1 }, (_, n) => n + 1).join(',')],
+    ['no id', ''],
+    ['an id of 0', '4120,0'],
+    ['an id past int4', '2147483648'],
+    ['a word', '4120,pantheon'],
+    ['a trailing comma', '4120,'],
+  ])('refuses %s before any statement', async (_case, ids) => {
+    await expect(answerRoute(getNames, { user: { id: 7, role: 'curator' } as Express.User, query: { ids } }, response()))
+      .rejects.toThrow();
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('documents only lists it answers, so a generated client never sends one it refuses', async () => {
+    mockedQuery.mockResolvedValue({ rows: [] });
+    const longest = Array.from({ length: QUEUE_MAP_NAMES_MAX }, (_, n) => 999_999_999 - n).join(',');
+    for (const ids of ['1', '4120,88213', longest]) {
+      expect(QUEUE_MAP_NAMES_PATTERN.test(ids)).toBe(true);
+      await answerRoute(getNames, { user: { id: 7, role: 'curator' } as Express.User, query: { ids } }, response());
+    }
+    // Outside the pattern: lists the route refuses (0, a run of zeros, past int4, over the cap).
+    for (const ids of ['0', '0000000000', '4120,0', '2147483648', `${longest},1`]) {
+      expect(QUEUE_MAP_NAMES_PATTERN.test(ids)).toBe(false);
+    }
+    const document = JSON.parse(readFileSync(repoFile('packages', 'shared', 'src', 'openapi.generated.json'), 'utf8')) as {
+      paths: Record<string, { get?: { parameters?: Array<{ name: string; schema: { pattern?: string } }> } }>;
+    };
+    const ids = document.paths['/api/experiences/review/queue/map/names']?.get?.parameters?.find(parameter => parameter.name === 'ids');
+    expect(ids?.schema.pattern).toBe(QUEUE_MAP_NAMES_PATTERN.source);
+  });
+});
+
 describe('who may read it', () => {
   let server: Server;
   let port: number;
@@ -200,7 +300,7 @@ describe('who may read it', () => {
   beforeAll(async () => {
     const app = express();
     app.disable('x-powered-by');
-    app.use(routerOf([getMap]));
+    app.use(routerOf([getMap, getNames]));
     app.use(errorHandler);
     server = app.listen(0);
     await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -211,9 +311,9 @@ describe('who may read it', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const get = (token?: string): Promise<number | undefined> => new Promise((resolve, reject) => {
+  const get = (token?: string, path = '/review/queue/map'): Promise<number | undefined> => new Promise((resolve, reject) => {
     const req = request({
-      port, path: '/review/queue/map', method: 'GET', headers: token ? { authorization: `Bearer ${token}` } : {},
+      port, path, method: 'GET', headers: token ? { authorization: `Bearer ${token}` } : {},
     }, (res) => {
       res.resume();
       res.on('end', () => resolve(res.statusCode));
@@ -228,6 +328,17 @@ describe('who may read it', () => {
     expect(await get('t')).toBe(403);
     expect(await get()).toBe(401);
     expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('refuses the names to the same readers, and answers a curator', async () => {
+    expect(getNames.access).toBe('curator');
+    mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'user' });
+    expect(await get('t', '/review/queue/map/names?ids=4120')).toBe(403);
+    expect(await get(undefined, '/review/queue/map/names?ids=4120')).toBe(401);
+    expect(mockedQuery).not.toHaveBeenCalled();
+    mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'curator' });
+    mockedQuery.mockResolvedValue({ rows: [] });
+    expect(await get('t', '/review/queue/map/names?ids=4120')).toBe(200);
   });
 
   it('answers a curator', async () => {

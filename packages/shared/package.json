@@ -25,6 +25,7 @@
     "./preferences": "./src/preferences.ts",
     "./placeFields": "./src/placeFields.ts",
     "./placeTypes": "./src/placeTypes.ts",
+    "./reviewQueue": "./src/reviewQueue.ts",
     "./runStatuses": "./src/runStatuses.ts",
     "./textCredits": "./src/textCredits.ts",
     "./visits": "./src/visits.ts"
