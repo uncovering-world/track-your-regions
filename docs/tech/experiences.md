@@ -5552,7 +5552,9 @@ be saved back with one name removed:
    redirect English Wikipedia's redirect table does not hold, so the copy finds no page for it.
 7. The lead of the place's English Wikipedia article, where two language models name the same
    linked article as the dedication and it is a person, an occurrence or a group (`via: 'lead'`,
-   below): the Shaheed Minar in Dhaka → the Bengali language movement.
+   below): the Shaheed Minar in Dhaka → the Bengali language movement. Where that names none or
+   there is none, the lead of the place's article in its country's language, read the same way:
+   the Democracy Monument → the Siamese revolution of 1932.
 
 **What a religious work shows is not whom it commemorates** (#2404). A holy figure — an
 instance of a class under *deity* (Q178885) at any rank but deprecated, as Jesus Christ is beside
@@ -5677,10 +5679,60 @@ waiting on a curator first, and it takes the run's path as every step's value do
 place visitors see is held wherever the source holds its changes, and the review card says the
 lead's two models read it (`COMMEMORATION_SOURCE` in `fieldMeaning.tsx`). A curator's claim on the
 line still wins. A work it names a dedication
-for is no religious statue. Measured on #2435's places on the English wikitext the step reads, the pair typed this way named
-14 right, one arguable and one wrong (ADR-0201 has both measurements). Each answer is kept per model with the revision of the lead it read
-(`workbench.lead_dedication_readings`, migration 240): a model is asked only where no answer of its
-own holds the lead's current revision, so a lead that did not change keeps its reading from one
+for is no religious statue.
+
+**The lead in the country's language** (`places/ownLanguage.ts`, #2491,
+[ADR-0208](../decisions/0208-a-monuments-dedication-is-also-read-from-its-lead-in-its-countrys-language.md)).
+After the English leads, every place still without a dedication — no English article, an English
+lead that links nothing, or one the two models did not agree on — has its article in its
+country's language read the same way. A place whose English lead a failed fetch or call, or a
+model's unreadable answer (a refusal, one cut at the limit, one outside the asked shape: `linkOf`'s
+`read`), left unread is not, on that pass, so its English lead is asked again first (`LeadsRead.failed` from
+`fetchLeads` names a fetch whose retries were spent; a host's refusal, robots or `ai-input=no`,
+counts as no English lead). The language is Wikidata's
+(`fetchOwnLanguageArticles`, from the local subset in `subset/ownLanguage.ts` where the run reads
+it, live otherwise): the place's standing countries (`P17` at its best rank, no end time), each
+country's official languages (`P37`, the same, leaving out one whose *applies to part* `P518` or
+*valid in place* `P3005` confines it to a part, `REGIONAL_QUALIFIERS`), each language's Wikimedia
+language code (`P424`) and the edition that code names (`wikiOfLanguage` in
+`services/wikipediaEditionNames.ts`). A language with no code of its own at its best rank takes
+its nearest ancestor's (`codesOfLanguages` in `places/languageCodes.ts`, the same walk live and in
+the subset): its *subclass of* chain (`P279`, best rank) is walked breadth-first, `MAX_HOPS` (3)
+steps at most, parents in statement order in the subset and item order live, and the first
+ancestor whose code names a Wikipedia edition answers — one some kept item has a sitelink on in
+the subset, one the query service knows as a Wikipedia live. Standard Chinese, official in China
+and Taiwan, reads Chinese's `zh`, and Moldovan Romanian's `ro`; a code naming no edition is passed
+over, and the ISO codes (`P218`, `P305`) are never read (Moldovan's `mo` names a closed edition,
+`cmn` none). An ancestor the subset does not keep ends that branch, and a language left with no
+code gives its country's places the English reading. The first of them, country by country and language by
+language, whose edition holds an article about the place is read (`ownArticleOf`); English is
+passed over, so a place in a country of English alone keeps its English reading, one in India is
+read in Hindi and one in Canada in French. The order is the statements' own in the subset, and
+item order live, which keeps none. One own-language lead is read per place.
+
+The country rule is **temporary**
+([ADR-0208](../decisions/0208-a-monuments-dedication-is-also-read-from-its-lead-in-its-countrys-language.md)):
+once regions store the languages spoken and read in them (#1905), the step reads the list of the
+region a place stands in, and `places/ownLanguage.ts`, `subset/ownLanguage.ts` and
+`places/languageCodes.ts` are deleted. Until then it reads two cases coarsely. A regional language
+its country does not hold officially is not read: a monument in Barcelona is read in Spanish, since
+Catalan is Catalonia's official language and not Spain's, and one in Kazan in Russian, not Tatar.
+A place whose `P17` names more than one country, as Crimea's name Ukraine and Russia, is read in
+the first country's language by statement order, which is an order and no judgement about the
+territory; #1905's regional lists, which are not keyed to a country, resolve it. The lead is fetched
+from that edition's API on the run's transport, User-Agent, pace and wait budget, flagged as a
+model's input (`leads` with a host, `leadOptions` in `commemorates.ts`), and marked as the English
+one is; a file link in the edition's own words (`Datei:`, `Файл:`) is dropped by its media
+extension as `File:` is (`fileLinkAt` in `warNarrowing.ts`). The instructions are the same English
+ones, and the question adds the lead's language, `Language of the lead: <<<Russian (ru)>>>`
+(`dedicationQuestion`, `languageName`); an English lead's question names none, as measured. The
+agreed title is resolved on its own edition by that edition's own lookup (`articleItems` with a
+host, `resolveWikipediaArticles` on `ru:Пётр I`, following a redirect), typed as an English one
+is, and the subject's article is the item's English article (`fetchEnglishArticles`), or none. Measured on #2435's places on the English wikitext the step reads, the pair typed this way named
+14 right, one arguable and one wrong (ADR-0201 has both measurements). Each answer is kept per model with the edition and the revision of the lead it read
+(`workbench.lead_dedication_readings`, migration 240, keyed by `wiki`, title and model: `enwiki`
+or the own-language edition, `ruwiki`): a model is asked only where no answer of its
+own holds the lead's current revision on that edition, so a lead that did not change keeps its reading from one
 pass to the next and costs nothing. A failed call keeps no answer, and the place is asked again on
 the next pass. Four places are asked at once. Each model's calls of a pass are logged once to the
 AI usage log under `lead_dedication`, Claude's priced at `CLAUDE_USD_PER_MILLION_TOKENS`. Without

@@ -1,7 +1,7 @@
 # ADR-0201: A dedication two language models read alike from a place's lead is written without a curator's yes
 
 **Date:** 2026-11-12
-**Status:** Accepted
+**Status:** Accepted — decisions 1 and 4 narrowed by [ADR-0208](0208-a-monuments-dedication-is-also-read-from-its-lead-in-its-countrys-language.md)
 **Issue:** [#2472](https://github.com/uncovering-world/track-your-regions/issues/2472), research [#2435](https://github.com/uncovering-world/track-your-regions/issues/2435)
 
 ---
