@@ -1487,7 +1487,7 @@ export interface TickedPlace {
      */
   experienceId: number;
   name: string;
-  /** Where the tick was: the point ticked, or the place's own point for a tick on the place. */
+  /** Where the tick was: the point ticked, or the place's own point for a tick on the place; for a serial site, which has none, the point its World Heritage record gives. */
   longitude: number;
   latitude: number;
 }
@@ -1514,7 +1514,7 @@ export interface ExperienceVisitMarked {
   /** @nullable */
   notes: string | null;
   rating: number | null;
-  /** The place, when the tick gave it a visit it did not have: none when it only renewed one. */
+  /** The place, when the tick gave it a visit it did not have: none when it only renewed one, or when the place stands nowhere yet (a serial site none of whose places is shown, ADR-0210). */
   ticked: TickedPlace[];
 }
 
@@ -5278,7 +5278,7 @@ export interface QueueMapPlace {
      * @maximum 9007199254740991
      */
   placeId: number;
-  /** The place's point, to five decimals (about a metre). */
+  /** The place's point, to five decimals (about a metre); for a serial site, which has none, the centre of the frame of its places. */
   lon: number;
   lat: number;
   /**

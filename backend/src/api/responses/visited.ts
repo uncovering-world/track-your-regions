@@ -57,7 +57,10 @@ export type VisitedExperienceIds = z.infer<typeof VisitedExperienceIds>;
 export const TickedPlace = z.strictObject({
   experienceId: z.number().int(),
   name: z.string(),
-  longitude: z.number().describe('Where the tick was: the point ticked, or the place\'s own point for a tick on the place.'),
+  longitude: z.number().describe(
+    'Where the tick was: the point ticked, or the place\'s own point for a tick on the place; for a serial site,'
+    + ' which has none, the point its World Heritage record gives.',
+  ),
   latitude: z.number(),
 }).describe('A place a tick gave a visit it did not have.');
 export type TickedPlace = z.infer<typeof TickedPlace>;
@@ -70,7 +73,7 @@ export const ExperienceVisitMarked = z.strictObject({
   marked_at: timestamp.describe('When the tick was made, not when the traveller was there: that is a trip\'s (#2120).'),
   notes: z.string().nullable(),
   rating: z.number().int().nullable(),
-  ticked: z.array(TickedPlace).describe('The place, when the tick gave it a visit it did not have: none when it only renewed one.'),
+  ticked: z.array(TickedPlace).describe('The place, when the tick gave it a visit it did not have: none when it only renewed one, or when the place stands nowhere yet (a serial site none of whose places is shown, ADR-0210).'),
 }).describe('An object marked visited, or its visit renewed.');
 export type ExperienceVisitMarked = z.infer<typeof ExperienceVisitMarked>;
 

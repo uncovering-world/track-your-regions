@@ -252,7 +252,8 @@ export function contestedViewFieldsSql(placeExpr: string): string {
  * row was deleted since (`ON DELETE SET NULL`: a part's World Heritage
  * components record goes with its last component relation). A kept value
  * that no source ever gave — a curator's own — is in no recorded view, so it
- * never reopens on this.
+ * never reopens on this. A dispersed whole's point is never asked: it holds
+ * none (ADR-0210), and its kinds' views of it only say where each places it.
  */
 export function openViewFieldsSql(placeExpr: string): string {
   const words = VIEW_FIELDS.map(field => "'" + field + "'").join(', ');
@@ -261,7 +262,9 @@ export function openViewFieldsSql(placeExpr: string): string {
   const shown = `(SELECT ${placeViewValueSql('f', 'shown_place')} FROM experiences shown_place WHERE shown_place.id = ${placeExpr})`;
   return `(SELECT COALESCE(array_agg(f ORDER BY array_position(${order}, f)), '{}'::text[])
              FROM unnest(${contestedViewFieldsSql(placeExpr)}) AS f
-            WHERE NOT EXISTS (
+            -- A dispersed whole holds no point to choose (ADR-0210).
+            WHERE (f <> 'location' OR ${shown} IS NOT NULL)
+              AND NOT EXISTS (
               SELECT 1 FROM experience_view_choices c
                WHERE c.experience_id = ${placeExpr} AND c.field = f
                  AND c.views @> ${viewsOfFieldSql(placeExpr, 'f')}

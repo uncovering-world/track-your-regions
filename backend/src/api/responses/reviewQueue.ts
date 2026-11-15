@@ -678,7 +678,10 @@ export type QueueMapQuestion = z.infer<typeof QueueMapQuestion>;
 
 export const QueueMapPlace = z.strictObject({
   placeId: z.number().int().describe('The place every question here is about: the id in each question\'s key.'),
-  lon: z.number().describe('The place\'s point, to five decimals (about a metre).'),
+  lon: z.number().describe(
+    'The place\'s point, to five decimals (about a metre); for a serial site, which has none, the centre of the'
+    + ' frame of its places.',
+  ),
   lat: z.number(),
   questions: z.array(QueueMapQuestion).min(1).describe('Its open questions, in the class order the list sorts by.'),
 }).describe('A place with open questions under the filters, drawn as one marker.');

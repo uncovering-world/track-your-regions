@@ -86,7 +86,7 @@ describe('the map reads the questions the list reads', () => {
     expect(listParams).toHaveLength(mapParams.length + 2);
 
     // The chips' predicate over the scoped keys is the list page's, word for word.
-    const where = map.slice(map.indexOf('FROM scoped k\n    WHERE ') + 'FROM scoped k\n    WHERE '.length, map.indexOf('\n  )\n, placed AS'));
+    const where = map.slice(map.indexOf('FROM scoped k\n    WHERE ') + 'FROM scoped k\n    WHERE '.length, map.indexOf('\n  )\n, grouped AS'));
     expect(where).toContain('k.source_ids && ');
     expect(where).toContain("k.kind = 'waiting' AND k.subs && ");
     expect(where).toContain('JOIN region_subtree rs');
@@ -151,9 +151,20 @@ describe('one entry per place', () => {
     await queryQueueMap({ userId: 7, isAdmin: true, selection: {} });
     const [sql] = call(0);
     expect(sql).toContain("json_agg(json_build_object('kind', s.kind, 'subs', s.subs) ORDER BY s.rank) AS questions");
-    expect(sql).toContain('JOIN experiences e ON e.id = s.id');
-    expect(sql).toMatch(/GROUP BY e\.id\s/);
-    expect(sql).toContain('round(ST_X(e.location)::numeric, 5) AS lon, round(ST_Y(e.location)::numeric, 5) AS lat');
+    expect(sql).toMatch(/FROM selected s\s+GROUP BY s\.id\s/);
+    expect(sql).toContain('JOIN experiences e ON e.id = g.id');
+    expect(sql).toContain('round(ST_X(pt.at)::numeric, 5) AS lon, round(ST_Y(pt.at)::numeric, 5) AS lat');
+  });
+
+  it('stands a dispersed whole, which holds no point, at the centre of the frame of its points (ADR-0210)', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{}] });
+    await queryQueueMap({ userId: 7, isAdmin: true, selection: {} });
+    const [sql] = call(0);
+    expect(sql).toMatch(/COALESCE\(e\.location, \(\s+SELECT ST_SetSRID\(ST_MakePoint\(wf\.center_lng, wf\.center_lat\), 4326\)/);
+    expect(sql).toContain('FROM geometry_focus((SELECT ST_Collect(wp.location)');
+    // Its parts' points, unread ones included: a curator is asked about those.
+    expect(sql).toContain('WHERE wp_prt.whole_id = e.id');
+    expect(sql).not.toContain("wp.curation_state <> 'pending'");
   });
 
   it("answers the statement's places as they are, held to the schema", async () => {
@@ -170,7 +181,7 @@ describe('the questions with no point', () => {
     const map = await queryQueueMap({ userId: 7, isAdmin: true, selection: {} });
     expect(map.unplaced).toBe(2);
     const [sql] = call(0);
-    expect(sql).toContain('WHERE e.location IS NOT NULL');
+    expect(sql).toContain('WHERE pt.at IS NOT NULL');
     expect(sql).toMatch(/count\(\*\)::int FROM selected s\s+WHERE NOT EXISTS \(SELECT 1 FROM placed p WHERE p\.id = s\.id\)\) AS unplaced/);
   });
 

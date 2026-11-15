@@ -250,14 +250,21 @@ export async function findPartCandidates(
        -- What a distance is measured from: the whole's parts the caller may be
        -- shown, or the place itself where there is none. A part the caller may
        -- not see is neither named nor measured from, since a distance to it
-       -- would place it.
-       SELECT a.location, a.name FROM experience_parts prt JOIN experiences a ON a.id = prt.part_id
-        WHERE $2::boolean AND prt.whole_id = $1 AND a.location IS NOT NULL AND ${shownToCallerSql('a', asked)}
+       -- would place it. A dispersed whole holds no point (ADR-0210): looking
+       -- for a whole of its own, it is measured from its parts too, as the
+       -- place itself, which no row names.
+       SELECT a.location, CASE WHEN $2::boolean THEN a.name END AS name
+         FROM experience_parts prt JOIN experiences a ON a.id = prt.part_id
+        WHERE prt.whole_id = $1 AND a.location IS NOT NULL AND ${shownToCallerSql('a', asked)}
+          AND ($2::boolean OR EXISTS (SELECT 1 FROM experiences self WHERE self.id = $1 AND self.location IS NULL))
        UNION ALL
        SELECT self.location, NULL FROM experiences self
         WHERE self.id = $1 AND self.location IS NOT NULL
+          -- A part with no point (a dispersed whole) measures nothing, so a
+          -- whole whose shown parts are all such stands at its own point.
           AND NOT ($2::boolean AND EXISTS (SELECT 1 FROM experience_parts prt JOIN experiences shown ON shown.id = prt.part_id
-                                            WHERE prt.whole_id = $1 AND ${shownToCallerSql('shown', asked)}))
+                                            WHERE prt.whole_id = $1 AND shown.location IS NOT NULL
+                                              AND ${shownToCallerSql('shown', asked)}))
      ), related AS (
        -- The place's wholes, at every level, for a part's search; its parts,
        -- at every level, for a whole's: choosing one would close a loop.
@@ -272,10 +279,20 @@ export async function findPartCandidates(
          FROM experiences c
          -- The part nearest in metres: an order in degrees would name another
          -- at a high latitude, where a degree east is shorter than one north.
-         CROSS JOIN LATERAL (
-           SELECT ST_Distance(c.location::geography, a.location::geography) AS distance_m, a.name
-             FROM anchors a ORDER BY 1 LIMIT 1) near
-        WHERE c.merged_into_id IS NULL AND c.location IS NOT NULL
+         -- A dispersed whole holds no point (ADR-0210), and is where its parts
+         -- the caller may be shown are. A place asked for by name is offered
+         -- with no distance where nothing gives one: a dispersed whole none of
+         -- whose parts the caller may see stands at no point.
+         LEFT JOIN LATERAL (
+           SELECT ST_Distance(at.location::geography, a.location::geography) AS distance_m, a.name
+             FROM anchors a
+             CROSS JOIN (SELECT c.location WHERE c.location IS NOT NULL
+                         UNION ALL
+                         SELECT cp_part.location FROM experience_parts cp JOIN experiences cp_part ON cp_part.id = cp.part_id
+                          WHERE c.location IS NULL AND cp.whole_id = c.id AND cp_part.location IS NOT NULL
+                            AND ${shownToCallerSql('cp_part', asked)}) at
+            ORDER BY 1 LIMIT 1) near ON true
+        WHERE c.merged_into_id IS NULL AND (c.location IS NOT NULL OR c.whole_shape = 'dispersed')
           AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held WHERE held.experience_id = c.id)
           AND CASE WHEN $3::text IS NOT NULL THEN c.name ILIKE $3
                    ELSE c.id <> $1
@@ -285,7 +302,18 @@ export async function findPartCandidates(
                         -- parts would otherwise test every place against every part.
                         AND c.id IN (SELECT near_c.id FROM anchors a JOIN experiences near_c
                                        ON ${nearBoxSql('near_c.location', 'a.location', '$5')}
-                                      AND ST_DWithin(near_c.location::geography, a.location::geography, $5))
+                                      AND ST_DWithin(near_c.location::geography, a.location::geography, $5)
+                                     UNION
+                                     -- A dispersed whole near by its parts, in either search (a serial
+                                     -- site nests under another whole, #2126): by the parts its distance
+                                     -- is measured from, the ones the caller may be shown. A container
+                                     -- is measured from its own point.
+                                     SELECT near_w.whole_id FROM anchors a JOIN experiences near_p
+                                       ON ${nearBoxSql('near_p.location', 'a.location', '$5')}
+                                      AND ST_DWithin(near_p.location::geography, a.location::geography, $5)
+                                     JOIN experience_parts near_w ON near_w.part_id = near_p.id
+                                     JOIN experiences near_whole ON near_whole.id = near_w.whole_id AND near_whole.location IS NULL
+                                     WHERE ${shownToCallerSql('near_p', asked)})
                         AND ($2::boolean OR EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = c.id)) END
           -- A place no reader is offered is a candidate only in the caller's
           -- scope, before the limit, so a left-out one takes no slot.

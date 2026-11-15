@@ -24,9 +24,8 @@
  *
  * A read about one place that comes from an outer row takes the arms as well:
  * `pointsShownSql` is them as a table of the place's points,
- * `somePointShownSql` as a test that one of them meets a condition,
- * `isWholeSql` as whether the place is a whole, and `wholeFocusSql` as the
- * frame of a whole's points.
+ * `somePointShownSql` as a test that one of them meets a condition, and
+ * `wholeFocusSql` as the frame of a whole's points.
  *
  * Read the other way, from a point to the places that show it:
  * `withWholesSql` adds the wholes of given places, `wholeOfSql` names the
@@ -231,20 +230,6 @@ export function pointsShownSql(place: string, point = 'el'): string {
 }
 
 /**
- * Whether the place `place` is made of parts, a whole: `place_is_whole()`
- * (ADR-0203) as an expression, for a read that asks it of every row.
- *
- * Its body rather than a call, because Postgres inlines no SQL function whose
- * body holds a subquery: a call is a function invocation of its own on every
- * evaluation, while the EXISTS is an index-only probe of `experience_parts`'
- * (whole_id, part_id) key. `placePoints.db.test.ts` holds the two to the same
- * answer.
- */
-export function isWholeSql(place: string): string {
-  return `EXISTS (SELECT 1 FROM experience_parts made_of WHERE made_of.whole_id = ${place})`;
-}
-
-/**
  * Where the whole `place` is (#2122), as a json object `{bbox, anchorPoint}`
  * over the points it shows that `shown` admits (a predicate over the point
  * alias it is given), or NULL where it shows none. A whole has no coordinate
@@ -417,7 +402,7 @@ function pointClaimsBySql(point: string, kinded: string): string {
  * under the point's reference, compared as the run compares it (case aside,
  * `823-001B`), is the point's, else the earliest whole's; a site's own point
  * reads the site's record of itself only under its own reference, since a
- * site of two own lines (Ohrid's 99quater-001 and -002) records one of them.
+ * site's other points (a point another source placed) are no line of it.
  * `columns` is what to select of it, under `alias`.
  */
 export function pointRecordSql(point: string, alias: string, columns: string): string {
