@@ -127,8 +127,14 @@ the policy page is the authority.
 - *What reaches a model:* English Wikipedia leads read from the `extracts` API (`articleLeads`,
   1,500 characters) are sent to Jev for a visit reading (#1996) and for a kind reading (#2342), and
   the wikitext of a monument's lead (`fetchLeads`, section 0, one page an ask) to Claude and an
-  OpenAI model for its dedication (#2472, ADR-0201). The text is CC BY-SA. Each read is
-  flagged `modelInput`, so a site's `ai-input=no` signal would stop it, and enwiki states none.
+  OpenAI model for its dedication (#2472, ADR-0201): its English lead, and, where that names none
+  or there is none, its lead on the edition of its country's language, read from that
+  `<lang>.wikipedia.org` with the item of the link both models agree on resolved there
+  (`pageprops`, `resolveWikipediaArticles`; #2491, ADR-0208). Both go through the same transport,
+  turn, User-Agent (`userAgent({ bot: true })`) and pause as the English read, at most one more
+  lead a place. The text is CC BY-SA. Each read is flagged `modelInput`, so a site's
+  `ai-input=no` signal would stop it, and enwiki states none; the robots check is asked of each
+  edition's host it reads.
 
 **Commons thumbnails** (`commons.wikimedia.org/wiki/Special:FilePath/…?width=N`, drawn by the
 reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
@@ -330,7 +336,8 @@ admin only; and `services/ai/leadDedicationModels.ts`, asked by the Public art a
 memorials run, #2472).
 - *Sent:* region and division names and paths, Wikivoyage wikitext, learned rules, an admin's place
   description, map images; from the run, a monument's name and the lead of its English Wikipedia
-  article. No user's data.
+  article, or of its article in its country's language with that language named (#2491). No
+  user's data.
 - *Rules:*
   - [your data](https://developers.openai.com/api/docs/guides/your-data): API data is not used for
     training by default, abuse-monitoring logs are kept up to 30 days, and the Responses API stores
@@ -341,13 +348,15 @@ memorials run, #2472).
 
 **Anthropic** (the `@anthropic-ai/sdk` SDK, `api.anthropic.com`, `services/ai/leadDedicationModels.ts`,
 keyed by `ANTHROPIC_API_KEY`, ADR-0201).
-- *Sent:* a monument's name and the lead of its English Wikipedia article, its links marked, asked
-  which link names its dedication; catalogue data, nothing about a user.
+- *Sent:* a monument's name and the lead of its English Wikipedia article, or, where that names
+  none, of its article in its country's language with that language named (#2491), its links
+  marked, asked which link names its dedication; catalogue data, nothing about a user.
 - *Code:* the Messages API, Claude Haiku 5.5 with a JSON-schema output format, a 120 s timeout and
   the SDK's retries (four, which honour `Retry-After`); four places at a time, beside the same
-  question to OpenAI. A model is asked about a lead only where no answer of its own holds the lead's
-  current revision (`workbench.lead_dedication_readings`): about 160 leads have no line on a pass,
-  and only a lead edited since its last reading is asked again.
+  question to OpenAI. A model is asked about a lead, English or in the place's country's language,
+  only where no answer of its own holds that lead's current revision on its edition
+  (`workbench.lead_dedication_readings`), so only a lead edited since its last reading is asked
+  again.
 - *Rules:* the commercial terms and the usage policy govern API use; neither was read for this line.
 - *Unverified* until a person reads them. The SDK sends its own User-Agent, an exception to
   `userAgent.ts`.
