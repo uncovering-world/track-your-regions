@@ -127,3 +127,32 @@ describe("a place's region row its points no longer give", () => {
     })).toBe('Monastery of Haghpat in Lori is listed for readers, but its points do not put it there (experience 37452)');
   });
 });
+
+describe("a whole's leaf its parts no longer give", () => {
+  const assertion = byId('whole-leaves-out-of-step');
+  const sql = collapse(assertion.sql);
+
+  it("compares the rows with the refresh's own, over every whole (ADR-0206)", () => {
+    expect(sql).toContain('FROM whole_leaves_expected(NULL) x');
+    expect(sql).toContain('FULL JOIN whole_leaves wl ON wl.whole_id = x.whole_id AND wl.leaf_id = x.leaf_id');
+    expect(sql).toContain('x.offered IS DISTINCT FROM wl.offered');
+  });
+
+  it('says in words what the whole counts, and what its parts say it should', () => {
+    expect(assertion.describe({
+      whole_id: 847, whole_name: 'Struve Geodetic Arc', leaf_id: 9001, leaf_name: 'Tartu Observatory',
+      expected_offered: true, held_offered: null,
+    })).toBe('Struve Geodetic Arc does not count Tartu Observatory, a place of its parts shown to readers '
+      + '(experience 847, place 9001)');
+    expect(assertion.describe({
+      whole_id: 847, whole_name: 'Struve Geodetic Arc', leaf_id: 9001, leaf_name: 'Tartu Observatory',
+      expected_offered: null, held_offered: true,
+    })).toBe('Struve Geodetic Arc counts Tartu Observatory, which is no longer a place of its parts '
+      + '(experience 847, place 9001)');
+    expect(assertion.describe({
+      whole_id: 57, whole_name: 'Wudang Mountains', leaf_id: 9002, leaf_name: 'Golden Hall',
+      expected_offered: false, held_offered: true,
+    })).toBe('Wudang Mountains counts Golden Hall as shown to readers, but it is not shown to readers '
+      + '(experience 57, place 9002)');
+  });
+});
