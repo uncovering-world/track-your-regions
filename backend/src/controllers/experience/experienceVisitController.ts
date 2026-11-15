@@ -13,9 +13,9 @@ import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.
 import { claimablePlaceSql } from '../../db/readerPredicates.js';
 import { placeHasKindSql } from '../../db/membership.js';
 import {
-  placeAtWriteSql, removedVisitsOf, removeVisits, showsOwnPointSql, showsPartsSql, tickedPlaceJsonSql, visitStatesSql,
+  placeAtWriteSql, removedVisitsOf, removeVisits, showsOwnPointSql, tickedPlaceJsonSql, visitStatesSql,
 } from '../../db/visits.js';
-import { computeVisitedStatus } from '@tyr/shared/visits';
+import { computeVisitedStatus, wholeProgress } from '@tyr/shared/visits';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { experienceIdParamSchema, markVisitedBodySchema, visitedIdsQuerySchema } from '../../types/index.js';
 
@@ -121,16 +121,19 @@ export async function unmarkVisited(
  * holds the places visited or partly visited, `partialIds` the partly
  * visited among them. Haghpat and Sanahin with two of its three monasteries
  * visited is in both. `wholeTickedIds` holds the wholes ticked as a whole,
- * which the whole's card offers to take back.
+ * which the whole's card offers to take back. `wholeProgress` holds the count
+ * of every whole the reader has been to, at any depth, over its offered leaves
+ * (`wholeProgress`, ADR-0206): the Struve Geodetic Arc after one station reads
+ * 1 of 34, and ticked as a whole "? of 34".
  */
 export async function getVisitedIds(
   { query: { kindId }, caller }: { query: z.output<typeof visitedIdsQuerySchema>; caller: Express.User },
 ): Promise<VisitedExperienceIds> {
   const result = await pool.query<{
-    place_id: number; ticked: boolean; total: number; visited: number; has_parts: boolean; has_own_point: boolean;
+    place_id: number; ticked: boolean; total: number; visited: number; leaves: number; leaves_visited: number;
+    has_parts: boolean; has_own_point: boolean;
   }>(`
-    SELECT s.place_id, s.ticked, s.total, s.visited,
-           ${showsPartsSql('s.place_id')} AS has_parts,
+    SELECT s.place_id, s.ticked, s.total, s.visited, s.leaves, s.leaves_visited, s.has_parts,
            ${showsOwnPointSql('s.place_id')} AS has_own_point
       FROM ${visitStatesSql('$1')} s
       ${kindId
@@ -143,7 +146,11 @@ export async function getVisitedIds(
   const visitedIds: number[] = [];
   const partialIds: number[] = [];
   const wholeTickedIds: number[] = [];
+  const progress: VisitedExperienceIds['wholeProgress'] = [];
   for (const row of result.rows) {
+    // Every row is a place the reader ticked or a whole above one: touched.
+    const count = wholeProgress(row.leaves_visited, row.leaves, true);
+    if (count) progress.push({ experienceId: row.place_id, ...count });
     const status = computeVisitedStatus(row.visited, row.total, row.ticked);
     if (status === 'not_visited') continue;
     visitedIds.push(row.place_id);
@@ -152,5 +159,5 @@ export async function getVisitedIds(
     if (row.ticked && row.has_parts && !row.has_own_point) wholeTickedIds.push(row.place_id);
   }
 
-  return { visitedIds, partialIds, wholeTickedIds, total: visitedIds.length };
+  return { visitedIds, partialIds, wholeTickedIds, wholeProgress: progress, total: visitedIds.length };
 }

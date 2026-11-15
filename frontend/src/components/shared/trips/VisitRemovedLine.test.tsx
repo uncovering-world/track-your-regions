@@ -22,7 +22,7 @@ const api = vi.hoisted(() => ({
 const who = vi.hoisted(() => ({ user: { id: 7 } as { id: number } | null }));
 vi.mock('../../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: who.user !== null, user: who.user }) }));
 vi.mock('../../../api/visited', () => ({
-  fetchVisitedExperienceIds: async () => ({ visitedIds: [], partialIds: [], wholeTickedIds: [], total: 0 }),
+  fetchVisitedExperienceIds: async () => ({ visitedIds: [], partialIds: [], wholeTickedIds: [], wholeProgress: [], total: 0 }),
   markExperienceVisited: api.mark,
   unmarkExperienceVisited: api.unmark,
 }));

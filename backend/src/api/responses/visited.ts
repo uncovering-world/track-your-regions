@@ -34,6 +34,16 @@ export const VisitedExperienceIds = z.strictObject({
     'The wholes the reader ticked as a whole, without naming a part: "I was there, I don\'t remember which part".'
     + ' Not a whole showing a point of its own, where that tick is the point\'s (#2120).',
   ),
+  wholeProgress: z.array(z.strictObject({
+    experienceId: z.number().int(),
+    visited: z.number().int().nullable()
+      .describe('The offered leaves the reader visited; null for "?": the whole visited and none of them named.'),
+    total: z.number().int().describe('The whole\'s offered leaves, one or more.'),
+  })).describe(
+    'Every whole the reader has been to, at any depth, with its count over its offered leaves (ADR-0206): the'
+    + ' Struve Geodetic Arc after one station reads 1 of 34 in every region it is listed in, and ticked as a whole'
+    + ' "? of 34". A whole with no offered leaf is not listed.',
+  ),
   total: z.number().int(),
 }).describe('The objects the reader has visited, and which of them only in part.');
 export type VisitedExperienceIds = z.infer<typeof VisitedExperienceIds>;
