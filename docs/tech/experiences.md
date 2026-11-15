@@ -6238,7 +6238,9 @@ Maggiore, and crowds out 51 more of its churches.
     table (`FigureTable`, #2454): one column per measure under a heading (Readers a year,
     Editions, In Wikivoyage, Score), counts grouped in thousands and the score to two decimals,
     right-aligned in tabular figures, a dash with a "Not measured yet" hint where nothing is read.
-    Each heading has a hint on hover and keyboard focus that says what it counts. A kind whose
+    Each heading has a hint on hover and keyboard focus that says what it counts. A guide's
+    *yes* under In Wikivoyage is a button that opens the Wikivoyage articles behind it
+    (`GuideArticlesButton`, § The Wikivoyage articles behind a guide's yes below). A kind whose
     venues a place pass keeps (`readsVenues` on the read's kind: Squares & streets) has a fifth
     column after the score, Venues: the venues the venue test counts (cafés, restaurants, bars, pubs,
     fast food, ice cream and beer gardens) within 200 m of a square, or
@@ -6454,6 +6456,45 @@ Maggiore, and crowds out 51 more of its churches.
       staged. While it runs no other group opens, and its report is kept by its group. Leaving the
       tab for *Questions*, which shows none of them, with answers staged opens
       `LeaveStagedDialog`: stay and apply them, or discard them.
+
+### The Wikivoyage articles behind a guide's yes (#2520)
+
+A curator reads that a Wikivoyage guide uses a place in two places: the crowded-city figures'
+*In Wikivoyage* (`guideUsed`, from `membership_fame.guide_editions`) and a visit question's
+travel-guide witness (`witnessesOfPlaces`, from `usedByAGuide`). Both read `wikivoyage_usage`
+for the item the membership's source knows the place by (`external_id`). Each yes is a button
+(`GuideArticlesButton`, `frontend/src/components/shared/`) that opens a popover listing the
+articles that use that item: Mantineia (experience 15173, Q1160195) lists *Mantineia* in German
+Wikivoyage and its Italian article.
+
+- **The read** is `GET /api/experiences/review/guide-articles/:membershipId`
+  (`getGuideArticles`, `guideArticlesController.ts`; response `GuideArticles`). It takes the
+  membership, so it answers for the item the evidence was read for, and reads the serving table
+  `wikivoyage_articles` the usage build keeps (`docs/tech/dumps.md` § The items Wikivoyage uses):
+  nothing goes to Wikivoyage or Wikidata. It is curator only. A membership is answered only where
+  the caller may be shown its place, one readers are offered or one in the caller's scope
+  (`shownToCallerSql`, as the parts reads ask); any other is 404. The articles come by edition,
+  then by title and page id, at most `MOST_GUIDE_ARTICLES` (1,000) of them, with `truncated`
+  where more use the item. Each carries its edition (`site`), its language (`editionLanguage`,
+  `de` for `dewikivoyage`), its title and its address on its own edition
+  (`wikivoyageArticleUrl`, `services/dumps/wikivoyage/articleUrl.ts`): spaces as underscores, the
+  title percent-encoded as UTF-8, a subpage's slash and a colon kept as MediaWiki writes them, so
+  `Старый Брест` opens `https://ru.wikivoyage.org/wiki/%D0%A1%D1%82…`. Never the place's
+  Wikipedia article, never a Wikidata sitelink.
+- **`articlesKept`** is false while `wikivoyage_articles` is empty, which is a copy built before
+  the articles were kept: a build that keeps no item never swaps in. The list is then empty and
+  says nothing of whether a guide uses the item.
+- **The popover** reads the list only when it opens (`fetchGuideArticles`, keyed
+  `queryKeys.curation.guideArticles`), so a table of places asks nothing until a curator does.
+  It answers four ways: reading; a failure, with *Try again*; no article in the data in place
+  (or no item at all), which says the yes was read from older data; and articles not listed yet,
+  which says this does not mean no guide uses the place and that an admin's Update on the Public
+  Dumps page lists them. A list scrolls past 280 px. Each article is its title, linked to its
+  edition in a new tab (`rel="noopener noreferrer"`, the address through `safeHref`), with the
+  edition's language under it ("German Wikivoyage"). The button is a native button, reached by a
+  tap and a keyboard. Escape, a click outside or *Close* closes it and the focus returns to it.
+  Its clicks and keys stop at it, so a queue row is never chosen or ticked and a crowded-city row
+  never opens its place from inside it.
 
 ### Lifecycle filtering
 
@@ -8625,7 +8666,9 @@ and the answer alike). One card per place, a question per membership, in scope b
 membership's source, under the run that asked and dated by when it asked; after every other class,
 since no source disputes the place and the question is a suggestion. The card (`VisitQuestionCard`)
 says which of the four witnesses vouched and which did not, Jev's reading in the arrival card's
-words (`readingWords`) with its confidence, and the suggested answer: refuse it from the kind. Its
+words (`readingWords`) with its confidence, and the suggested answer: refuse it from the kind. A
+travel guide that vouched ("a travel guide lists it") opens the Wikivoyage articles behind it
+(`GuideArticlesButton`, § The Wikivoyage articles behind a guide's yes). Its
 two answers are `POST /api/experiences/:id/visit-question` (`visitQuestionController.ts`).
 *Refuse* is a curator's refusal of an arrival, written on an offered place: `admission =
 'refused'` with `VISIT_REFUSAL_REASON` and the pin, so the place leaves the kind for readers at
