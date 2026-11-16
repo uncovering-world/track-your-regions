@@ -25,6 +25,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
 import { withTypeClaim } from '../../db/membership.js';
+import { shownByPartsSql } from '../../db/readerPredicates.js';
 import { acceptTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 import { releaseAnchorPointClaim, movePointTo } from './experienceLocationWriter.js';
@@ -235,8 +236,8 @@ async function applyProposedFields(
     // whether one is *there* decides what the curator is told was removed, and
     // reading it separately would be reading it at another moment.
     const locked = await lockExperience<{
-      curated_fields: string[] | null; image_credit: unknown; metadata: unknown; name_local: unknown; whole_shape: string | null;
-    }>(client, experienceId, "curated_fields, metadata, name_local, whole_shape, metadata->'imageCredit' AS image_credit");
+      curated_fields: string[] | null; image_credit: unknown; metadata: unknown; name_local: unknown; shown_by_parts: boolean;
+    }>(client, experienceId, `curated_fields, metadata, name_local, ${shownByPartsSql('experiences')} AS shown_by_parts, metadata->'imageCredit' AS image_credit`);
     const placeClaims: string[] = locked?.row.curated_fields ?? [];
     const hadCredit = locked?.row.image_credit != null;
 
@@ -368,7 +369,7 @@ async function applyProposedFields(
       // spaces the run saw, and accepting it must not put back what migration
       // 047 took out.
       open.map(p => ({ ...p, new: tidyNameValue(p.field, p.new) })),
-      { metadata: locked.row.metadata, name_local: locked.row.name_local, whole_shape: locked.row.whole_shape },
+      { metadata: locked.row.metadata, name_local: locked.row.name_local, shown_by_parts: locked.row.shown_by_parts },
       remaining,
       acceptedImage,
       pictureCredit,

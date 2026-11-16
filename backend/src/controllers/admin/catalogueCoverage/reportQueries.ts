@@ -262,8 +262,8 @@ const NEARBY_SQL = `
     -- Under every place that shows the point, a part's site included (ADR-0100).
     JOIN ${placePointsSql()} pp ON pp.location_id = el.id
     JOIN experiences e ON e.id = pp.place_id
-   WHERE x.location IS NOT NULL
-     AND ($1::text[] IS NULL OR x.region_slug = ANY($1))
+   -- An expectation with no location joins no point: ST_DWithin is strict.
+   WHERE ($1::text[] IS NULL OR x.region_slug = ANY($1))
      AND ${offeredLocationSql('el')}
      AND ${publishedContentSql('el')}
      AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${countedMembershipSql('m', 'e')})

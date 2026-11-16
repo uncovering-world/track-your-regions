@@ -190,49 +190,49 @@ describe('a loop of parts, or a chain over four places (#2118)', () => {
   });
 });
 
-describe("a whole's shape and its own point (ADR-0210)", () => {
+describe("a record's shape by its parts, and a serial site's own point (ADR-0218)", () => {
   const rowsOfSite = async (id: string) => {
     const rule = partAssertions.find(assertion => assertion.id === id)!;
     return (await pool.query<Record<string, unknown>>(rule.sql)).rows.filter(row => Number(row.id) === SITE);
   };
 
-  it('finds the site dispersed with no point as its parts made it, and names a shape a writer forced', async () => {
-    expect((await pool.query('SELECT whole_shape, location FROM experiences WHERE id = $1', [SITE])).rows[0])
-      .toEqual({ whole_shape: 'dispersed', location: null });
+  it('finds the site of shape none with no point as its parts made it, and names a shape a writer forced', async () => {
+    expect((await pool.query('SELECT shape, location FROM experiences WHERE id = $1', [SITE])).rows[0])
+      .toEqual({ shape: 'none', location: null });
     expect(await rowsOfSite('whole-shape-drift')).toEqual([]);
 
-    // A writer that went around the trigger: a serial site made a container, keeping a point.
+    // A writer that went around the trigger: a serial site made an area, keeping a point.
     await pool.query(
-      "UPDATE experiences SET whole_shape = 'container', location = ST_SetSRID(ST_MakePoint(49.5, -15.5), 4326) WHERE id = $1", [SITE],
+      "UPDATE experiences SET shape = 'area', location = ST_SetSRID(ST_MakePoint(49.5, -15.5), 4326) WHERE id = $1", [SITE],
     );
     const rows = await rowsOfSite('whole-shape-drift');
-    expect(rows).toMatchObject([{ shape: 'container', expected: 'dispersed' }]);
+    expect(rows).toMatchObject([{ shape: 'area', expected: 'none' }]);
     expect(partAssertions.find(a => a.id === 'whole-shape-drift')!.describe(rows[0]))
-      .toBe(`Rainforests of the Atsinanana (parts fixture) (#${SITE}) is container, and its parts make it dispersed`);
+      .toBe(`Rainforests of the Atsinanana (parts fixture) (#${SITE}) is area, and its parts make it none`);
 
   });
 
-  it('names a place made of parts left with no shape, beside the container its parts make it', async () => {
-    // A parcel 55 m south of the northern one, made its part by a curator: a container.
+  it('names a place made of parts left a point, beside the area its parts make it', async () => {
+    // A parcel 55 m south of the northern one, made its part by a curator: an area.
     await parcel(LOWER, '9680-004', -15.4505);
     await pool.query(
       `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
        VALUES ($1, $2, 11, $3, 'admitted', 'verified', NOW())`, [LOWER, NORTH, `curator-1-${NORTH}${LOWER}`],
     );
-    expect((await pool.query('SELECT whole_shape FROM experiences WHERE id = $1', [NORTH])).rows[0].whole_shape).toBe('container');
+    expect((await pool.query('SELECT shape FROM experiences WHERE id = $1', [NORTH])).rows[0].shape).toBe('area');
 
-    // A writer that took the shape off.
-    await pool.query('UPDATE experiences SET whole_shape = NULL WHERE id = $1', [NORTH]);
+    // A writer that made it a point again.
+    await pool.query("UPDATE experiences SET shape = 'point' WHERE id = $1", [NORTH]);
     const rule = partAssertions.find(assertion => assertion.id === 'whole-shape-drift')!;
     const rows = (await pool.query<Record<string, unknown>>(rule.sql)).rows.filter(row => Number(row.id) === NORTH);
-    expect(rows).toMatchObject([{ shape: null, expected: 'container' }]);
+    expect(rows).toMatchObject([{ shape: 'point', expected: 'area' }]);
   });
 
-  it('names a dispersed whole left with no part, which nothing gave a point to stand at again', async () => {
+  it('names a record of shape none left with no part, which nothing gave a point to stand at again', async () => {
     await pool.query('UPDATE source_records SET reported_location = NULL WHERE experience_id = $1', [SITE]);
     await pool.query('DELETE FROM source_records WHERE whole_id = $1 AND experience_id <> $1', [SITE]);
 
-    expect(await rowsOfSite('whole-shape-drift')).toMatchObject([{ shape: 'dispersed', expected: null }]);
+    expect(await rowsOfSite('whole-shape-drift')).toMatchObject([{ shape: 'none', expected: 'point' }]);
   });
 
   it("names a standing point of the site's own, and not a withdrawn one", async () => {

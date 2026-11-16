@@ -34,7 +34,7 @@ import {
 } from '../../db/membership.js';
 import { CURATOR_PLACE_SCOPE_EXISTS, CURATOR_SCOPED_REGIONS_CTE, canCurateExperienceSql } from '../../middleware/auth.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
-import { placeOrPartOfferedSql } from '../../db/readerPredicates.js';
+import { hasPinSql, placeOrPartOfferedSql, shownByPartsSql } from '../../db/readerPredicates.js';
 import type { idParamSchema } from '../../types/index.js';
 import type { partCandidatesQuerySchema } from '../../types/partSchemas.js';
 import { creditOf } from './experienceAnswerRows.js';
@@ -265,15 +265,15 @@ export async function findPartCandidates(
        -- place itself, which no row names.
        SELECT a.location, CASE WHEN $2::boolean THEN a.name END AS name
          FROM experience_parts prt JOIN experiences a ON a.id = prt.part_id
-        WHERE prt.whole_id = $1 AND a.location IS NOT NULL AND ${shownToCallerSql('a', asked)}
-          AND ($2::boolean OR EXISTS (SELECT 1 FROM experiences self WHERE self.id = $1 AND self.location IS NULL))
+        WHERE prt.whole_id = $1 AND ${hasPinSql('a')} AND ${shownToCallerSql('a', asked)}
+          AND ($2::boolean OR EXISTS (SELECT 1 FROM experiences self WHERE self.id = $1 AND NOT ${hasPinSql('self')}))
        UNION ALL
        SELECT self.location, NULL FROM experiences self
-        WHERE self.id = $1 AND self.location IS NOT NULL
+        WHERE self.id = $1 AND ${hasPinSql('self')}
           -- A part with no point (a dispersed whole) measures nothing, so a
           -- whole whose shown parts are all such stands at its own point.
           AND NOT ($2::boolean AND EXISTS (SELECT 1 FROM experience_parts prt JOIN experiences shown ON shown.id = prt.part_id
-                                            WHERE prt.whole_id = $1 AND shown.location IS NOT NULL
+                                            WHERE prt.whole_id = $1 AND ${hasPinSql('shown')}
                                               AND ${shownToCallerSql('shown', asked)}))
      ), related AS (
        -- The place's wholes, at every level, for a part's search; its parts,
@@ -296,13 +296,13 @@ export async function findPartCandidates(
          LEFT JOIN LATERAL (
            SELECT ST_Distance(at.location::geography, a.location::geography) AS distance_m, a.name
              FROM anchors a
-             CROSS JOIN (SELECT c.location WHERE c.location IS NOT NULL
+             CROSS JOIN (SELECT c.location WHERE ${hasPinSql('c')}
                          UNION ALL
                          SELECT cp_part.location FROM experience_parts cp JOIN experiences cp_part ON cp_part.id = cp.part_id
-                          WHERE c.location IS NULL AND cp.whole_id = c.id AND cp_part.location IS NOT NULL
+                          WHERE NOT ${hasPinSql('c')} AND cp.whole_id = c.id AND ${hasPinSql('cp_part')}
                             AND ${shownToCallerSql('cp_part', asked)}) at
             ORDER BY 1 LIMIT 1) near ON true
-        WHERE c.merged_into_id IS NULL AND (c.location IS NOT NULL OR c.whole_shape = 'dispersed')
+        WHERE c.merged_into_id IS NULL AND (${hasPinSql('c')} OR ${shownByPartsSql('c')})
           AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held WHERE held.experience_id = c.id)
           AND CASE WHEN $3::text IS NOT NULL THEN c.name ILIKE $3
                    ELSE c.id <> $1
@@ -321,7 +321,7 @@ export async function findPartCandidates(
                                        ON ${nearBoxSql('near_p.location', 'a.location', '$5')}
                                       AND ST_DWithin(near_p.location::geography, a.location::geography, $5)
                                      JOIN experience_parts near_w ON near_w.part_id = near_p.id
-                                     JOIN experiences near_whole ON near_whole.id = near_w.whole_id AND near_whole.location IS NULL
+                                     JOIN experiences near_whole ON near_whole.id = near_w.whole_id AND NOT ${hasPinSql('near_whole')}
                                      WHERE ${shownToCallerSql('near_p', asked)})
                         AND ($2::boolean OR EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = c.id)) END
           -- A place no reader is offered is a candidate only in the caller's

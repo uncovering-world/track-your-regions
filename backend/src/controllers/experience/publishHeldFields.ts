@@ -124,11 +124,11 @@ export function assignmentFor(field: string, value: unknown, bind: (value: unkno
     case 'location': {
       // Checked rather than asserted: an `ST_MakePoint(NULL, NULL)` from a
       // value that is not a pair of numbers would empty the coordinate of a
-      // place that must hold one (`experiences_location_iff_not_dispersed`)
+      // place that must hold one (`experiences_shape_holds`)
       // and fail the transaction with an error naming neither the field nor
       // the reason. Returning null routes it to the caller's refusal instead,
       // which names the field and leaves the proposal intact to be looked at.
-      // A dispersed whole, which holds none, never gets here
+      // A record shown by its parts, which holds none, never gets here
       // (`releasedOnTheWhole`).
       const point = asCoordinate(value);
       if (!point) return null;
@@ -166,15 +166,16 @@ export function assignmentFor(field: string, value: unknown, bind: (value: unkno
 }
 
 /**
- * Whether a proposed field is answered without a write on a place whose
- * `whole_shape` is `wholeShape`: a dispersed whole holds no point of its own
- * (ADR-0210), so a coordinate a run proposed for it before it became one,
+ * Whether a proposed field is answered without a write on a place that is
+ * shown by its parts (`shownByParts`, the place's `shownByPartsSql` as read
+ * under the lock): such a record holds no point of its own (ADR-0218), so a
+ * coordinate a run proposed for it before it became one,
  * held or kept against a curator's claim, is answered, its claim released,
  * and nothing written. Asked by both writers of a proposal: publishing a held
  * one and taking the source's value (`acceptedWrites.ts`).
  */
-export function releasedOnTheWhole(field: string, wholeShape: unknown): boolean {
-  return field === 'location' && wholeShape === 'dispersed';
+export function releasedOnTheWhole(field: string, shownByParts: unknown): boolean {
+  return field === 'location' && shownByParts === true;
 }
 
 /**
@@ -618,7 +619,7 @@ function writeOneHeld(
     writes.applied.push(field.field);
     return;
   }
-  if (releasedOnTheWhole(field.field, before.whole_shape)) {
+  if (releasedOnTheWhole(field.field, before.shown_by_parts)) {
     writes.released.push(field.field);
     return;
   }
@@ -636,8 +637,8 @@ export interface HeldBefore {
   image_url?: unknown;
   name_local?: unknown;
   membership_facts?: unknown;
-  /** The place's shape as a whole (ADR-0210). */
-  whole_shape?: unknown;
+  /** Whether the place is shown by its parts (`shownByPartsSql`, ADR-0218). */
+  shown_by_parts?: unknown;
 }
 
 /**

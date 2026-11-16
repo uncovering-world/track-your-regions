@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
+import { hasPinSql, shownByPartsSql } from './readerPredicates.js';
 
 /**
  * A record states its shape (ADR-0218 decisions 1, 2 and 4), against
@@ -104,5 +105,20 @@ describe('a record states its shape (ADR-0218)', () => {
     await store(MATSURI, 'Gion Matsuri', 'none');
     await expect(pool.query('UPDATE experiences SET location = NULL WHERE id = $1', [UFFIZI])).rejects.toThrow(/experiences_shape_holds/);
     await expect(pool.query(`UPDATE experiences SET location = ${POINT} WHERE id = $1`, [MATSURI])).rejects.toThrow(/experiences_shape_holds/);
+  });
+});
+
+describe('the predicates readers compose (ADR-0218 decision 11)', () => {
+  it('finds a serial site shown by its parts with no pin, and a point with a pin', async () => {
+    await store(UFFIZI, 'Uffizi Gallery', 'point', { location: POINT });
+    await store(ARC, 'Struve Geodetic Arc', 'none');
+    const asked = await pool.query(
+      `SELECT e.id, ${shownByPartsSql('e')} AS shown_by_parts, ${hasPinSql('e')} AS has_pin
+         FROM experiences e WHERE e.id = ANY($1::int[]) ORDER BY e.id`, [[UFFIZI, ARC]],
+    );
+    expect(asked.rows).toEqual([
+      { id: UFFIZI, shown_by_parts: false, has_pin: true },
+      { id: ARC, shown_by_parts: true, has_pin: false },
+    ]);
   });
 });

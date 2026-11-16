@@ -90,13 +90,33 @@ const ROUTE_REGISTRY_RULES = [
  * misses the next term the question gains. Read in a string's text or a
  * template's literal parts, so a TypeScript comment naming the predicate is
  * not a copy, while a SQL comment inside the statement is, and says so.
+ *
+ * What a record is on the ground is asked the same way (ADR-0218 decision
+ * 11): `shownByPartsSql` and `hasPinSql`, spelled in `readerPredicates.ts`
+ * alone. A test of a coordinate being there or missing, or of `shape` against
+ * a word, is the copy that reads "no coordinate" as "shown by its parts" on
+ * the day an area gives its coordinate up for its outline. The shape test is
+ * refused with an alias or bare, against a quoted word. One write stands:
+ * `shape` as the first assignment after `SET`. A later assignment
+ * (`SET location = NULL, shape = 'none'`) reads as a test and is refused,
+ * since a selector cannot tell a comma in a SET list from one in a
+ * condition; a writer of the shape names it first. Read by the
+ * column's name, since a selector cannot tell whose `location` a statement
+ * tests: a source's view (`reported_location`) is another column, and
+ * another table's `location` tested for being there is named apart or left
+ * to the join that already asks it.
  */
 const READER_PREDICATE = 'A reader predicate is composed, not spelled: use publishedContentSql / experienceOfferedToReaderSql / hideLostSql / '
   + 'offeredLocationSql (src/db/readerPredicates.ts) or membershipVisibleSql (src/db/membership.ts) (#791).';
 const READER_PREDICATE_TEXT = "/curation_state\\s*<>\\s*'pending'|existence\\s*<>\\s*'lost'/";
+const RECORD_SHAPE = 'A record\'s shape is composed, not spelled: use shownByPartsSql / hasPinSql (src/db/readerPredicates.ts), '
+  + 'never a test of location being NULL or of shape against a word (ADR-0218).';
+const RECORD_SHAPE_TEXT = "/(?<!\\w)location\\s+IS\\s+(NOT\\s+)?NULL|(?<!\\w)(?<!\\bSET\\s+)shape\\s*(=|<>|!=|(NOT\\s+)?IN\\s*\\(|IS\\s+(NOT\\s+)?DISTINCT\\s+FROM)\\s*\\(?'/i";
 const READER_PREDICATE_RULES = [
   { selector: `TemplateElement[value.raw=${READER_PREDICATE_TEXT}]`, message: READER_PREDICATE },
   { selector: `Literal[value=${READER_PREDICATE_TEXT}]`, message: READER_PREDICATE },
+  { selector: `TemplateElement[value.raw=${RECORD_SHAPE_TEXT}]`, message: RECORD_SHAPE },
+  { selector: `Literal[value=${RECORD_SHAPE_TEXT}]`, message: RECORD_SHAPE },
 ];
 
 /**

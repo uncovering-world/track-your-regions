@@ -52,7 +52,7 @@ export interface AcceptedWrites {
 /**
  * The assignments for the accepted entries, bound through `bind`.
  *
- * `stored` is the place's `metadata`, `name_local` and `whole_shape` as read under the lock, and
+ * `stored` is the place's `metadata`, `name_local` and whether it is shown by its parts, as read under the lock, and
  * `remainingClaims` the place's claims once the accepted ones are gone: a key a
  * curator still claims is put back over a merged entry, as a run would put it
  * back. `acceptedImage` says the picture is among the accepted fields, so the
@@ -65,7 +65,7 @@ export interface AcceptedWrites {
  */
 export function acceptedWrites(
   accepted: readonly ProposedField[],
-  stored: { metadata: unknown; name_local: unknown; whole_shape?: unknown },
+  stored: { metadata: unknown; name_local: unknown; shown_by_parts?: unknown },
   remainingClaims: string[],
   acceptedImage: boolean,
   pictureCredit: PictureCredit | null,
@@ -76,7 +76,7 @@ export function acceptedWrites(
   for (const entry of accepted) {
     if (entry.field === 'type') {
       writes.written.push(entry.field);
-    } else if (isKindFactField(entry.field) || releasedOnTheWhole(entry.field, stored.whole_shape)) {
+    } else if (isKindFactField(entry.field) || releasedOnTheWhole(entry.field, stored.shown_by_parts)) {
       writes.released.push(entry.field);
     } else if (isMetadataField(entry.field) || isNameLocalField(entry.field)) {
       merged.push(entry);

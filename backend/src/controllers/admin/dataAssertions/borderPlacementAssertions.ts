@@ -59,7 +59,7 @@
  * under load.
  */
 
-import { experienceOfferedToReaderSql, hideLostSql } from '../../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, hasPinSql, hideLostSql } from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
@@ -105,7 +105,7 @@ const nearBorderUnconfirmed: CatalogueAssertion = {
             FROM experiences e
             JOIN experience_regions er ON er.experience_id = e.id AND er.assignment_type = 'auto'
             JOIN regions r ON r.id = er.region_id AND r.is_leaf
-           WHERE e.location IS NOT NULL
+           WHERE ${hasPinSql('e')}
              AND ${hideLostSql()}
              AND ${experienceOfferedToReaderSql()}
              AND EXISTS (SELECT 1 FROM region_geom_pieces p

@@ -80,6 +80,7 @@ import {
   admissionPinnedSql, MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql, placeOfferedSql, placeVisibleSql, sourcePlacesSql,
   withTypeClaim,
 } from '../../db/membership.js';
+import { shownByPartsSql } from '../../db/readerPredicates.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import { withSubjectsOnOneLine } from './subjectLinesKept.js';
 import {
@@ -966,13 +967,13 @@ async function writeUnderLock(
         -- that flag is held, and the Catalogue Check comparing the two leaves out a row
         -- whose held proposal holds the flag itself.
         tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-        -- A dispersed whole holds no point (ADR-0210): the run's coordinate
+        -- A record shown by its parts holds no point (ADR-0218): the run's coordinate
         -- for it is its record's view alone (reported_location below). An
         -- edition's coordinate is derived from its casts, and written past
         -- the gate, since a curator can decide nothing by answering it
         -- (ADR-0145). A curator's claim still keeps it.
         -- A short move passes the gate too (ADR-0140, the diff's 'short-move').
-        location = CASE WHEN experiences.whole_shape = 'dispersed' THEN NULL
+        location = CASE WHEN ${shownByPartsSql('experiences')} THEN NULL
                         WHEN experiences.curated_fields ? 'location' THEN experiences.location
                         WHEN $28::boolean THEN EXCLUDED.location
                         WHEN ${HELD} AND NOT ${PASSES('location')} THEN experiences.location ELSE EXCLUDED.location END,

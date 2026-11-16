@@ -34,7 +34,7 @@ import {
   placeHoldsKindSql, siteMembershipSql,
 } from './membership.js';
 import { pointOfComponentSql, pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
-import { publishedContentSql } from './readerPredicates.js';
+import { publishedContentSql, shownByPartsSql } from './readerPredicates.js';
 
 /** A field of a part this module writes, named as a place's claim and a held proposal name it. */
 export type PartField = 'image_url' | 'metadata.imageCredit' | 'subtitle' | 'metadata.wikipediaUrl';
@@ -150,7 +150,7 @@ export function partFollowsSql(pointFilter: string): string {
                                       component_part_name(pt.name, part.metadata->>'wikipediaUrl', pt.external_ref, whole.name),
                                       pt.id, whole.id),
                                     part.name) END AS name,
-                 CASE WHEN part.whole_shape = 'dispersed' THEN NULL ELSE pt.location END AS location,
+                 CASE WHEN ${shownByPartsSql('part')} THEN NULL ELSE pt.location END AS location,
                  pt.external_ref, pt.id AS point_id
             FROM (SELECT DISTINCT ON (el.experience_id) el.id, el.experience_id, el.name, el.location, el.external_ref
                     FROM experience_locations el

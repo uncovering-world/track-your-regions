@@ -137,8 +137,34 @@ export function offeredLocationSql(alias = 'el'): string {
 }
 
 /**
+ * Whether the record `e` is shown by its parts (ADR-0218 decision 2): a record
+ * of shape `none` that has parts, a serial World Heritage site, which has no
+ * pin of its own and is framed, counted and drawn as its parts. Asked of the
+ * shape alone, a column of the row a read already holds: the one record of
+ * shape `none` there is today is one its parts gave that shape
+ * (`shape_follows_parts()`). The parts test joins it here, in one place, with
+ * the first record of shape `none` that has none.
+ *
+ * **Spelled here and composed everywhere else**: a test of `shape`, or of a
+ * missing coordinate read as one, fails the backend lint in any other module.
+ */
+export function shownByPartsSql(e = 'e'): string {
+  return `${e}.shape = 'none'`;
+}
+
+/**
+ * Whether the record `e` has a pin (ADR-0218 decision 11): a point a marker,
+ * a distance or a fly-to can stand on. The record's coordinate, which every
+ * shape but `none` holds today (`experiences_shape_holds`). The other half of
+ * the question a missing coordinate used to answer, spelled here alone.
+ */
+export function hasPinSql(e = 'e'): string {
+  return `${e}.location IS NOT NULL`;
+}
+
+/**
  * A point the place `e` stands at, as a geometry expression: its own point.
- * A dispersed whole holds none (ADR-0210), and stands where its kind record
+ * A record shown by its parts holds none (ADR-0218), and stands where its kind record
  * puts it (the World Heritage list's most central component), else at a point
  * it shows; NULL where it has neither. Where a tick on the place is
  * (`db/visits.ts`), and the point a membership separated from it takes where
@@ -157,17 +183,16 @@ export function placeStandsAtSql(e: string): string {
  * Where a reader is told a place is, as three select-list columns:
  * `longitude`, `latitude` and `focus` (#2122).
  *
- * **A dispersed whole has no coordinate** (ADR-0205, ADR-0210). It is the
- * one place whose `location` is null: a serial World Heritage site, which is
- * its places. Seville's site is the cathedral, the Alcázar and the Archivo de
+ * **A record shown by its parts has no coordinate** (ADR-0205, ADR-0218;
+ * `shownByPartsSql`): a serial World Heritage site, which is its places. Seville's site is the cathedral, the Alcázar and the Archivo de
  * Indias, and no point of it stands for the other two. Its row answers null on
  * both axes, and as `focus` the frame of the places this caller is shown of it
  * (`wholeFocusSql`), which a map frames it by while it holds none of them. A
  * whole that shows no place answers null in all three and frames nothing.
  *
  * **Any other place is at the point of it nearest its own coordinate**
- * (ADR-0028 decision 2), a container whole included, which a traveller stands
- * inside: its own coordinate where that is one of its points,
+ * (ADR-0028 decision 2; `hasPinSql`), an area with parts included, which a
+ * traveller stands inside: its own coordinate where that is one of its points,
  * which is nearly every place, and otherwise the nearest of them, as for a
  * work cast in several editions. Nearest rather than "the coordinate where it
  * matches a point within ten metres": that rule is discontinuous, and a
@@ -207,9 +232,9 @@ export function readerPositionSql(alias = 'e', maySeeUnreadParam?: string): stri
       WHERE ${shown('el')}
       ORDER BY el.location::geography <-> ${alias}.location::geography, el.id
       LIMIT 1)`;
-  return `CASE WHEN ${alias}.location IS NOT NULL THEN ST_X(COALESCE(${nearestPlace}, ${alias}.location)) END as longitude,
-      CASE WHEN ${alias}.location IS NOT NULL THEN ST_Y(COALESCE(${nearestPlace}, ${alias}.location)) END as latitude,
-      CASE WHEN ${alias}.location IS NULL THEN ${wholeFocusSql(place, shown)} END as focus`;
+  return `CASE WHEN ${hasPinSql(alias)} THEN ST_X(COALESCE(${nearestPlace}, ${alias}.location)) END as longitude,
+      CASE WHEN ${hasPinSql(alias)} THEN ST_Y(COALESCE(${nearestPlace}, ${alias}.location)) END as latitude,
+      CASE WHEN ${shownByPartsSql(alias)} THEN ${wholeFocusSql(place, shown)} END as focus`;
 }
 
 /**

@@ -19,7 +19,7 @@
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, rowKindJoinSql } from '../../db/membership.js';
-import { lifecycleSelectSql } from '../../db/readerPredicates.js';
+import { lifecycleSelectSql, shownByPartsSql } from '../../db/readerPredicates.js';
 import {
   contestedViewFieldsSql, openViewFieldsSql, placeViewsSql, placeViewValueSql, viewValueSql, VIEW_FIELDS,
 } from '../../db/sourceViews.js';
@@ -81,8 +81,8 @@ const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
                 CASE WHEN f = 'location' THEN ${POINTS_APART} END AS metres
            FROM unnest(${FIELD_ORDER}) AS f
           WHERE NOT f = ANY(${openViewFieldsSql('e.id')}::text[])
-            -- A dispersed whole holds no point, asked or not (ADR-0210).
-            AND (f <> 'location' OR e.location IS NOT NULL)
+            -- A record shown by its parts holds no point, asked or not (ADR-0218).
+            AND (f <> 'location' OR NOT ${shownByPartsSql('e')})
        ) q
       WHERE q.reporting > 0)`;
 
