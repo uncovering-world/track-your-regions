@@ -5,13 +5,13 @@
  * conservation (`P5816`), inceptions (`P571`) and significant events
  * (`P793`), the start time of each coordinate (`P625`) that still holds, and
  * each heritage designation (`P1435`) that still holds, with its start time;
- * and every dated statement a place's lifetime is read from (#1719,
- * `places/lifetime.ts`).
+ * and every dated statement and dated event a place's lifetime is read from
+ * (#1719, #2578, `places/lifetime.ts`).
  */
 
 import type { CompactStatement, CompactValue } from '../../dumps/wikidata/compactEntity.js';
 import { entitiesOf } from './entities.js';
-import { bestStatements, isNoValue, itemsOf, standingStatements, yearOf } from './values.js';
+import { bestStatements, isNoValue, itemOf, itemsOf, standingStatements, yearOf } from './values.js';
 
 /**
  * A time a statement gives, as precisely as Wikidata states it: `precision` is
@@ -48,6 +48,8 @@ export interface StandingFacts {
   events: readonly string[];
   /** The best-rank statements a place's lifetime is read from, each with its time (#1719). */
   dated: readonly DatedStatement[];
+  /** The dated significant events that say the place was destroyed or stands again (#2578). */
+  datedEvents: readonly DatedEvent[];
 }
 
 /** The properties a place's lifetime is read from: its starts, then its ends. */
@@ -72,6 +74,61 @@ export interface DatedStatement {
   /** The statement says the date is approximate (`P1480` circa). */
   circa: boolean;
   /** The statement's id (`Q214944$899b…`), as Wikidata's JSON gives it. */
+  statement: string;
+}
+
+/**
+ * The significant events (`P793`) that say a place was destroyed: what stood
+ * is gone from that day. The Old Bridge in Mostar states a *destruction* on
+ * 9 November 1993, the Kintai Bridge a *demolition* on 14 September 1950,
+ * Ponte Pietra in Verona a *building implosion* on 24 April 1945. An event
+ * that says what happened to a place and not what was left of it is not among
+ * them: Berlin Cathedral's *bombardment* of 1944 left it standing, as
+ * Kinkaku-ji's *conflagration* of 1950 did not, and the item's word cannot
+ * tell the two apart.
+ */
+export const DESTROYED_EVENTS: Readonly<Record<string, string>> = {
+  Q17781833: 'destruction',
+  Q331483: 'demolition',
+  Q1650581: 'building implosion',
+};
+
+/**
+ * The significant events that say a place stands again. The Old Bridge
+ * states an *architectural reconstruction* from 2001 to 23 July 2004, the
+ * Kintai Bridge a *reconstruction* in 1953, the Vizcaya Bridge a *reopening*
+ * on 19 June 1941 after its destruction in 1937. Each is also the word for
+ * work on a building that never fell (Berlin Cathedral, the Neues Museum), so
+ * one is read only after an end (`places/lifetime.ts`).
+ */
+export const REBUILT_EVENTS: Readonly<Record<string, string>> = {
+  Q1370468: 'architectural reconstruction',
+  Q2478058: 'reconstruction',
+  Q52385658: 'rebuilding',
+  Q11795864: 'rebuilding, a law term in Poland',
+  Q16571590: 'reopening',
+};
+
+/** The qualifiers an event's date is read from: its point in time, then its end time. */
+export const EVENT_DATE_QUALIFIERS = ['P585', 'P582'] as const;
+export type EventDateQualifier = (typeof EVENT_DATE_QUALIFIERS)[number];
+
+/** The qualifier that says an event happened to a part of the place (`P518` applies to part). */
+export const APPLIES_TO_PART = 'P518';
+
+/**
+ * One date of a best-rank significant event (`P793`) among `DESTROYED_EVENTS`
+ * and `REBUILT_EVENTS`, as the item states it. An event that names a part
+ * (`P518`) is none: Hirano Shrine's *destruction* of 4 September 2018 is its
+ * worship hall's, and the shrine was there to visit.
+ */
+export interface DatedEvent {
+  event: string;
+  qualifier: EventDateQualifier;
+  time: StatedTime;
+  julian: boolean;
+  circa: boolean;
+  /** The event's statement id. */
   statement: string;
 }
 
@@ -119,30 +176,47 @@ function datedStatementsOf(claims: Record<string, CompactStatement[]>): DatedSta
   }));
 }
 
+/** Every date of the best-rank events that say the place was destroyed or stands again, whole-place events only. */
+function datedEventsOf(claims: Record<string, CompactStatement[]>): DatedEvent[] {
+  return bestStatements(claims.P793).flatMap((statement) => {
+    const event = itemOf(statement.value);
+    if (!event || !(DESTROYED_EVENTS[event] ?? REBUILT_EVENTS[event])) return [];
+    if ((statement.qualifiers?.[APPLIES_TO_PART] ?? []).some((value) => !isNoValue(value))) return [];
+    const circa = (statement.qualifiers?.P1480 ?? []).includes(CIRCA);
+    return EVENT_DATE_QUALIFIERS.flatMap((qualifier) => (statement.qualifiers?.[qualifier] ?? []).flatMap((value) => {
+      const time = timeOf(value);
+      return time ? [{ event, qualifier, time, julian: isJulian(value), circa, statement: statement.id }] : [];
+    }));
+  });
+}
+
+/** What one item's statements say of whether it still stands. */
+export function standingFactsOf(claims: Record<string, CompactStatement[]>): StandingFacts {
+  const ends = bestStatements(claims.P576).filter((statement) => !isNoValue(statement.value));
+  const designations = standingStatements(claims.P1435).filter((statement) => !isNoValue(statement.value));
+  return {
+    ended: ends.length > 0,
+    endedYear: ends.map((statement) => yearOf(statement.value)).find((year) => year !== null) ?? null,
+    endedAt: timesOf(ends.map((statement) => statement.value))[0] ?? null,
+    use: itemsOf(bestStatements(claims.P5817)),
+    conservation: itemsOf(bestStatements(claims.P5816)),
+    heritage: designations.length > 0,
+    // Every start a designation states, as the live reader binds each as its own row; one with none stands undated.
+    designatedSince: designations.flatMap((statement) => {
+      const times = timesOf(statement.qualifiers?.P580 ?? []);
+      return times.length > 0 ? times : [null];
+    }),
+    inceptions: timesOf(bestStatements(claims.P571).map((statement) => statement.value)),
+    placedSince: standingStatements(claims.P625).flatMap((statement) => timesOf(statement.qualifiers?.P580 ?? [])),
+    events: itemsOf(bestStatements(claims.P793)),
+    dated: datedStatementsOf(claims),
+    datedEvents: datedEventsOf(claims),
+  };
+}
+
 /** The standing facts of each kept item; an item the subset does not keep has none. */
 export async function subsetStandingFacts(ids: string[]): Promise<Map<string, StandingFacts>> {
   const out = new Map<string, StandingFacts>();
-  for (const [id, { entity }] of await entitiesOf(ids)) {
-    const { claims } = entity;
-    const ends = bestStatements(claims.P576).filter((statement) => !isNoValue(statement.value));
-    const designations = standingStatements(claims.P1435).filter((statement) => !isNoValue(statement.value));
-    out.set(id, {
-      ended: ends.length > 0,
-      endedYear: ends.map((statement) => yearOf(statement.value)).find((year) => year !== null) ?? null,
-      endedAt: timesOf(ends.map((statement) => statement.value))[0] ?? null,
-      use: itemsOf(bestStatements(claims.P5817)),
-      conservation: itemsOf(bestStatements(claims.P5816)),
-      heritage: designations.length > 0,
-      // Every start a designation states, as the live reader binds each as its own row; one with none stands undated.
-      designatedSince: designations.flatMap((statement) => {
-        const times = timesOf(statement.qualifiers?.P580 ?? []);
-        return times.length > 0 ? times : [null];
-      }),
-      inceptions: timesOf(bestStatements(claims.P571).map((statement) => statement.value)),
-      placedSince: standingStatements(claims.P625).flatMap((statement) => timesOf(statement.qualifiers?.P580 ?? [])),
-      events: itemsOf(bestStatements(claims.P793)),
-      dated: datedStatementsOf(claims),
-    });
-  }
+  for (const [id, { entity }] of await entitiesOf(ids)) out.set(id, standingFactsOf(entity.claims));
   return out;
 }
