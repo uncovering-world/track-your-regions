@@ -2,6 +2,7 @@
 
 **Date:** YYYY-MM-DD
 **Status:** Draft | Accepted | Superseded by ADR-XXXX | Deprecated
+**Built by:** #N, #N (every issue built to this ADR; each names it back in its body, see `README.md` § An ADR names the issues built to it)
 
 ---
 

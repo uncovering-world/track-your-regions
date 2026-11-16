@@ -3,6 +3,7 @@
 **Date:** 2026-11-16
 **Status:** Draft
 **Issue:** [#2577](https://github.com/uncovering-world/track-your-regions/issues/2577), Epic #2115
+**Built by:** #2577, #505, #2248, #1948, #1676, #2582, #2583, #2579, #2580, #2125, #1969, #2623
 **Narrows (once accepted):** [ADR-0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md)
 decisions 1, 2 and 5 (a whole's two shapes, the row constraint, and "every reader asks the
 column");
