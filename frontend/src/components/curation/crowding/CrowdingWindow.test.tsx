@@ -7,7 +7,7 @@
  * bar's summary and the report by name.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -19,13 +19,31 @@ vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   fetchCrowdingPlace: vi.fn(),
 }));
 // The map needs WebGL; the list, the card and the answers are what is tested here.
-vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" />, CrowdingLegend: () => null }));
+// The map's dots, as plain elements a test can hover or focus: what reaches the window is the map's onHover.
+vi.mock('./CrowdingMap', () => ({
+  CrowdingMap: ({ view, onHover }: {
+    view: { kind: 'region'; places: { membershipId: number }[] } | { kind: 'place' };
+    onHover: (membershipId: number | null, by: 'pointer' | 'focus') => void;
+  }) => (
+    <div data-testid="crowding-map">
+      {view.kind === 'region' && view.places.map(place => (
+        <span
+          key={place.membershipId} data-testid={`dot-${place.membershipId}`} tabIndex={-1}
+          onMouseEnter={() => onHover(place.membershipId, 'pointer')} onMouseLeave={() => onHover(null, 'pointer')}
+          onFocus={() => onHover(place.membershipId, 'focus')} onBlur={() => onHover(null, 'focus')}
+        />
+      ))}
+    </div>
+  ),
+  CrowdingLegend: () => null,
+}));
 
 import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingGroup, fetchCrowdingPlace } from '../../../api/crowdingAnswers';
 import { CROWDING_LAYOUT, CrowdingWindow } from './CrowdingWindow';
 import type { Staging } from './crowdingStaging';
 import {
-  ALEXANDERPLATZ_LOOK, berlinGroup, berlinSquares, NOLLENDORFPLATZ, ROSA_LUXEMBURG_PLATZ, SCHLOSSPLATZ, schlossplatzCircle,
+  ALEXANDERPLATZ_LOOK, berlinGroup, berlinSquares, LEIPZIGER_PLATZ, NOLLENDORFPLATZ, ROSA_LUXEMBURG_PLATZ, SCHLOSSPLATZ,
+  schlossplatzCircle,
 } from './crowdingFixtures';
 
 const mockedGroup = vi.mocked(fetchCrowdingGroup);
@@ -415,6 +433,155 @@ describe('the window open on a place, as a way in opens it', () => {
     expect(CROWDING_LAYOUT.mapColumn).toMatchObject({ width: { xs: '100%', lg: 320, xl: 400 } });
     // Below a laptop's width the list is the box the table's headings stick in.
     expect(CROWDING_LAYOUT.list).toMatchObject({ overflow: { sm: 'auto', lg: 'visible' }, maxHeight: { sm: '75vh', lg: 'none' } });
+  });
+});
+
+describe('a dot finds its row (#2576)', () => {
+  const scrollIntoView = vi.fn();
+
+  beforeEach(() => {
+    // jsdom lays nothing out and has no scrollIntoView: every row stands below the screen.
+    scrollIntoView.mockReset();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const below = this.getAttribute('role') === 'row';
+      return { top: below ? 2200 : 0, bottom: below ? 2240 : 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  /** A dot on the map, by its place's name. */
+  const dot = (name: string) => screen.getByTestId(`dot-${berlinSquares.find(place => place.name === name)!.membershipId}`);
+  const leipziger = () => screen.getByTestId(`crowding-place-${LEIPZIGER_PLATZ}`);
+  const rested = () => new Promise(resolve => setTimeout(resolve, 400));
+
+  it('brings Leipziger Platz\'s row into view and marks it once the pointer rests on its dot, and leaves the table there', async () => {
+    renderWindow();
+    await inRegion();
+
+    fireEvent.mouseEnter(dot('Leipziger Platz'));
+    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollIntoView.mock.contexts[0]).toBe(leipziger());
+
+    fireEvent.mouseLeave(dot('Leipziger Platz'));
+    expect(leipziger()).not.toHaveAttribute('data-found');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the mark when finding the row moved the map from under a pointer that stayed', async () => {
+    renderWindow();
+    await inRegion();
+    // The page scrolled to the row while the map pane was not yet stuck: the pane, and its dots, moved up.
+    let paneTop = 240;
+    const rects = vi.mocked(Element.prototype.getBoundingClientRect);
+    rects.mockImplementation(function (this: Element) {
+      if (this.getAttribute('data-testid') === 'crowding-map-pane') {
+        return { top: paneTop, bottom: paneTop + 420, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+      }
+      const below = this.getAttribute('role') === 'row';
+      return { top: below ? 2200 : 0, bottom: below ? 2240 : 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
+
+    fireEvent.mouseEnter(dot('Leipziger Platz'));
+    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    paneTop = 16;
+    fireEvent.mouseLeave(dot('Leipziger Platz'));
+    expect(leipziger()).toHaveAttribute('data-found', 'true');
+
+    // A dot the map brought under the still pointer finds nothing while the pointer stays.
+    const nollendorf = () => screen.getByTestId(`crowding-place-${NOLLENDORFPLATZ}`);
+    fireEvent.mouseEnter(dot('Nollendorfplatz'));
+    await rested();
+    expect(nollendorf()).not.toHaveAttribute('data-found');
+    expect(leipziger()).toHaveAttribute('data-found', 'true');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // The pointer moves within that dot, which sends no second enter: resting there finds its row.
+    fireEvent.pointerMove(window, { clientX: 300, clientY: 200 });
+    await waitFor(() => expect(nollendorf()).toHaveAttribute('data-found', 'true'));
+    expect(leipziger()).not.toHaveAttribute('data-found');
+  });
+
+  it('forgets the dot the map brought under a still pointer once the pointer leaves it', async () => {
+    renderWindow();
+    await inRegion();
+    let paneTop = 240;
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.getAttribute('data-testid') === 'crowding-map-pane') {
+        return { top: paneTop, bottom: paneTop + 420, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+      }
+      const below = this.getAttribute('role') === 'row';
+      return { top: below ? 2200 : 0, bottom: below ? 2240 : 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
+
+    fireEvent.mouseEnter(dot('Leipziger Platz'));
+    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    paneTop = 16;
+    fireEvent.mouseLeave(dot('Leipziger Platz'));
+    fireEvent.mouseEnter(dot('Nollendorfplatz'));
+    fireEvent.mouseLeave(dot('Nollendorfplatz'));
+    fireEvent.pointerMove(window, { clientX: 300, clientY: 200 });
+    await rested();
+    expect(screen.getByTestId(`crowding-place-${NOLLENDORFPLATZ}`)).not.toHaveAttribute('data-found');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the mark on a blur even after the map moved, since a scroll never moves focus', async () => {
+    renderWindow();
+    await inRegion();
+    let paneTop = 240;
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.getAttribute('data-testid') === 'crowding-map-pane') {
+        return { top: paneTop, bottom: paneTop + 420, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+      }
+      const below = this.getAttribute('role') === 'row';
+      return { top: below ? 2200 : 0, bottom: below ? 2240 : 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
+
+    fireEvent.focus(dot('Leipziger Platz'));
+    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    paneTop = 16;
+    fireEvent.blur(dot('Leipziger Platz'));
+    expect(leipziger()).not.toHaveAttribute('data-found');
+  });
+
+  it('finds a row for keyboard focus on a dot too', async () => {
+    renderWindow();
+    await inRegion();
+
+    fireEvent.focus(dot('Leipziger Platz'));
+    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    fireEvent.blur(dot('Leipziger Platz'));
+    expect(leipziger()).not.toHaveAttribute('data-found');
+  });
+
+  it('moves nothing while the pointer only crosses dots on its way', async () => {
+    renderWindow();
+    await inRegion();
+
+    fireEvent.mouseEnter(dot('Leipziger Platz'));
+    fireEvent.mouseLeave(dot('Leipziger Platz'));
+    fireEvent.mouseEnter(dot('Nollendorfplatz'));
+    fireEvent.mouseLeave(dot('Nollendorfplatz'));
+    await rested();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(leipziger()).not.toHaveAttribute('data-found');
+  });
+
+  it('scrolls nothing on a hover over a row, which only lights its dot', async () => {
+    renderWindow();
+    await inRegion();
+
+    fireEvent.mouseEnter(leipziger());
+    await rested();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(leipziger()).not.toHaveAttribute('data-found');
   });
 });
 

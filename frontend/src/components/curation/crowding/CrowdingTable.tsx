@@ -15,7 +15,7 @@
  * name held in view.
  */
 
-import type { ReactNode, Ref } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode, type Ref } from 'react';
 import { alpha, Box, ButtonBase, Chip, Link, Stack, Tooltip, Typography } from '@mui/material';
 import type { Theme } from '@mui/material';
 import type { CrowdingGroupPlace } from '../../../api/crowding';
@@ -24,6 +24,7 @@ import { DenseThumbnail } from '../../shared/DenseThumbnail';
 import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
 import type { DrawnStanding } from './crowdingStaging';
 import { FigureCells, FigureHeadings, figuresWidth, HOVERED_TINT, stickyName, type FigureColumns } from './FigureTable';
+import { bringIntoView, ROW_SCROLL_MARGINS } from './rowInView';
 
 /** A standing's colour, the map's and the chip's: shown blue, shadowed grey, new orange, refused red. */
 export const STANDING_COLOR: Record<DrawnStanding, 'primary' | 'default' | 'warning' | 'error'> = {
@@ -46,6 +47,23 @@ const THUMB = 40;
 
 /** The open place's own row in its circle. */
 const OWN_TINT = (theme: Theme) => alpha(theme.palette.warning.main, 0.08);
+
+/** The row of the dot the pointer rests on: stronger than a hover's tint, blue where the own row is amber. */
+const FOUND_TINT = (theme: Theme) => alpha(theme.palette.primary.main, 0.16);
+
+/** The found row's edge, so it is seen at a glance among a long list's rows. */
+const FOUND_EDGE = (theme: Theme) => `inset 4px 0 0 ${theme.palette.primary.main}`;
+
+/** Both refs a row's element feeds: the caller's, for a table that scrolls to it, and its own. */
+function useRowRef(rowRef: Ref<HTMLDivElement> | undefined) {
+  const own = useRef<HTMLDivElement | null>(null);
+  const setRef = useCallback((node: HTMLDivElement | null) => {
+    own.current = node;
+    if (typeof rowRef === 'function') rowRef(node);
+    else if (rowRef) (rowRef as { current: HTMLDivElement | null }).current = node;
+  }, [rowRef]);
+  return { own, setRef };
+}
 
 /**
  * The grid every row and the heading row share: rank, picture, name, the
@@ -126,8 +144,8 @@ export interface RowPlace {
 }
 
 export function CrowdingRow({
-  place, rank, shown, own = false, standingWords = false, note, why, answers, distance, columns, hovered, rowRef, testId,
-  onHover, onOpen,
+  place, rank, shown, own = false, standingWords = false, note, why, answers, distance, columns, hovered, found = false,
+  rowRef, testId, onHover, onOpen,
 }: {
   place: RowPlace;
   rank: number | null;
@@ -147,6 +165,11 @@ export function CrowdingRow({
   distance?: string;
   columns: FigureColumns;
   hovered: boolean;
+  /**
+   * The pointer rests on its dot on the map (#2576): the row is marked and brought into view where it is
+   * out of it. A hover on the row itself never sets it, so a row never scrolls the table under the pointer.
+   */
+  found?: boolean;
   /** The row's element, for a table that scrolls to it. */
   rowRef?: Ref<HTMLDivElement>;
   testId?: string;
@@ -154,8 +177,14 @@ export function CrowdingRow({
   onOpen: (membershipId: number) => void;
 }) {
   const moved = place.drawn !== place.standing;
+  const marked = found && !own;
+  const { own: element, setRef } = useRowRef(rowRef);
+  useEffect(() => {
+    if (marked) bringIntoView(element.current);
+  }, [marked, element]);
   let tint: ((theme: Theme) => string) | undefined;
   if (own) tint = OWN_TINT;
+  else if (marked) tint = FOUND_TINT;
   else if (hovered) tint = HOVERED_TINT;
   const articleHref = safeHref(shown?.wikipediaUrl ?? null);
   const name = own ? (
@@ -188,13 +217,17 @@ export function CrowdingRow({
   );
   return (
     <Box
-      ref={rowRef}
+      ref={setRef}
       role="row"
       aria-label={own ? `${place.name}, this place` : undefined}
       data-testid={testId}
+      data-found={marked || undefined}
       onMouseEnter={() => onHover(place.membershipId)}
       onMouseLeave={() => onHover(null)}
-      sx={{ ...rowGrid(columns, distance !== undefined), px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: tint }}
+      sx={{
+        ...rowGrid(columns, distance !== undefined), ...ROW_SCROLL_MARGINS,
+        px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: tint, boxShadow: marked ? FOUND_EDGE : undefined,
+      }}
     >
       {/* The rank is the rows' order, which a screen reader reads already. */}
       <Typography aria-hidden variant="caption" color={own ? 'warning.dark' : 'text.secondary'} sx={{ fontVariantNumeric: 'tabular-nums' }}>

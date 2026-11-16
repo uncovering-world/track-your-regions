@@ -24,7 +24,7 @@ import { drawnStanding, listPart, type Staging } from './crowdingStaging';
 import { VenueCreditLine, type FigureColumns } from './FigureTable';
 import { nounOf, placeNote, whyWords, type RuleWords } from './rowWords';
 
-export function RegionList({ places, rule, typeExempt, staging, columns, hovered, onHover, onOpen, onAnswer }: {
+export function RegionList({ places, rule, typeExempt, staging, columns, hovered, found, onHover, onOpen, onAnswer }: {
   /** The group's places, best known first. */
   places: readonly CrowdingGroupPlace[];
   rule: RuleWords;
@@ -33,6 +33,8 @@ export function RegionList({ places, rule, typeExempt, staging, columns, hovered
   /** The table's columns: the fame and score, and the venues where the kind keeps them. */
   columns: FigureColumns;
   hovered: number | null;
+  /** The place whose dot the pointer rests on: its row is marked and brought into view. */
+  found: number | null;
   onHover: (membershipId: number | null) => void;
   /** A place's name clicked: its own circle opens. */
   onOpen: (membershipId: number) => void;
@@ -58,6 +60,7 @@ export function RegionList({ places, rule, typeExempt, staging, columns, hovered
       answers={<AnswerButtons place={place} staging={staging} onAnswer={answer => onAnswer(place, answer)} />}
       columns={columns}
       hovered={hovered === place.membershipId}
+      found={found === place.membershipId}
       onHover={onHover}
       onOpen={onOpen}
     />

@@ -30,6 +30,7 @@ import { circleHeading, circleRows } from './circleGroups';
 import { CrowdingRow, CrowdingTable, STANDING_COLOR } from './CrowdingTable';
 import { drawnStanding, type Staging } from './crowdingStaging';
 import { VenueCreditLine, type FigureColumns } from './FigureTable';
+import { bringIntoView } from './rowInView';
 import { distanceWords, nounOf, ruleReading, whyWords, type RuleWords } from './rowWords';
 
 /**
@@ -61,22 +62,7 @@ function Picture({ name, imageUrl, credit }: Pick<CrowdingPlaceView['place'], 'n
   );
 }
 
-/** Whether a row stands outside the screen or outside a box that scrolls around it. */
-function outOfView(row: HTMLElement): boolean {
-  const { top, bottom } = row.getBoundingClientRect();
-  let shownTop = 0;
-  let shownBottom = window.innerHeight;
-  for (let box = row.parentElement; box; box = box.parentElement) {
-    const { overflowY } = window.getComputedStyle(box);
-    if (overflowY !== 'auto' && overflowY !== 'scroll') continue;
-    const edges = box.getBoundingClientRect();
-    shownTop = Math.max(shownTop, edges.top);
-    shownBottom = Math.min(shownBottom, edges.bottom);
-  }
-  return top < shownTop || bottom > shownBottom;
-}
-
-export function PlaceView({ view, places, rule, staging, columns, frozen = false, hovered, onHover, onOpen, onAnswer }: {
+export function PlaceView({ view, places, rule, staging, columns, frozen = false, hovered, found, onHover, onOpen, onAnswer }: {
   view: CrowdingPlaceView;
   /**
    * The group's places, as the region's list holds them: a neighbour among them is drawn with its
@@ -90,6 +76,8 @@ export function PlaceView({ view, places, rule, staging, columns, frozen = false
   columns: FigureColumns;
   frozen?: boolean;
   hovered: number | null;
+  /** The place whose dot the pointer rests on: its row is marked and brought into view. */
+  found: number | null;
   onHover: (membershipId: number | null) => void;
   /** A place around it clicked: its own circle opens. */
   onOpen: (membershipId: number) => void;
@@ -106,8 +94,7 @@ export function PlaceView({ view, places, rule, staging, columns, frozen = false
   useEffect(() => {
     if (shownPlace.current === place.membershipId) return;
     shownPlace.current = place.membershipId;
-    const row = ownRow.current;
-    if (row && outOfView(row)) row.scrollIntoView({ block: 'nearest' });
+    bringIntoView(ownRow.current);
   }, [place.membershipId]);
   const articleHref = safeHref(place.wikipediaUrl);
   const drawn = drawnStanding(place, staging);
@@ -168,7 +155,8 @@ export function PlaceView({ view, places, rule, staging, columns, frozen = false
                   <AnswerButtons place={full} staging={staging} frozen={frozen} onAnswer={answer => onAnswer(full, answer)} />
                 )}
                 distance={distanceWords(entry.distanceM)}
-                columns={columns} hovered={hovered === entry.membershipId} onHover={onHover} onOpen={onOpen}
+                columns={columns} hovered={hovered === entry.membershipId} found={found === entry.membershipId}
+                onHover={onHover} onOpen={onOpen}
               />
             );
           })}
