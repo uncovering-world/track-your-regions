@@ -458,13 +458,22 @@ describe('a dot finds its row (#2576)', () => {
   const dot = (name: string) => screen.getByTestId(`dot-${berlinSquares.find(place => place.name === name)!.membershipId}`);
   const leipziger = () => screen.getByTestId(`crowding-place-${LEIPZIGER_PLATZ}`);
   const rested = () => new Promise(resolve => setTimeout(resolve, 400));
+  /**
+   * A row's find, settled: marked, and its scroll run. The mark lands in the
+   * commit and the scroll in the effect after it, so waiting on the mark alone
+   * reads the scroll count before the effect has run.
+   */
+  const foundRow = (row: () => HTMLElement) => waitFor(() => {
+    expect(row()).toHaveAttribute('data-found', 'true');
+    expect(scrollIntoView.mock.contexts).toContain(row());
+  });
 
   it('brings Leipziger Platz\'s row into view and marks it once the pointer rests on its dot, and leaves the table there', async () => {
     renderWindow();
     await inRegion();
 
     fireEvent.mouseEnter(dot('Leipziger Platz'));
-    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    await foundRow(leipziger);
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
     expect(scrollIntoView.mock.contexts[0]).toBe(leipziger());
@@ -489,7 +498,7 @@ describe('a dot finds its row (#2576)', () => {
     });
 
     fireEvent.mouseEnter(dot('Leipziger Platz'));
-    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    await foundRow(leipziger);
     paneTop = 16;
     fireEvent.mouseLeave(dot('Leipziger Platz'));
     expect(leipziger()).toHaveAttribute('data-found', 'true');
@@ -504,7 +513,7 @@ describe('a dot finds its row (#2576)', () => {
 
     // The pointer moves within that dot, which sends no second enter: resting there finds its row.
     fireEvent.pointerMove(window, { clientX: 300, clientY: 200 });
-    await waitFor(() => expect(nollendorf()).toHaveAttribute('data-found', 'true'));
+    await foundRow(nollendorf);
     expect(leipziger()).not.toHaveAttribute('data-found');
   });
 
@@ -521,7 +530,7 @@ describe('a dot finds its row (#2576)', () => {
     });
 
     fireEvent.mouseEnter(dot('Leipziger Platz'));
-    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    await foundRow(leipziger);
     paneTop = 16;
     fireEvent.mouseLeave(dot('Leipziger Platz'));
     fireEvent.mouseEnter(dot('Nollendorfplatz'));
@@ -545,7 +554,7 @@ describe('a dot finds its row (#2576)', () => {
     });
 
     fireEvent.focus(dot('Leipziger Platz'));
-    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    await foundRow(leipziger);
     paneTop = 16;
     fireEvent.blur(dot('Leipziger Platz'));
     expect(leipziger()).not.toHaveAttribute('data-found');
@@ -556,7 +565,7 @@ describe('a dot finds its row (#2576)', () => {
     await inRegion();
 
     fireEvent.focus(dot('Leipziger Platz'));
-    await waitFor(() => expect(leipziger()).toHaveAttribute('data-found', 'true'));
+    await foundRow(leipziger);
     fireEvent.blur(dot('Leipziger Platz'));
     expect(leipziger()).not.toHaveAttribute('data-found');
   });
