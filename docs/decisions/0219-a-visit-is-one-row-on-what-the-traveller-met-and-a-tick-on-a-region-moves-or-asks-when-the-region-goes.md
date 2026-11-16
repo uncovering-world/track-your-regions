@@ -15,8 +15,7 @@ hangs under a visit of any of the four);
 decision 7 (a region is painted from a visit's own point; a whole shown visited still paints
 none);
 [ADR-0197](0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md)
-decisions 2 and 3 (an automatic row gains a mark of whether the place's own point put it there;
-a curator's manual row is read into every world view, and outlives its region). No ADR records the refusal of #764 that decision 6 replaces; it is described in
+decision 3 (a curator's manual row is read into every world view, and outlives its region). No ADR records the refusal of #764 that decision 6 replaces; it is described in
 `docs/tech/world-views.md` § A hierarchy edit keeps every visit.
 
 ---
@@ -40,18 +39,43 @@ inside a view. A place with a coordinate is placed again from its geometry; a re
 ground (#1676) has nothing to be placed again from.
 
 The maintainer decided on 2026-09-30 (#768) that a visit to a place is recorded as the place,
-and that every world view paints its regions from it. The maintainer decided on 2026-11-16 (#2579, two
-decision comments) what a tick on a region refers to, what happens when that region goes, what a
-tick on a record with no ground paints, and how a traveller says where inside a ticked region.
-The same day the maintainer decided that visits are recorded and counted on **one layer of regions**, as
-NomadMania does. That layer is the canon, which is still to be built: one layer, grouped into
-larger regions above it and perhaps divided below it. Until it exists, the leaf layer of a
-world view plays that part. A tick above the layer is a lighter kind of visit. This replaces
-two lines of #768's direction of 2026-09-30, which is an issue and no ADR, so it is recorded
-here: that a visit is "not recorded against a world view's region", for a tick on a region
-only; and that it is not recorded against "an own atom id", since the canon's region is what a
-region visit will refer to. A tick on a place stays a place with a coordinate. This ADR records
-those decisions and the model they need.
+and that every world view paints its regions from it. Four rulings of the maintainer on #2579,
+all of 2026-11-16, are recorded here:
+
+- what a tick on a region refers to, that another view paints the region that covers it with
+  nothing stored per view, that a tick is never lost when its region changes or goes, that a
+  curator's placement works the same way, and that a record with no ground paints by its kind:
+  an event paints its place's region, a dish paints nothing and the product asks where;
+- how a traveller says where inside a ticked region, what an own point keeps and who sees it;
+- that visits are recorded and counted on **one layer of regions**, as NomadMania does, and
+  that a tick above it is a lighter kind. That layer is the canon, which is still to be built:
+  one layer, grouped into larger regions above it and perhaps divided below it. Until it
+  exists, the leaf layer of a world view plays that part;
+- that a tick on a record that lies in several counted regions paints none of them by itself,
+  and the traveller is asked which.
+
+The same day the maintainer corrected this ADR's first cover rule: every world view is assembled
+from the base layer's divisions, so a region covers another by its bricks, with a tolerance
+where a brick is cut between regions. On 2026-11-17 the maintainer confirmed (#2579) that the
+tolerance stays on every brick, cut or whole, and gave the reason: if territories are ever
+compared, different levels of simplified geometry may cause trouble, so an exact match must not
+be required.
+
+The third ruling replaces two lines of #768's direction of 2026-09-30, which is an issue and no
+ADR, so it is recorded here: that a visit is "not recorded against a world view's region", for
+a tick on a region only; and that it is not recorded against "an own atom id", since the
+canon's region is what a region visit will refer to. A tick on a place stays a place with a
+coordinate.
+
+Everything else in this ADR is the design's: rules the session reached from those rulings and
+from the milestone, open to the maintainer's veto. Where a decision below holds one, it says
+so. They are: a tick on a place paints the region of its own point; a lighter tick is satisfied
+by a counted region inside it, and stays; a region with neither bricks nor an outline cannot be
+ticked, and one drawn by hand with no division paints only itself; the common region painted
+lighter while a place's side is not said; the value
+of decision 4's tolerance, 95 % by area (that a tolerance stands on every brick is the
+maintainer's); the one refusal decision 6 leaves; an event's tick counts its place's region in
+full; and an area visited only through a part or a place inside it reads as visited.
 
 The scenes it is built from:
 
@@ -73,31 +97,70 @@ Measured on the development database on 2026-11-16, read-only:
 
 - 10 place visits of one traveller, no trip, 5 works seen, **no region visit**, no note and no
   rating. No row of `experience_regions` is manual (73,643 are automatic), and no rejection
-  names a region. Nothing here needs a data migration.
+  names a region. Nothing here needs a data migration. The maintainer decided on 2026-11-17
+  (#2116) that nothing a curator decided on the development catalogue is carried to the fresh
+  database, so no placement a curator makes there before then is carried either.
 - The Administrative view has 3,831 regions in three levels (8, 237, 3,586), each with a
   geometry and exactly one division. 229 of its 237 countries are not leaves, so a tick on a
   country ("tick the countries visited", the milestone's criterion 2) is a tick on a region
   with children; today's writer accepts a tick on a region of any level. The Wikivoyage
-  view has 4,301 regions and **none has a geometry** (4,003 are unmatched), so it lists no place
-  and can paint nothing today, though it is public.
+  view has 4,301 regions and **none has a geometry**: 301 hold a division, their own or one of
+  a region under them, and 4,000 hold none. So it lists no place and can paint nothing today,
+  though it is public. A second import of the same source, made to measure a matching pass
+  (#622), has 3,234 regions, 477 of them with a division.
 - A Wikidata item is no key of a region: the Administrative view carries none, and in the
   Wikivoyage view 768 items are shared by 2,147 regions (Armenia appears twice, Wyoming three
   times).
 - Reading the regions of 2,000 visited places in the Administrative view took about 10 ms
   (6,402 rows of `experience_regions`, 1,017 regions; one run, a stand-in set).
-- Testing which leaves of a view lie where Toscana's outline is took 2,164 ms against the
-  outline itself (19,796 points) and 240 ms against its 160 subdivided pieces
-  (`region_geom_pieces`). Toscana held 1.000000 of its own area and each of its five neighbours
-  0.000000. A circle of 2 km around a point in Siena, through the index on the pieces, took
-  10 ms.
-- Eight regions, seven of them coastal (Umbria is landlocked), are drawn by both OpenStreetMap (`workbench.wikidata_geoshapes`, the
-  import's shapes) and GADM. Their areas differ by 0.1 % to 1.3 %, so those shapes are cut at
-  the shore. Intersected at about 1 km detail, each source's region holds 0.9816 to 0.9976 of
-  the other's (242 ms for the eight).
+- **Every region of every view is assembled from the same base layer.** A region holds
+  divisions of `administrative_divisions` (GADM today) through `region_members`, and its
+  outline is the union of its members and of its child regions (`collectUnionInputs`). A member
+  may be a part of a division cut by hand (`custom_geom`). OpenStreetMap's shapes
+  (`workbench.wikidata_geoshapes`) help an import match a region to divisions and are never
+  stored as a region's outline. One kind of region is not the sum of its members: one whose
+  boundary an admin drew by hand (`is_custom_boundary`, written by `saveDrawnOutline` and
+  `insertDrawnRegion`). A hull is drawn in place of an outline at low zoom and replaces nothing
+  stored. On the development database no region is drawn by hand, none is drawn as a hull and
+  no member is cut: 0 of the 4,576 member rows of the three views.
+- The views hold the tree of divisions at different levels. The Administrative view's members
+  are at levels 0 to 2 of it (continents, countries, the level under), and both imports' at
+  levels 1 to 6. A region with children may hold a division of its own beside them: each of the
+  Administrative view's 237 countries holds the country's division while its children hold that
+  division's children (3,823 child regions of 3,823). The base layer has 392,198 divisions,
+  356,484 of them leaves, and `administrative_divisions.geom_area_km2` is declared and written
+  on none.
+- A view may hold one division in two regions with no cut: the Wikivoyage view lists the
+  Caucasus under two roots (6 divisions), and the second import also holds Kern County under two
+  regions of California (9 divisions in all).
+- The base layer divides 22 countries between two continents or more. Of the country as a
+  whole, the largest part holds: Portugal 99.998 %, the United States 99.70 % (Hawaii is
+  0.18 %), Spain 98.51 % (the Canaries, Ceuta and Melilla are 1.49 %), Turkey 96.94 %,
+  Kazakhstan 95.70 %, Egypt 93.82 % (Sinai is 6.18 %), Indonesia 77.8 %, Russia 77.2 %.
+- A division's area says nothing of its weight to a traveller. 946 of the Administrative view's
+  3,594 leaves are under 1 % of their country and 296 under 0.1 %: Bamako is 244 km², 0.02 % of
+  Mali; Berlin 0.25 % of Germany; the District of Columbia 0.002 % of the United States.
+- Compared by their divisions, the Administrative view and the second import agree where the
+  import is matched. Each view's Italy holds 1.0000 of the other's. The import's Mali is its
+  eight regions and holds 0.9998 of the Administrative Mali, which is one division: Bamako is
+  not matched yet. Of the Administrative view's 3,831 regions, 2,752 have some of their ground
+  in the import; for 2,722 the import holds 96.9 % or more of it, and for the other 30 between
+  0.02 % and 94.5 %, with none in between (the highest is Palestine, of which the import holds
+  the West Bank and not Gaza).
+- That comparison reads no geometry. A prototype of it, one statement over `region_members`,
+  `regions` and the divisions' `parent_id`, took 26 to 62 ms for one ticked region and one
+  view, 34 to 92 ms for thirty, and 2.1 s for all 3,831 regions of a view (three runs; the
+  areas read from the Administrative view's stored ones, since the divisions' column is empty).
+  The same question asked of the outlines took 240 ms for one leaf, against Toscana's 160
+  subdivided pieces (`region_geom_pieces`), and 2,164 ms against the outline itself (19,796 points).
+- A circle of 2 km around a point in Siena, through the index on the pieces, took 10 ms.
 - By their stored areas, the leaves under a country of the Administrative view together hold
-  1.0000 of it, while single leaves are small: 68 of Turkey's 78 hold under 2 % of Turkey each,
-  32 of Japan's 47, 3 of Italy's 20. A rule that reads single leaves' shares fails on a view
-  finer than the ticked region.
+  1.0000 of it (233 of 237 countries within 0.01 %; the furthest is 0.9950), while single leaves
+  are small: 68 of Turkey's 78 hold under 2 % of Turkey each, 32 of Japan's 47, 3 of Italy's 20.
+- Eight regions are drawn by both OpenStreetMap (the import's shapes) and GADM, and each
+  source's shape holds 0.9816 to 0.9976 of the other's. That compared a matching aid with the
+  base layer, never two regions: it says how far two drawings of one coast differ, and nothing
+  about how two views differ.
 
 ## Decision
 
@@ -138,19 +201,32 @@ tick it is.
   visited place or the traveller's own point (decisions 5 and 8).
 - **A tick above the layer is a lighter visit**: "France, I am not sure where". It paints France
   and what is above it as "somewhere in", claims no region inside it and counts no region of
-  the layer. France is counted among countries, told apart from the placed ones as #1169 has it
-  ("30 countries, 12 of them not yet placed"). It waits to be narrowed to a region, and #2594's
-  guide helps.
+  the layer. France is counted among countries, told apart from the placed ones ("30 countries,
+  12 of them not yet placed"; the wording is #1169's to settle, whose own example predates the
+  layer). It waits to be narrowed to a region, and #2594's guide helps.
 - **The two kinds are the same row.** Which one a tick is follows from the predicate, and a
   canon that moves the layer re-reads every tick. A region that gains its first child leaves
   the layer, and its ticks read lighter from then on. The edit that adds the child marks them
   (`former_region_name`, decision 6), so the traveller is told why their count fell and a tick
   made lighter by the map is told apart from "France, I am not sure where".
-- **A region with no outline cannot be ticked.** A region of an import that is not matched yet
-  is not painted on any map, and nothing could be computed from a tick on it. The writer
-  refuses the tick and says why. All 4,301 regions of the Wikivoyage view on the development
-  database are in that state today.
-- **A lighter tick is satisfied, and stays.** When the traveller who ticked *France* on the
+- **A region with neither bricks nor an outline cannot be ticked** (the design's rule; the
+  maintainer's is that a traveller ticks only a region that exists). A region that holds no
+  division of the base layer, its own or one of a region under it, and that nobody drew, is
+  not matched yet: no outline can be computed for it, no map paints it, and nothing could be
+  read from a tick on it. The writer refuses the tick and says why. On the development
+  database that is 4,000 of the Wikivoyage view's 4,301 regions and none of the Administrative
+  view's.
+- **A region drawn by hand that holds no division can be ticked, and paints only itself** (the
+  design's rule). `insertDrawnRegion` makes such a region: an outline, `is_custom_boundary`,
+  and no row of `region_members`. If an admin draws *Chianti* in a view of wine regions and
+  gives it no division, a map paints it, so a traveller can tick it. The tick paints Chianti
+  and the regions above it in that view. It takes part in no comparison by bricks: it paints
+  nothing in another view (decision 4), no tick made elsewhere paints it, and nothing moves
+  to it or from it by itself (decision 6). No such region exists on the development database.
+  This is the one exception to the rule above, and every later mention of "a region with no
+  bricks" means one with no outline either.
+- **A lighter tick is satisfied, and stays** (the design's rule; the maintainer's is that a
+  lighter tick waits for the traveller to name a region). When the traveller who ticked *France* on the
   first evening ticks *Provence-Alpes-Côte d'Azur* a week later, France holds a counted region:
   the lighter tick stops waiting, and nothing asks about it again. The row is kept as history
   with any trip and note it carries ("France, 2003"), and it keeps France painted if Provence is
@@ -159,79 +235,173 @@ tick it is.
 - **Below the layer** nothing is ticked: saying more is a place, a settlement or a point
   (decision 8).
 
-**4. Another world view paints a region when that region wholly covers the ticked one.** In the
-Wikivoyage view, a *Tuscany* with the same outline is painted, and so are Central Italy, Italy
-and Europe above it. A view that holds only Tuscan provinces paints none of them and paints the
-smallest region that holds all of Toscana. A tick on the Administrative *France* paints the
-Wikivoyage France and nothing under it. In each view the tick is read by decision 3 on the
-region that covers it there: counted where that region is on the view's layer, lighter where it
-is above.
+**4. Another world view paints the region whose bricks hold the ticked one's.** Every region of
+every view is assembled from the same divisions of the base layer, so whether one region covers
+another is a comparison of the divisions they hold, and no outline is read for it. In the
+Wikivoyage view, a *Tuscany* that holds what *Toscana* holds is painted, and so are Central
+Italy, Italy and Europe above it. A view that holds only Tuscan provinces paints none of them
+and paints the smallest region that holds all of Toscana. A tick on the Administrative *France*
+paints the Wikivoyage France and nothing under it. In each view the tick is read by decision 3
+on the region that covers it there: counted where that region is on the view's layer, lighter
+where it is above.
 
-**The covering region is the smallest region of the view whose leaves together hold 95 % or
-more of the ticked outline's land.** The share is divided by the land of the ticked outline,
-never by its whole area and never by what the other view happens to hold:
+**A region's bricks** are the divisions it holds: its own members and those of every region
+under it (`region_members`). **The covering region is the smallest region of the view whose
+bricks hold 95 % or more of the ticked region's bricks, by area.** The share is divided by all
+of the ticked region's bricks, never by the part of them the other view happens to hold.
 
-- *The land of an outline* is the part of it that lies inside the base layer's country
-  divisions (`administrative_divisions`, at their rung simplified to about 1 km). It is
-  derived in the job that writes the answer and stored nowhere. A coast drawn out to sea, by an
-  import's shape or by a curator's hand, then weighs the same as one drawn at the shore.
-- The regions that hold 95 % lie on one branch, so the smallest is one region or none. Where
-  none does, or the outline has no land, the view paints nothing for that tick.
-- Two outlines are *the same* when each holds 95 % or more of the other's land.
+- *A brick against its own parts.* The divisions are a tree, and two views hold it at different
+  levels: the Administrative Mali is one division, and the import's Mali is the eight divisions
+  under it. A brick is held by a region that holds it or a division above it; where a region
+  holds divisions under it, the brick is held by as much as those weigh. The comparison walks
+  up the tree from each brick (`parent_id`) and never expands a region to the 356,484 leaves.
+  A division a region holds twice, itself and through a division above it, counts once.
+- *A brick's weight* is its area, `administrative_divisions.geom_area_km2`, which the slice
+  that builds this fills: it is declared and written on no row today. A division and the
+  divisions under it weigh the same within the tolerance: by the Administrative view's stored
+  areas, 233 of 237 countries are within 0.01 % of their children's sum and the furthest is
+  0.5 % off.
+- *A cut brick* (`custom_geom`, a part of a division) weighs the area of its part. A region
+  that holds its division whole, or a division above it, holds all of it. Against another cut
+  of the same division it is held by the share of it that lies inside that cut, and that is
+  the one place where the comparison reads a geometry: two parts of one division, never two
+  regions.
+- *A region drawn by hand* is compared by the divisions it holds, like any other. Its drawing
+  is not read. One that holds no division is in no comparison: it covers nothing and nothing
+  covers it.
+- The regions that hold 95 % lie on one branch, so the smallest is one region or none, unless a
+  view lists the same ground twice (the Wikivoyage view's two Caucasus branches): then the
+  smallest on each branch is painted. Where none holds 95 %, the view paints nothing for that
+  tick.
+- Two regions hold *the same bricks* when each holds 95 % or more of the other's.
+
+**Why a tolerance on every brick, and why 95 %.** The maintainer's correction of 2026-11-16
+allowed a tolerance where a brick is cut between regions. On 2026-11-17 the maintainer
+confirmed (#2579) that the tolerance stays on every brick, and the reason is the maintainer's
+own: if territories are ever compared, different levels of simplified geometry may cause
+trouble, so an exact match must not be required. That is the reason for the number. Two
+regions matched to the same divisions still compare as exactly 1, with no geometry read. The
+tolerance is spent where an area is compared with another: a division against the divisions
+under it (the furthest country of the Administrative view is 0.5 % off the sum of its
+children), and one cut of a division against another.
+
+The value, 95 %, is the design's, from the data below. It has a second effect, which is the
+design's reason and not the maintainer's. It also holds for two views that assemble a region a
+little differently:
+
+- *All of the bricks fails whole countries.* The base layer divides 22 countries between
+  continents. A view that keeps Spain whole, with the Canaries, would paint nothing in the
+  Administrative view for a tick on Spain: its Europe's Spain holds 98.51 %, and no region
+  stands above Europe and Africa. The same holds for the United States (99.70 % without
+  Hawaii), Portugal, Turkey (96.94 %) and Kazakhstan (95.70 %). A brick not matched yet does
+  the same: the import's Mali lacks Bamako, 0.02 %, and at 100 % a tick on Mali would paint
+  nothing there.
+- *What 95 % refuses.* Egypt without Sinai is 93.82 % and Palestine without Gaza 94.5 %: the
+  part left out is a destination of its own, and the tick paints the region above both or
+  nothing. Of the Administrative view's regions that the second import holds any of, none
+  falls between 94.5 % and 96.9 %.
+- *What 95 % lets through.* Area is not what a traveller came for: Bamako is 0.02 % of Mali
+  and the Canaries 1.49 % of Spain. A tick on a whole Spain paints Europe's Spain in the
+  Administrative view, also for a traveller who saw Tenerife alone. That claims nothing false:
+  Europe's Spain has regions under it, so the tick reads lighter there, "somewhere in Spain",
+  counts no region, and waits to be narrowed (#2594). The same holds for every divided country
+  and for Mali without Bamako, whose covering regions all stand above the layer.
+- *The one real cost* is a covering region that is on the layer and lacks a brick another
+  region of the layer holds: a leaf made of Bamako and the region around it, ticked in one
+  view, counts as that region alone in a view that holds the two apart. No number prevents it,
+  since 99.98 % still loses Bamako, and no such pair of leaves exists on the development
+  database.
+
+The number is confirmed, or moved, when the first second view is matched whole: today the
+Wikivoyage view is 7 % matched, and no member of any view is cut.
 
 Checked on:
 
-- *The same Tuscany, drawn by two sources.* Measured on eight regions, seven of them coastal, that both
-  OpenStreetMap (the import's stored shapes) and GADM draw: Toscana, Liguria, Umbria,
-  Calabria, Sicily, Sardinia, Corsica and Crete. GADM's region holds 0.9920 to 0.9968 of the
-  OpenStreetMap shape, and the shape holds 0.9816 (Crete) to 0.9976 of GADM's. So each is the
-  other's covering region and the same outline, with room to spare at 95 % and almost none at
-  98 %.
-- *A coastal region drawn with its inshore sea*: its land is what Toscana holds, so Toscana
-  covers it and is painted.
-- *A region that is mostly sea by design*, an archipelago: its land is its islands, and the
-  region that holds them covers it. A region of water alone has no land and paints nothing in
-  another view; in its own view it is painted like any ticked region.
-- *France in a finer view*, of départements or of 78 provinces as Turkey has: no leaf holds
-  much, and the leaves under that view's France together hold all of it, so France is painted
-  and nothing under it.
-- *Tuscany in a view whose leaves are cities*: the cities hold a small part of Toscana's land,
-  so no region covers it and nothing is painted there. Painting that view's Tuscany would claim
-  the cities.
-- *A region that straddles two regions of the other view*: the smallest region above both.
+- *The same Tuscany in two views.* Both hold the division Toscana, or one holds its provinces:
+  each holds all of the other's, so they hold the same bricks. Measured on Italy, which both
+  the Administrative view and the second import hold: 1.0000 each way. That import's Tuscany
+  holds no division yet, so a tick on Toscana paints its Italy there, as "somewhere in", and
+  Tuscany from the first read after it is matched.
+- *France against a view with finer regions*, of départements or of 78 provinces as Turkey
+  has: the divisions under France's, held by the regions under that view's France, together
+  weigh what France weighs. France is painted and nothing under it. Measured on Mali, one
+  division against eight: 0.9998 one way (Bamako unmatched) and 1.0000 the other.
+- *Tuscany in a view whose leaves are cities*: the cities hold a few communes of Toscana, so
+  no region holds 95 % of it and nothing is painted there. Painting that view's Tuscany would
+  claim the cities.
+- *A region that straddles two regions of the other view*: the smallest region above both. A
+  whole Turkey against the Administrative view, where Asia holds 96.94 % of it and Europe the
+  rest: Asia's Turkey is painted. A whole Egypt: no region holds 95 %, none stands above Africa
+  and Asia, and nothing is painted.
 - *A region larger than anything in the other view* (a tick on Asia against a view of Japan
-  alone): none, and nothing is painted.
+  alone): that view holds a small part of Asia's bricks, so none covers it and nothing is
+  painted.
+- *A region whose bricks are cut*: a view whose Florida Keys are a part cut from Monroe County.
+  A tick on the Keys paints the Administrative Florida, which holds the division above the
+  county. A tick on Florida paints that view's Florida, whose regions hold the other counties
+  whole and the county in two cuts that together make it up. No cut exists on the development
+  database, so the cut's share is unmeasured.
+- *A region with no bricks*: it covers nothing, so no tick made elsewhere paints it. With no
+  outline either it cannot be ticked (decision 3). Drawn by hand with no division, as a
+  *Chianti* of a wine view would be, it can be ticked and paints its own view only: a tick on
+  it paints nothing in the Administrative view, and a tick on Toscana does not paint it.
+- *A custom view that divides the ground differently*: a view of mountain ranges whose Alps
+  hold communes of four countries. A tick on the Alps paints Europe in the Administrative
+  view, as "somewhere in", since no country holds 95 % of them. A tick on Toscana paints
+  nothing in the view of ranges, which holds none of it.
 
-The eight regions measured run from 5,400 to 25,700 km². A smaller region's border weighs more
-against its area, so the 95 % is measured on small regions before it is fixed.
+**No answer is stored**, as the maintainer ruled: it is computed, and nothing is kept per view.
+The covering regions of all of a traveller's ticks, for the view on
+screen, are read in one statement over the members of the two views: 34 to 92 ms for thirty
+ticks in the prototype, where the test of outlines took 240 ms for one. So there is no table
+of covers, no job that fills one and nothing to keep in step: a member added to a region
+changes the next read.
 
-The answer is the same for every traveller who ticked that region, and it takes 240 ms to
-compute for one leaf and one view, and longer for a region with children, whose outline is its
-leaves' pieces together. A read cannot pay that for every tick, so the answer is kept in
-`region_covers` (the ticked region, the other view, the covering region there and whether its
-outline is the same). **It
-is a derived cache and nothing else**: written when a region is first ticked or placed on and
-after a view's geometry is computed, deleted with either region, and rebuilt from the outlines
-at any time. Nothing a person said is stored per view.
+**5. A tick on a place paints the region its own point lies in, and a place that lies in
+several counted regions paints none until the traveller says which.** The first half is the
+design's rule, from the milestone's criterion 3 and #768; the second is the maintainer's
+(2026-11-16).
 
-**5. A tick on a place paints the regions its own point lies in**, in every view, through the
-rows placement already writes (`experience_regions`). The Uffizi paints Toscana, Italy and
-Europe. A station of the Struve Arc in Finland paints Finland and not Moldova; the Arc is shown
-visited, "1 of 34", and paints nothing, because it holds no coordinate (ADR-0206). A place that
-is also listed where its outline or its line reaches is painted only where its pin is. For that
-an automatic row of `experience_regions` gains a new column, `of_pin`, which
-`refresh_place_regions()` writes: true where the place's own point, or the nearest region to it,
-puts it there. So a tick on the Øresund Bridge does not claim a country the traveller did not
-name.
+- *A place in one counted region* paints it in every view, with the regions above, through the
+  rows placement already writes (`experience_regions`). The Uffizi paints Toscana, Italy and
+  Europe. A station of the Struve Arc in Finland paints Finland and not Moldova; the Arc is
+  shown visited, "1 of 34", and paints nothing, because it holds no coordinate (ADR-0206).
+- *A place listed in several regions of the counting layer* (the Øresund Bridge, in
+  Hovedstaden and in Skåne, by its line) paints none of them by itself. The tick stands: the
+  bridge is visited, with its trips and notes. The traveller is asked which side they were
+  on, and is offered the counted regions the place is listed in, in the view on screen: one,
+  the other, or both. The question can be left unanswered.
+- *While it is unanswered, the smallest region that holds all the listed ones is painted as a
+  lighter visit*, with the regions above it. This is the design's rule; the maintainer's
+  ruling covers only "none of them". It reads like the lighter tick of decision 3,
+  "somewhere in", but no row is written for it: it is derived from the place's listings
+  (decision 9), so it goes when the bridge is unticked or the side is answered. It counts no
+  region of the layer: the bridge unanswered paints Europe in the
+  Administrative view, since that much is certain, and neither Denmark nor Sweden, nor
+  Hovedstaden nor Skåne. Nothing at or below the listed regions is painted until the
+  traveller answers. A view with no region above all of them paints nothing.
+- *The answer is a tick on each region chosen*, linked from the place's visit. It is read by
+  decision 3, painted in other views by decision 4 and kept through an edit by decision 6, so
+  nothing new holds it. How the answer is kept is the design's.
+- No mark of where the pin lies is added to `experience_regions`. This ADR first painted the
+  side the pin is nearer to, through a column `of_pin`; the maintainer's ruling replaces that,
+  and the column is not built. The screen may offer the pin's side first.
+- A view in which the place lies in one counted region paints that region, with no question.
 
-A tick on a record with no ground paints by its kind (#1676 declares which). An event held at
-its place paints its region as "somewhere in": the Gion Matsuri paints Kyoto. A dish, a drink
-and a class object paint nothing; the product asks where ("Where did you try it?"), and the
-answer is an ordinary visit that paints: a region, a place or a point.
+A tick on a record with no ground paints by its kind (#1676 declares which), as the maintainer
+ruled. An event held at its place paints its place's region: the Gion Matsuri paints Kyoto.
+That it counts Kyoto in full, as a place visited there does, and not as "somewhere in", is the
+design's rule: being at the Gion Matsuri is being in Kyoto. A dish, a drink and a class object
+paint nothing; the product asks where ("Where did you try it?"), and the answer is an ordinary
+visit that paints: a region, a place or a point.
 
 **6. A tick is never lost when its region changes or goes, and an edit is refused for it in one
 case only.** A region whose members or outline change is the same region, and the tick stays on
-it. When a region goes, the one writer of regions (`db/regionWriter.ts`) moves every tick on it,
+it. A region drawn by hand that holds no division is the exception (decision 3, the design's):
+no bricks say whether a redrawn outline is the same ground, so redrawing it marks its ticks
+and asks the traveller; when it goes, its tick moves to its parent as a lighter tick that
+asks, never as a plain replacement; and no tick is moved onto such a region without the
+traveller's answer. When a region goes, the one writer of regions (`db/regionWriter.ts`) moves every tick on it,
 in the same transaction, before the row is deleted. No region is kept for the sake of a tick,
 and no outline is copied.
 
@@ -240,15 +410,16 @@ The tick moves to S, the region that takes the old one's place:
 - in an edit inside a view, the region the edit hands the old one's land to (a merge's target,
   a flatten's parent), else its parent. This reads the tree and no outline, since the
   survivors' outlines are computed after the edit;
-- when a whole view is replaced by a new import, the covering region in the replacing view,
-  read from `region_covers`, where it has stood since the replacing view's geometry was
-  computed. The confirmation dialog names the replacing view.
+- when a whole view is replaced by a new import, the covering region in the replacing view
+  (decision 4), computed in that transaction from the members of both. It needs the replacing
+  view matched to the base layer, and not its geometry computed. The confirmation dialog names
+  the replacing view.
 
 Decision 3 then says what the tick is:
 
-- **The replacement is plain when the tick still counts**: S has the same outline, or S is on
-  the counting layer. No question follows.
-  - *The same region.* Tuscany after a re-import, with the same outline.
+- **The replacement is plain when the tick still counts**: S holds the same bricks (decision
+  4), or S is on the counting layer. No question follows.
+  - *The same region.* Tuscany after a re-import, matched to the same divisions.
   - *A merge.* Tuscany and Umbria made one leaf: both ticks move to it and become one visit,
     which keeps the trips and notes of both.
   - *A flatten.* A region's children are removed and it becomes a leaf: a tick on a child moves
@@ -268,26 +439,30 @@ known, those (`offered_region_ids`); where they are not, the regions under the t
 offered as they stand. The product says "Tuscany was divided in three. Which were you in?", or
 "Tuscany is no longer on this map". Both columns are emptied when the tick counts again.
 
-One exception keeps a tick exact: where `region_covers` shows a region of the same outline in
-another view (the Administrative *Toscana* when the Wikivoyage Tuscany is split), the tick moves
+One exception keeps a tick exact: where another view holds a region of the same bricks (the Administrative *Toscana* when the Wikivoyage Tuscany is split), the tick moves
 there and stays counted, and the view that changed reads it by decision 4.
 
 This replaces the refusal of #764: deleting, merging, flattening and pruning go through, and so
-does replacing a view. **One refusal is left**: a ticked region that has no parent, no region
-handed its land and no covering region in any other view cannot be deleted, since nothing would
-be left to hold the tick. It is named by that condition and by no kind of region. It is met by
-a root region whose land no other view covers; by a view replaced before its replacement's
-geometry is computed, where no other view covers its ticked regions either; by a custom view of
+does replacing a view. **One refusal is left**, and it is the design's: the maintainer's
+ruling is that moving or asking takes the place of the refusal of #764, and it names no case
+where there is nowhere to move to. A ticked region that has no parent, no region handed its
+land and no covering region in any other view cannot be deleted, since nothing would be left to
+hold the tick. It is named by that condition and by no kind of region. It is met by
+a root region whose bricks no other view covers; by a view replaced before its replacement
+is matched to the base layer, where no other view covers its ticked regions either; by a custom view of
 ground the other views divide differently or not at all; and by the last world view. The
 foreign key stops it, and the writer says which ticks stand in the way.
 
 **7. A curator's placement of a record refers to a region the same way.** Thieboudienne added to
-*Senegal* is a manual row of `experience_regions` on that region, as today, and like a tick it
-is refused on a region with no outline. Every other view lists the record in the region that
-covers Senegal and in the regions above it, through decision 4's rows, as a basis `named` of
+*Senegal* is a manual row of `experience_regions` on that region, as today. Like a tick it is
+refused on a region with neither bricks nor an outline, and allowed on a region drawn by hand
+that holds no division, where it lists the record in that view only (the design's rule, as
+decision 3): a wine placed in a hand-drawn *Chianti* is listed there and in no other view, and
+a change to that region asks the curator. Every other view lists the record in the region that
+covers Senegal and in the regions above it, by decision 4's comparison, as a basis `named` of
 `experience_shape_regions` (the interface ADR-0218 leaves for it). When Senegal goes, the same
 transaction moves the row to S by decision 6, so the cascade no longer takes it. A placement
-has no counting layer, so its replacement is plain only where S has the same outline. Anywhere
+has no counting layer, so its replacement is plain only where S holds the same bricks. Anywhere
 else the row carries the same two marks, and the question is a curator's, in the review queue,
 with the new regions offered.
 
@@ -303,23 +478,37 @@ with the new regions offered.
   the regions above. Under a ticked leaf that adds nothing in the view it was made in; under
   *France*, a point in Lyon paints Auvergne-Rhône-Alpes. Only the regions the circle touches
   are read, so a circle that reaches the sea still paints its region; one that touches no
-  region of a view, where that view draws the coast further in, paints nothing there.
+  region of a view, where that view holds no division, paints nothing there.
+- A circle is geometry and is tested as geometry, against the outlines of the regions it
+  touches through their pieces (10 ms, measured). It is not a set of divisions, and decision
+  4's comparison is not asked of it. A view therefore paints an own point only once its
+  outlines are computed, while it paints a tick on a region as soon as it is matched.
 - It is seen by its owner only: read and written under `/api/users/me`, never in a log, a URL,
   an error message or a tile, in no read across travellers, and deleted for good on request.
   The database is set to log no statement parameter. Rounding is not the protection.
 
 **9. A region's visited state is read, never stored.** One read answers, for a traveller and a
-view, which regions are painted and how: by a place (decision 5, and an own point), by a
-counted tick, by holding a counted region, or only "somewhere in" (a lighter tick). The counts
-read the same answer: regions of the layer that are counted, and the regions above them. A
-derived state paints nothing: a whole visited through a part, an area visited through a place
-inside it.
+view, which regions are painted and how: by a place (decision 5: a place in one counted region,
+an event's place, and an own point), by a counted tick, by holding a counted region, or only
+"somewhere in" (a lighter tick, or a place whose side is not said yet, decision 5). The counts read the same answer: regions of the layer that are
+counted, and the regions above them.
+
+A derived state reads as visited and paints nothing of its own: a whole visited through a part
+(ADR-0206), and an area visited only through a part or a place inside it. A visit cascades up
+to the record (Epic #2115), and the regions are painted by the place that was ticked. This is
+the design's rule.
+
+What a visit counts as under a kind is not decided here. A visit before the place entered a
+list, a visit made while it was listed, and a tick made today on a place no longer listed or
+standing, which asks when, are the maintainer's ruling of 2026-11-16 on #2578, and ADR-0217
+carries it. This read counts regions, takes no date and no listing into account, and a visit
+that ADR-0217 counts as one to a former place paints its region like any other.
 
 **What this leaves, and the interface each builds against.**
 
 | Issue | It decides | It builds against |
 |---|---|---|
-| #2008 | The catalogue offered for a past trip | A trip's `year`, `month`, `day` under a visit of any of the four, read by `@tyr/shared/approximateDates`; ADR-0217 decision 8 |
+| #2008 | The catalogue offered for a past trip | A trip's `year`, `month`, `day` under a visit of any of the four, read by `@tyr/shared/approximateDates`. What the visit counts as against a list and a place's lifetime, and the "when?" asked on a tick of a place no longer listed or standing, are ADR-0217's (#2578); a visit holds nothing for them but its trips |
 | #1948 | Sections, the walk in kilometres, what a walk paints | A visit on the section's record; a row beside the trip for the kilometres and the two stops |
 | #1676 | The kinds, their verbs, which kinds paint | A visit on a record of shape `none`; the kind's declaration read by decision 5; the answer to "where" as a visit of its own, linked from the record's visit when the first such kind is built |
 | #616 | The country a visit was in | A trip's date and the visit's ground: the record's pin, the own point, or the ticked region's anchor. Not a table keyed on a region of one view |
@@ -329,15 +518,63 @@ inside it.
 | #2594 | The guide that narrows a lighter tick to a region | The lighter ticks of a traveller that hold no counted region (decision 3); the regions of the layer under the ticked one, or `offered_region_ids` where a region went; its answer moves the visit to the chosen region with its trips and notes |
 | #587 | The canon | `countedRegionSql`: the canon marks its layer and changes that predicate. A region visit then refers to a canon region |
 | #1169, #1170, #1171 | How "somewhere in" is drawn and counted, the offer, the picker | Decision 9's read; decision 8 |
-| #2135 | A border place in every country a source names | Decision 4's rows, for a region a source names |
+| #2135 | A border place in every country a source names | Decision 4's comparison, for a region a source names |
+
+**Amended while Draft (2026-11-16, #2579), before any slice builds it:** decision 4 first read
+the covering region from the outlines: the smallest region whose leaves hold 95 % of the ticked
+outline's land, with the land cut out of the base layer, a threshold measured on eight regions
+that both OpenStreetMap and GADM draw, and a derived table `region_covers` because that test
+took 240 ms. The maintainer rejected its premise: there are no two sources. However the ground
+is divided into regions, every view is assembled from one and the same base layer; a division
+may be cut, but the bricks are always the same, and a tolerance belongs where a brick is cut.
+The code agrees: a region's outline is
+the union of the divisions it holds, and OpenStreetMap's shapes only help an import match them.
+Decision 4 is restated on bricks, and what the premise carried is removed: the land clip, the
+eight shapes as the ground for 95 %, `region_covers`, and the wait for a replacing view's
+geometry. "A region with no outline" in decisions 3 and 7 is now a region with no bricks, and
+"the same outline" in decisions 6 and 7 is the same bricks. The 95 % stands on other ground,
+stated in decision 4, and where it reaches past a cut brick it is the design's.
+
+**Amended while Draft (2026-11-17, #2579, #2578):** three recorded rulings are carried in.
+Decision 5 painted a place listed in two counted regions on the side its pin is nearer to,
+through a column `of_pin`; by the maintainer's ruling it paints neither until the traveller
+says which, and the column is gone. An event's tick now counts its place's region in full, and
+an area visited through a part reads as visited: both are the design's and marked so. Decision
+9 and the #2008 row leave what a visit counts as to ADR-0217. Each rule that stood as the
+maintainer's and is the design's is marked: the place's own point, the satisfied lighter tick,
+the region with no bricks, and the reasons given for rejecting a shared table of areas.
+
+**Amended while Draft (2026-11-17, #2579, #2116), a second time:** the maintainer confirmed on
+2026-11-17 that decision 4's tolerance stays on every brick, with a reason of the maintainer's
+own: if territories are ever compared, different levels of simplified geometry may cause
+trouble, so an exact match must not be required. Decision 4, its row in the alternatives and
+its line in the consequences give that as the reason, and the tolerance is no longer listed as
+open to veto. What the amendment above called the design's reach past a cut brick is now the
+maintainer's rule; the value of 95 % and its second effect, on the 22 countries the base layer
+divides between continents, stay the design's. The one refusal decision 6 leaves is marked as
+the design's, since the maintainer's ruling names no refusal. The count quoted in decision 3 is
+no longer given as #1169's own words, which are "12 regions, 3 of them somewhere-in" and
+predate the counting layer. The context records the maintainer's decision of 2026-11-17 on
+#2116: nothing a curator decided on the development catalogue is carried to the fresh database.
+This ADR held no sentence that carried a tick or a placement over.
+
+**Amended while Draft (2026-11-17, the review of the pull request that carries these
+amendments):** two rules of the design are made whole. The ADR gave two answers on a region
+with no bricks. It now gives one, in decisions 3, 4, 6 and 7, the alternatives and the
+consequences: a region with neither bricks nor an outline cannot be ticked or placed on; a
+region drawn by hand that holds no division can, paints only itself in its own view, takes part
+in no comparison by bricks, and a change to it asks. Decision 5 said a place listed in several
+counted regions paints "nothing above them", which reached past the maintainer's ruling
+("none of them") unmarked. The smallest region that holds all the listed ones is now painted
+as a lighter visit while the question is open, marked as the design's.
 
 ## Alternatives Considered
 
 | Option | Why rejected |
 |--------|-------------|
-| A shared table of areas (a name and a geometry in no world view), which a tick and a placement refer to | Proposed first in this design. The maintainer rejected it on 2026-11-16: the problem arises only when a ticked region changes, and at that moment the traveller can be asked. It adds an entity no screen shows, a find-or-make rule for "the same Tuscany" and a copy of GADM's or OpenStreetMap's outlines with their licences. |
+| A shared table of areas (a name and a geometry in no world view), which a tick and a placement refer to | Proposed first in this design. The maintainer ruled on 2026-11-16 that no shared area table is built: a tick refers to the region it was made on, and a traveller can only tick a region that exists. The design's own reasons: it adds an entity no screen shows, a find-or-make rule for "the same Tuscany" and a copy of GADM's or OpenStreetMap's outlines with their licences. |
 | A point with a size for "somewhere in" | Rejected with it: a region already has an outline, and the traveller ticked the region, not a circle. |
-| Keep a region that goes, with its outline, in an inactive holding world view until its ticks are answered | Proposed first in this design. It keeps the old outline, so a waiting tick paints every view exactly as before. It costs dead regions no reader may see, a view that exists to hold them, a later pass to re-home them and their outlines on the public tile server. Re-pointing in the same transaction loses one thing: where no view holds a region of the same outline, a waiting tick paints the coarser region until the traveller answers. |
+| Keep a region that goes, with its outline, in an inactive holding world view until its ticks are answered | Proposed first in this design. It keeps the old outline, so a waiting tick paints every view exactly as before. It costs dead regions no reader may see, a view that exists to hold them, a later pass to re-home them and their outlines on the public tile server. Re-pointing in the same transaction loses one thing: where no view holds a region of the same bricks, a waiting tick paints the coarser region until the traveller answers. |
 | A copy of the outline on each waiting visit | One copy per traveller of a 19,796-point polygon, and a second way to paint. |
 | A tick only on the counting layer | 229 of the Administrative view's 237 countries are not on it, and the milestone asks to "tick the countries visited". The maintainer decided on 2026-11-16 that a tick above the layer is a lighter visit. |
 | A column on the visit that says counted or lighter | It would be written at the tick and go stale when a region gains children or the canon moves the layer. The predicate reads it from the region. |
@@ -345,21 +582,28 @@ inside it.
 | Remove a lighter tick once a region inside it is ticked | "France, 2003" may be another trip than Provence last week, and unticking Provence would then leave France unpainted. Satisfied is read, and the row stays. |
 | Ask "was this where you were in France?" after every tick inside a lighter one | A question on a one-click tick, for a row that changes neither the map nor the counts once France holds a counted region. |
 | A waiting mark on a tick re-pointed after a split | Such a tick is a lighter tick, which waits by what it is. What is kept is the name of the region it counted on, so the product can say what changed. |
-| The covering region as the smallest region above every leaf that holds 2 % of the ticked outline | This ADR's first wording. It has no answer when the other view is finer: 68 of Turkey's 78 provinces hold under 2 % of Turkey each. |
-| Take the share of the ticked outline's whole area | An outline drawn out to sea, by an import's shape or a curator's hand, is held under the threshold by every land-only region, so the tick paints nothing in the other view and has no covering region when its view is replaced. |
-| Take the share of the part of the outline that the other view's leaves hold | A view whose leaves are cities holds all of what it holds, so its Tuscany would be painted and the cities claimed; a view of Japan alone would cover a tick on Asia. |
-| A threshold of 98 % | Measured on eight regions two sources drew, the lowest share is 0.9816. |
-| Allow a tick on a region with no outline, and match it by its member divisions or its source's id | No map paints such a region, so no scene makes the tick. Measured, 251 of the Wikivoyage view's 4,301 regions have a member division, and 768 of its source ids are shared by 2,147 regions. |
-| Compute the mapping from the outlines when a region goes | An edit clears the outlines of the regions above it until they are computed again, and a region about to be deleted may hold none at that moment. The tree and the cache are both there. |
+| The covering region read from the outlines: the smallest region whose leaves hold 95 % of the ticked outline's land | This ADR's earlier wording, with a land clip, a threshold measured on eight regions that OpenStreetMap and GADM both draw, and a cache for a test of 240 ms. The maintainer rejected it on 2026-11-16: every view is assembled from one base layer, so there are no two sources to reconcile, and the eight shapes compared a matching aid with the base layer. Two regions matched to the same divisions differ by nothing, at no cost in geometry. |
+| The covering region as the smallest region above every leaf that holds 2 % of the ticked region | This ADR's first wording. It has no answer when the other view is finer: 68 of Turkey's 78 provinces hold under 2 % of Turkey each. |
+| Take the share of the part of the ticked region's bricks that the other view holds | A view whose leaves are cities holds all of what it holds, so its Tuscany would be painted and the cities claimed; a view of Japan alone would cover a tick on Asia. |
+| Ask for all of the ticked region's bricks, but for a cut | The maintainer's correction of 2026-11-16 as first recorded. The maintainer confirmed on 2026-11-17 that the tolerance stays on every brick: if territories are ever compared, different levels of simplified geometry may cause trouble, so an exact match must not be required. The design's second reason: the base layer divides 22 countries between continents, so a whole Spain, United States, Portugal, Turkey or Kazakhstan would paint nothing in the Administrative view; and one unmatched brick, Bamako at 0.02 % of Mali, would unpaint a country. |
+| A tolerance for unmatched ground only, and every brick the other view holds elsewhere asked for | It keeps Bamako and the Canaries exact, and it is the rule above for the 22 divided countries: the Canaries are held elsewhere, so a whole Spain paints nothing. |
+| A tighter number, 99 % | Turkey (96.94 %) and Kazakhstan (95.70 %) would paint nothing, and it protects no small place: Bamako is lost at 99.98 %. |
+| Expand every region to the leaf divisions and compare the sets | 356,484 leaves, most of them under regions no view divides that far. Walking up from each brick reads only the levels the two views use. |
+| Allow a tick on a region with neither bricks nor an outline, and match it by its source's id | No map paints such a region, so no scene makes the tick; and 768 of the Wikivoyage view's source ids are shared by 2,147 regions. A region drawn by hand with no division is painted, so it can be ticked (decision 3). |
+| Refuse a tick on a region drawn by hand that holds no division | A map paints it, so a traveller can click it, and a refusal would have nothing to say. It paints its own view only, since nothing compares it with another. |
+| Paint nothing above the listed regions while a place's side is not said | The Øresund Bridge ticked and never answered would leave Europe unpainted, though the traveller was certainly there. The common region painted lighter claims nothing false, as a whole Spain does in decision 4. |
+| Compute the mapping from the outlines when a region goes | An edit clears the outlines of the regions above it until they are computed again, and a region about to be deleted may hold none at that moment. The tree and the members are both there. |
 | Keep the refusal of #764 | A curator's edit fails because of a traveller they cannot see, and an import still cannot replace a view without deleting visits after a count. |
-| Record the tick against administrative divisions | #768 rejected a substrate unit. Measured, 251 of the Wikivoyage view's 4,301 regions are tied to divisions, and the Administrative mirror is a stopgap (ADR-0018). |
+| Record the tick against administrative divisions | #768 rejected a substrate unit, and a tick says a region, not the divisions it held that day. The bricks are read to compare two regions and are never written on a visit. |
 | Record it against a stable key of the region (a Wikidata item) | #768 rejected an atom id. Measured, the Administrative view carries no item and 768 items are shared by 2,147 Wikivoyage regions. |
-| Compute the covering regions on every read, with no cache | 240 ms for one leaf and one view (2,164 ms against the outline itself). A traveller with thirty ticks would wait about seven seconds for the map of another view. |
+| A derived table of covering regions (`region_covers`) | This ADR's earlier wording, needed while the test read outlines at 240 ms a leaf. Read from the members it is 34 to 92 ms for thirty ticks in one statement (a prototype), and a table would have to be kept in step with every member added to either view. If the read's budget later asks for one, it stores this statement's answer and changes no rule. |
 | One table per thing visited, with a shared shape | A trip, a mark, #1887's question, a journey entry (#606) and the export would each need one of four parents. The table split is what #2120 removed for places. |
 | The traveller's own point as a private row of `experiences` | Location data about a person in the catalogue's main table, which 29 tables reference and every public read scans. One missed predicate publishes it. |
 | Round the own point to about 100 m | Proposed first in this design. The radius states uncertainty, and privacy fails at publishing and aggregating, not at stored precision (the session's research report on location input, 2026-11-16). |
 | Move a split region's tick to the part that holds a place the traveller ticked | The maintainer named a split as a case to ask. The screen may offer that part first. |
 | A tick on a place paints every region the place is listed in | A wide area or a long line is listed in every region it reaches; ticking it would claim them all. |
+| A tick on a place listed in several counted regions paints the side its pin is nearer to (`of_pin`) | This ADR's earlier wording. The maintainer replaced it on 2026-11-16: the tick paints neither, and the traveller is asked which side. A pin's side is where the catalogue drew the place, not where the traveller stood. |
+| Keep the answer to "which side" as a list of regions on the place's visit | A second way for a visit to name a region, which decision 6 would have to move when a region goes. A tick on the region is moved already. |
 
 ## Consequences
 
@@ -371,6 +615,12 @@ inside it.
 - One tick shows in every world view, and no import, merge, flatten or split loses it. None of
   them is refused for it, but for the one case decision 6 names. The milestone's "re-import a world view: no visit is lost" needs no special path.
 - A curator's placement survives the same way, and reads in every view.
+- What one region is in another view is read from the members both views already hold. There
+  is no land clip, no cover job, no table of covers and no threshold that depends on how a
+  coast is drawn; two regions matched to the same divisions are the same with no tolerance
+  spent.
+- A view paints a tick on a region, and takes over the ticks of a view it replaces, as soon as
+  its regions are matched to the base layer, before any geometry is computed for it.
 - ADR-0199's read, ADR-0202's trips and the date offer, ADR-0206 and ADR-0211's `whole_leaves`
   and "k of N", the merge's carry of visits and #1887's question keep their logic. The visited
   set of 2,000 places (7.3 ms, #2121) is read from the same index.
@@ -381,18 +631,43 @@ inside it.
 
 - `user_visited_experiences` is renamed, through the generated types, the lint rules and the
   API's visit reads.
-- Where a region goes and no view holds one of the same outline, a waiting tick paints the
+- Where a region goes and no view holds one of the same bricks, a waiting tick paints the
   coarser region that covers it, in every view, until the traveller answers: Tuscany split in a
   view that stood alone would leave Italy painted and Toscana not.
-- A view can be replaced without a question only once the replacing view's geometry is
-  computed, since the mapping is read from `region_covers`. Replaced earlier, every tick moves
-  to another view's covering region, or the delete is refused (decision 6's one refusal).
-- A tick on a region with no outline is refused, so nothing can be ticked in a view whose
-  import is not matched, though the view may be public.
-- `experience_regions` gains a column, `of_pin`, on its automatic rows.
-- `region_covers` is a derived cache that placement must keep in step after a geometry
-  computation. Until a view has geometry, nothing is painted in it and no tick moves into it:
-  the Wikivoyage view on the development database is in that state.
+- A view can be replaced without a question only once the replacing view is matched to the
+  base layer. Replaced earlier, every tick moves to another view's covering region, or the
+  delete is refused (decision 6's one refusal).
+- A tick on a region with neither bricks nor an outline is refused, so nothing can be ticked in
+  the part of a view that is not matched, though the view may be public: 4,000 of the
+  Wikivoyage view's 4,301 regions on the development database.
+- A tick on a region drawn by hand that holds no division shows in its own view and in no
+  other, and a change to that region asks the traveller where a matched region's would not.
+- A tick on a place listed in several counted regions paints none of them until its question
+  is answered, and the question can be left. The Øresund Bridge ticked and never answered
+  leaves Denmark and Sweden unpainted, and Europe painted as "somewhere in".
+- The answer to that question is a tick on a region, so unticking the bridge leaves the side
+  ticked unless the product removes the linked tick with it.
+- `administrative_divisions.geom_area_km2` is filled, at the load of the base layer and once
+  for a database that already holds one. A cut member's area is measured when it is compared.
+- The comparison runs on the read. Its prototype took 34 to 92 ms for thirty ticks, and the
+  slice that builds the read measures it under `perf:api`.
+- The tolerance is by area, and area is not importance. Above the layer that costs nothing
+  false: a whole Spain paints Europe's Spain as "somewhere in". On the layer it can: a leaf
+  that held Bamako with the region around it would count as that region alone in a view that
+  holds the two apart.
+- The tolerance stands on every brick, as the maintainer confirmed on 2026-11-17, so no
+  comparison of two territories asks for an exact match. Its value is the design's: held to
+  100 %, the 22 divided countries would paint nothing in the Administrative view when ticked
+  whole.
+- A region drawn by hand is compared by its members, so where the drawing and the members
+  disagree the map and the answer do; one that holds no division can be ticked and placed on,
+  and paints its own view only. No such region exists on the development database.
+- Geometry is still read in four places: a place's own point, outline or line against the
+  regions (decision 5, ADR-0207), the traveller's circle (decision 8), one cut of a division
+  against another cut of the same one, and matching a region to divisions in the first place.
+  The last is where a change of base layer lands (ADR-0018, #587): every view is matched again
+  to the new divisions, from its regions' outlines or by hand, and until a region is matched
+  it has no bricks, is covered by nothing and keeps the ticks made on it.
 - A visit and a manual row each gain two columns that are empty unless an edit of the map
   changed what they stand on.
 - A counted tick turns lighter when its region gains children, and the count of regions falls
@@ -401,12 +676,9 @@ inside it.
   that tick.
 - A lighter tick that carries a trip ("France, 2003") stops being asked about once any region
   of France is counted, though where that trip was is still not known.
-- The 95 % of decision 4 rests on eight regions two sources drew, none under 5,400 km². The
-  slice that builds it measures small regions, and regions inside a view once the Wikivoyage
-  view has geometry.
-- A region of water whose outline clips a strip of coast is covered by whatever region holds
-  the strip. Its outline is what a curator corrects.
-- The cover job reads the base divisions as well as the two views, to take an outline's land.
+- The 95 % of decision 4 rests on how one base layer divides 22 countries and on an import
+  that is 7 % matched. No two whole views exist to compare, and no cut. The slice that
+  builds it measures the first second view once it is matched, and the first cuts.
 - The vision's sentence that a station in Finland "marks neither Finland nor Moldova" and
   `docs/tech/world-views.md` § A hierarchy edit keeps every visit are rewritten when this is
   built.
