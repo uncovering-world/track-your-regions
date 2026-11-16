@@ -1,7 +1,7 @@
 # ADR-0213: A part's gate is its record in its whole, by the rules of its whole's source
 
 **Date:** 2026-11-15
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0216](0216-a-withdrawn-part-stays-shown-until-a-curator-answers.md): a withdrawn part stays shown until a curator answers
 **Issue:** [#2123](https://github.com/uncovering-world/track-your-regions/issues/2123), Epic #2115
 
 ---
