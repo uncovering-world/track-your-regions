@@ -188,21 +188,44 @@ as § How a run writes a place's periods says.
 
 **How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
 derives a record's periods from the statements the gone rules already read (`fetchStandingFacts`,
-whose answer carries every best-rank dated statement, `dated`, through the subset's reader
-`subset/standing.ts` or its live twin in `places/gone.ts`), given the gone rules' reason for the
-place. It writes nothing itself. It reads four dates and reports them as the periods in which the
-place stood and the end of a use.
+whose answer carries every best-rank dated statement, `dated`, and every dated event of a
+destruction or a rebuilding, `datedEvents`, through the subset's reader `subset/standing.ts` or its
+live twin in `places/gone.ts`), given the gone rules' reason for the place. It writes nothing
+itself. It reads the place's beginning, every end and every start after one, and reports them as
+the periods in which the place stood and the end of a use.
 
 - The beginning is the earliest inception (`P571`) or official opening (`P1619`), so Notre-Dame's
   reopening of 7 December 2024 never reads as its beginning (1163).
-- A rebuild is the first start after the latest end the place outlived, and the two make a gap:
-  the Cathedral of Christ the Saviour in Moscow, opened in 1883 and blown up on 5 December 1931,
+- A gap is an end the place outlived and the first start wholly after it (`gapsOf`): the
+  Cathedral of Christ the Saviour in Moscow, opened in 1883 and blown up on 5 December 1931,
   states an inception of 19 August 2000, and reads as two standing periods, 1883 → 5 December
-  1931 and 19 August 2000 → open. One gap is read, the latest; a gap stated only as dated events
-  (`P793`) is not read.
+  1931 and 19 August 2000 → open. Every gap is read: Ponte Santa Trinita in Florence, with ends
+  in 1557 and 1944 and openings in 1569 and on 16 March 1958, stood in three periods. Ends with no
+  start between them are one gap, which opens at the latest of them.
+- A dated significant event (`P793`) is an end or a start beside the statements
+  (`DESTROYED_EVENTS`, `REBUILT_EVENTS` in `subset/standing.ts`). A *destruction*, a *demolition*
+  or a *building implosion* is an end, dated by its point in time (`P585`), or by its end time
+  (`P582`) where it has none; an *architectural reconstruction*, a *reconstruction*, a
+  *rebuilding* or a *reopening* is a start, dated by its end time, or by its point in time. The
+  Old Bridge in Mostar states no end of existence, and reads 1566 → 9 November 1993, destroyed,
+  and 23 July 2004 → open; the Kintai Bridge 1673 → 14 September 1950 and 1953 → open. A period
+  that an event ends is told as destroyed. What the events may not say:
+  - An event with no date is no boundary (Nelson's Pillar's demolition), and neither is a
+    rebuilding that states only when it started (Pembroke Castle).
+  - A rebuilding opens a period only after an end. The same words describe work on a building
+    that never fell, so Berlin Cathedral's reconstruction of 1975 to 1993, after a *bombardment*,
+    opens no gap, and neither does the Kintai Bridge's of 1674, which no destruction precedes.
+  - An event that says what happened and not what was left is not an end: a *conflagration*, a
+    *bombardment*, a *slighting*. Kinkaku-ji, burnt down in 1950 and rebuilt in 1955, states a
+    conflagration and reads as standing throughout.
+  - An event that names a part (`P518`) says nothing of the place: Hirano Shrine's destruction of
+    2018 is its worship hall's.
+  - A rebuilding is no beginning, and a destruction that no start follows ends neither the place
+    nor a use: the Buddhas of Bamiyan are read as gone only once a gone rule reads the event
+    (#2585).
 - The end of the place is read only where the gone rules read the place as gone: its last
-  standing period ends at its latest end (`P576`, `P3999`) or at no date, and says how where the
-  reason does. Nelson's Pillar "destroyed in 1966" stood until 8 March 1966, destroyed. A start
+  standing period ends at its latest end (`P576`, `P3999`, or a destruction event) or at no date,
+  and says how where the reason does. Nelson's Pillar "destroyed in 1966" stood until 8 March 1966, destroyed. A start
   wholly after that end is no rebuild of a place read as gone.
 - The end of a use is the latest end no start follows on a place not read as gone, reported as a
   use that ended then and began at a date not known: Göbekli Tepe, standing from about the 10th
@@ -214,10 +237,10 @@ place stood and the end of a use.
   Dohány Street Synagogue's building.
 - An end before the beginning is dropped only where it is wholly before it: an end in the same
   period is kept, as a work set up in 2019 and removed on 14 June 2019 keeps its date.
-- A place with a beginning or an end stood in one period, or in two around a gap; an item that
-  states neither reports no standing period.
-- A date still ahead has not come (`readDated`, against `latestDayOnEarth`): a demolition
-  announced for next month or next year is no end yet, so the place keeps its beginning and its
+- A place with a beginning or an end stood in one period, or in one more than its gaps; an item
+  that states neither reports no standing period.
+- A date still ahead has not come (`readDated`, `readEvents`, against `latestDayOnEarth`): a
+  demolition announced for next month or next year is no end yet, so the place keeps its beginning and its
   standing period stays open. Where no end has come, an end still ahead also overrules the gone
   rules, which read the item's state and not its dates: an item marked demolished whose only end
   is dated ahead stands until that day, and the run after it reads the end. An end that has come
@@ -270,6 +293,15 @@ another (`used`):
   today's lists: under a gated source it is held back on a place a reader sees, and written with
   the arrival on a place no reader sees yet, as Nelson's Pillar arrives with its end of 1966. A
   trusted source writes it on either;
+- a gap in the place's standing longer than a century (`LONGEST_GAP_FILLED`, `opensLongGap`) is
+  never a fill either, and goes the same way: held back on a place a reader sees, written with the
+  arrival or by a trusted source. An item cannot say what stood in so long a gap. The Odeon of
+  Herodes Atticus, destroyed in 267 and rebuilt by 1953 as its item has it, was a ruin travellers
+  visited all that time; Bethlehem Chapel in Prague, pulled down in 1786 and rebuilt by 1952, was
+  not there. The length is counted from the last day the one period may have ended to the first
+  day the next may have begun, a gap the place already holds is not asked again, and a gap with
+  an end not known has no length. Of the 40 gaps the reader derives on the development subset
+  four are that long, and the 36 others are of 86 years or less;
 - a curator's admission pin on the run's membership keeps the place standing: the run reads its
   last standing period as open, whatever end its source reports;
 - periods another source set, a curator set or a curator claimed (`curated_fields` names `stood`
@@ -1350,7 +1382,7 @@ Measured on the development subset on 2026-11-04, read-only on the dev box, with
 
 **A place Wikidata says is gone is refused** (#2259, `places/gone.ts`), beside each kind's own refusals: once a run of Public art, Monuments & memorials, Places of worship, Towers, Bridges & engineering marvels or Squares & streets has decided, whichever tier or door admitted a place, the run reads what the item states of itself (`fetchStandingFacts`, through the run's own door: `subset/standing.ts` on the subset) and refuses by name (`refuseGone`, `goneReason`) a place whose state of use (`P5817`) says *demolished or destroyed* (the St. Francis Dam) or that it was never built (*proposed building or structure*, *cancelled*, *abandoned project*); one whose end of existence (`P576`) a state of use agrees with — closed, temporarily or for good, out of service, decommissioned, abandoned — where no heritage designation (`P1435`) still holds and no state of conservation (`P5816`) says *preserved*, *ruinous* or *partially destroyed* (the Francis Scott Key Bridge, Old St. Peter's Basilica); and a work out of service or decommissioned whose state of conservation is ruinous (the Teton Dam). A heritage designation that still holds spares a place from the last two tests. An end of existence alone is never read as gone: it is as often the end of what a building housed as of the building — Bath Abbey's monastery was dissolved, Hagia Sophia ceased to be a church, the Registan and Coventry's bombed cathedral carry one — and a state of conservation of *demolished or destroyed* sits on churches rebuilt since (the Cathedral of Christ the Saviour, St Michael's Golden-Domed Monastery) and on ruins worth the journey (Fountains Abbey). The Frauenkirche in Dresden and the Parthenon stay. On every membership of the six kinds on the development subset (2026-11-02), the end-of-existence test names the Francis Scott Key Bridge and Old St. Peter's Basilica alone, and no held place carries a state of use that says demolished or never built. A place the catalogue already offers that the run now refuses is refused as any is: held for a curator, never deleted.
 
-**A work no longer where its point is is refused** (#2280, `removedWorkReason` in `places/gone.ts`): Public art and Monuments & memorials read a gone place through `goneWorkReason` (the classifier's `gone`, handed to `refuseGone`), which asks #2259's test first and then a work's. A statue, a column or an installation houses nothing, so its end of existence (`P576`) is its removal unless the item says it stands after it: an inception (`P571`) after the end (the Swedish lion in Narva, ended 1944 and set up again in 2000; the Catherine II Monument in Krasnodar, ended 1920 and restored in 2006), or one in the same period as the end beside an earlier inception (the Arch of Neutrality, 1998 and 2010, ended 2010), since a lone inception in the end's own year is the work set up and taken down within it, a coordinate (`P625`) placed there since the end (the Arch of Neutrality, moved in 2010), or a heritage designation (`P1435`) that still holds and is not known to be older than the end — a register that listed the work after it ended, or states no start, lists what stands there now (the Moscow Triumphal Gate in St Petersburg and the Triumphal Arch of Moscow, both ended in 1936 and rebuilt), while one older than the end says only what stood then (the Empress Joséphine, inscribed in 1992 and pulled down in 2020; the Charlottesville Lee, listed from 1982, melted down in 2023). Two times are compared as precisely as the coarser of them is stated (`StatedTime`, read with its precision from the subset in `subset/standing.ts` and from `psv:`/`pqv:` on the live service). The reason says why in words: *destroyed in 1966* where an event (`P793` demolition or destruction) or the state of conservation says so (Nelson's Pillar, the Arch of Reunification), *a temporary work, taken down in 1976* where the work stood less than a year (Running Fence), *removed in 2020* otherwise (the Utah monolith, the Monument to the founders of Odesa). Measured on the 1,531 admitted memberships of the two kinds on the development subset (2026-11-03), it refuses 13 memberships of nine works — Nelson's Pillar, the Arch of Reunification, the Utah monolith, the Monument to the founders of Odesa, the Empress Joséphine, the Charlottesville Lee, El Colotero, Budapest's Timewheel (taken off its site in Városliget in 2021) and the Barmaley Fountain — and keeps the Moscow Triumphal Gate, the Triumphal Arch of Moscow, the Catherine II Monument and the Arch of Neutrality. The Barmaley Fountain's refusal is a fact about its item, not a fault of the rule: the replica set up in Volgograd in 2013 stands, but the item describes the fountain of 1930 and states only that it was destroyed in 1951, so a curator's put-back pin keeps it, and a second inception stated on Wikidata keeps it on the next run. A work removed whose item states no end — the Nathan Bedford Forrest Statue, the Statue of Francisco Franco in Melilla, both arriving for a curator — is no refusal of the rule: Jev's reading on the arrival's card (#1768) is the curator's question there. A work already published that was removed and still has two visit witnesses, its photographs and a heritage designation, is not asked by the run's visit questions (#1770), which read only places short of two witnesses; asking about it is a separate product question.
+**A work no longer where its point is is refused** (#2280, `removedWorkReason` in `places/gone.ts`): Public art and Monuments & memorials read a gone place through `goneWorkReason` (the classifier's `gone`, handed to `refuseGone`), which asks #2259's test first and then a work's. A statue, a column or an installation houses nothing, so its end of existence (`P576`) is its removal unless the item says it stands after it: an inception (`P571`) after the end (the Swedish lion in Narva, ended 1944 and set up again in 2000; the Catherine II Monument in Krasnodar, ended 1920 and restored in 2006), or one in the same period as the end beside an earlier inception (the Arch of Neutrality, 1998 and 2010, ended 2010), since a lone inception in the end's own year is the work set up and taken down within it, a coordinate (`P625`) placed there since the end (the Arch of Neutrality, moved in 2010), or a heritage designation (`P1435`) that still holds and is not known to be older than the end — a register that listed the work after it ended, or states no start, lists what stands there now (the Moscow Triumphal Gate in St Petersburg and the Triumphal Arch of Moscow, both ended in 1936 and rebuilt), while one older than the end says only what stood then (the Empress Joséphine, inscribed in 1992 and pulled down in 2020; the Charlottesville Lee, listed from 1982, melted down in 2023). Two times are compared as precisely as the coarser of them is stated (`StatedTime`, read with its precision from the subset in `subset/standing.ts` and from `psv:`/`pqv:` on the live service). The reason says why in words: *destroyed in 1966* where an event (`P793` with an item of `DESTROYED_EVENTS`, `subset/standing.ts`: a demolition, a destruction or a building implosion) or the state of conservation says so (Nelson's Pillar, the Arch of Reunification), *a temporary work, taken down in 1976* where the work stood less than a year (Running Fence), *removed in 2020* otherwise (the Utah monolith, the Monument to the founders of Odesa). Measured on the 1,531 admitted memberships of the two kinds on the development subset (2026-11-03), it refuses 13 memberships of nine works — Nelson's Pillar, the Arch of Reunification, the Utah monolith, the Monument to the founders of Odesa, the Empress Joséphine, the Charlottesville Lee, El Colotero, Budapest's Timewheel (taken off its site in Városliget in 2021) and the Barmaley Fountain — and keeps the Moscow Triumphal Gate, the Triumphal Arch of Moscow, the Catherine II Monument and the Arch of Neutrality. The Barmaley Fountain's refusal is a fact about its item, not a fault of the rule: the replica set up in Volgograd in 2013 stands, but the item describes the fountain of 1930 and states only that it was destroyed in 1951, so a curator's put-back pin keeps it, and a second inception stated on Wikidata keeps it on the next run. A work removed whose item states no end — the Nathan Bedford Forrest Statue, the Statue of Francisco Franco in Melilla, both arriving for a curator — is no refusal of the rule: Jev's reading on the arrival's card (#1768) is the curator's question there. A work already published that was removed and still has two visit witnesses, its photographs and a heritage designation, is not asked by the run's visit questions (#1770), which read only places short of two witnesses; asking about it is a separate product question.
 
 Adding a place kind is a declaration and its seed. A kind of one-point places whose rule reads its classes alone is a `PlaceKindDeclaration` (`places/declaredKind.ts`, #2318): its pool roots, what names a candidate, its types in the order they are read and the classes each is read from, what else is no place to visit for it beside the gone and the unbuilt every declared kind refuses (`GONE`), what another kind offers (unless a type of its own names it), what it shares with another kind (refused unless a class of its own names it), and its exceptions, each a line of data: refused where no type names it (`untyped`: Squares' canal, Towers' public clock and archaeological site, Bridges' archaeological site), and refused where only certain classes of the kind name it (`only`: Towers' building complex, a place of worship's minaret and the sea fort, Parks' archaeological site and residence). `declaredKind()` builds its class trees, each root asked once, its verdict, in one order for every kind, and the `PlaceKind`, the classifier and the surroundings kind the pass reads. Squares & streets, Towers, Bridges & engineering marvels and the proposed Parks & gardens are declared so (`<kind>/classes.ts`, `<kind>/kind.ts`). Places of worship, Public art, Monuments & memorials and Archaeology are not: their rules read more than a candidate's classes (what it holds or depicts, what holds it, the works a venue shows, the map), which a declaration of classes cannot say. With the declaration come its source row and kind row, and its entry in `passKinds()` (`places/placePass.ts`, `pointKind` for a kind of one-point places) with its source in `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`), the coverage report's type rule (`TYPE_RULES` in `catalogueCoverage/entryTypes.ts`, without which every survey entry under the kind is filed under no type), its types (`TYPE_VOCABULARIES` in `@tyr/shared/placeTypes`, which the landmark record's type and the reader's words both read) and, on the web, its colour (`kindColors.ts`) and its kind id (`experienceTypes.ts`).
 
