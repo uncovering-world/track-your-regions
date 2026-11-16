@@ -36,7 +36,8 @@ import {
   type Admission, type CurationState, type Existence, type SourceMembership,
 } from '@tyr/shared/lifecycle';
 import {
-  DATE_SPANS, LIFETIME_SLOTS, PLACE_ENDINGS, type DateSpan, type LifetimeSlot, type PlaceEnding,
+  DATE_SPANS, LIFETIME_SLOTS, PERIOD_SAYS, PLACE_ENDINGS,
+  type DateSpan, type LifetimeSlot, type PeriodSays, type PlaceEnding,
 } from '@tyr/shared/lifetime';
 import {
   CHECK_VALUES,
@@ -118,6 +119,20 @@ describe('the lifetime vocabularies both sides import (#1719)', () => {
     for (const table of ['place_dates', 'record_dates'] as const) {
       expect([...LIFETIME_SLOTS]).toEqual([...CHECK_VALUES[table].slot]);
       expect([...DATE_SPANS]).toEqual([...CHECK_VALUES[table].span]);
+      expect([...PLACE_ENDINGS]).toEqual([...CHECK_VALUES[table].ending]);
+    }
+  });
+});
+
+describe('the period vocabularies both sides import (#2578)', () => {
+  it('name exactly what a period says, the spans and the endings both period tables allow', () => {
+    expectTypeOf<PeriodSays>().toEqualTypeOf<CheckValue<'place_periods', 'says'>>();
+    expectTypeOf<DateSpan>().toEqualTypeOf<CheckValue<'place_periods', 'from_span'>>();
+    expectTypeOf<PlaceEnding>().toEqualTypeOf<CheckValue<'place_periods', 'ending'>>();
+    for (const table of ['place_periods', 'record_periods'] as const) {
+      expect([...PERIOD_SAYS]).toEqual([...CHECK_VALUES[table].says]);
+      expect([...DATE_SPANS]).toEqual([...CHECK_VALUES[table].from_span]);
+      expect([...DATE_SPANS]).toEqual([...CHECK_VALUES[table].until_span]);
       expect([...PLACE_ENDINGS]).toEqual([...CHECK_VALUES[table].ending]);
     }
   });

@@ -38,6 +38,9 @@
  * The schema states the slots, the spans and the endings too, as CHECK lists
  * on `place_dates` and `record_dates`; the backend holds the two to each other
  * by a type (`curationLogActions.test.ts`).
+ *
+ * A place's time is held as periods (#2578, ADR-0217): `PlacePeriod` below,
+ * each end of which is one of these dates.
  */
 
 /** What each date of a place says, in the order a card reads them. */
@@ -185,6 +188,118 @@ export function comparePlaceDates(a: PlaceDate, b: PlaceDate): -1 | 0 | 1 {
   if (left.last < right.first) return -1;
   if (left.first > right.last) return 1;
   return 0;
+}
+
+/**
+ * What a period of a place says was so (#2578, ADR-0217 decision 2), in the
+ * order a card reads them: the place itself stood, it was used for something,
+ * it was closed, or an event was held there. The schema states the list too,
+ * as CHECK lists on `place_periods` and `record_periods`.
+ */
+export const PERIOD_SAYS = ['stood', 'used', 'closed', 'held'] as const;
+export type PeriodSays = (typeof PERIOD_SAYS)[number];
+
+/** The one thing a place is gone by: it has periods that say it stood, and none is open. */
+export const PLACE_STOOD: PeriodSays = 'stood';
+
+/** What may lie ahead of today: a closure announced until 2027, next year's Holy Week. A place never stood in the future. */
+const MAY_LIE_AHEAD: readonly PeriodSays[] = ['closed', 'held'];
+
+/** How far ahead of this year such a period may be dated; a year mistyped with a digit too many is refused. */
+export const FURTHEST_YEARS_AHEAD = 50;
+
+/**
+ * A period: something was so from one date until another (ADR-0217
+ * decision 1). The Cathedral of Christ the Saviour in Moscow stood from 1883
+ * until 5 December 1931, and stands again from 2000, in a period still open.
+ */
+export interface PlacePeriod {
+  /** When it began; null where that is not known. */
+  from: PlaceDate | null;
+  /** Whether it has ended. An open period still holds. */
+  ended: boolean;
+  /** When it ended; null on an open period, and on one that ended at a date not known. */
+  until: PlaceDate | null;
+}
+
+/** A day of the Gregorian calendar, as the day a period is checked on. */
+export interface CalendarDay {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/**
+ * The latest calendar day it is anywhere on Earth at `now` (UTC+14, Kiritimati):
+ * a place blown up this morning in Auckland ended on a day London has not
+ * reached, and its end is not in the future.
+ */
+export function latestDayOnEarth(now: Date): CalendarDay {
+  const ahead = new Date(now.getTime() + 14 * 60 * 60 * 1000);
+  return { year: ahead.getUTCFullYear(), month: ahead.getUTCMonth() + 1, day: ahead.getUTCDate() };
+}
+
+/**
+ * The outer days a period may cover, in the count `periodOf` orders days by:
+ * the first day its start may be and the last day its end may be, each null
+ * where that end has no date. They are what is stored beside a period and
+ * compared by a read as of a date (ADR-0217 decisions 1 and 6): a trip of 1980
+ * falls after `untilLast` of the cathedral's first period and before
+ * `fromFirst` of its second.
+ */
+export function outerDaysOf(period: PlacePeriod): { fromFirst: number | null; untilLast: number | null } {
+  return {
+    fromFirst: period.from ? periodOf(period.from)?.first ?? null : null,
+    untilLast: period.until ? periodOf(period.until)?.last ?? null : null,
+  };
+}
+
+/** Whether a place with these standing periods stands: it holds none, or one that is open. */
+export function standsBy(stood: readonly PlacePeriod[]): boolean {
+  return stood.length === 0 || stood.some((period) => !period.ended);
+}
+
+/** What is wrong with one period saying `says`, or null. */
+function periodFault(period: PlacePeriod, says: PeriodSays, today: CalendarDay): string | null {
+  const ahead = MAY_LIE_AHEAD.includes(says);
+  const latestYear = ahead ? today.year + FURTHEST_YEARS_AHEAD : today.year;
+  const { from, until } = period;
+  if (from && !isValidPlaceDate(from, 'began', latestYear)) return 'its start is not a date';
+  if (until && !period.ended) return 'it has an end date and has not ended';
+  if (until && !isValidPlaceDate(until, 'began', latestYear)) return 'its end is not a date';
+  if (from && until && comparePlaceDates(from, until) > 0) return 'it ends before it starts';
+  if (ahead) return null;
+  const now = dayIndex(today.year, today.month, today.day);
+  if ((from && (periodOf(from)?.first ?? now) > now) || (until && (periodOf(until)?.first ?? now) > now)) return 'it lies in the future';
+  return null;
+}
+
+/**
+ * What is wrong with the periods of one place that say `says`, in the order
+ * given, or null where they are a list the tables can hold. Every writer and
+ * every reader of a source checks a list by this before it is written.
+ *
+ * - Each end is a date of the calendar (`isValidPlaceDate`), an end date is
+ *   only on a period that has ended, and no period ends before it starts.
+ * - The list is in time order: no period starts wholly after the one that
+ *   follows it.
+ * - Standing periods do not overlap: each but the last has ended, and the next
+ *   does not start wholly before that end. Uses and closures may overlap.
+ * - A standing period or a use lies wholly in the past or holds today; a
+ *   closure and an occurrence may lie ahead (ADR-0217 decision 2).
+ */
+export function periodsFault(says: PeriodSays, periods: readonly PlacePeriod[], today: CalendarDay): string | null {
+  for (const [index, period] of periods.entries()) {
+    const fault = periodFault(period, says, today);
+    if (fault) return fault;
+    const next = periods[index + 1];
+    if (!next) continue;
+    if (period.from && next.from && comparePlaceDates(period.from, next.from) > 0) return 'the periods are not in time order';
+    if (says !== PLACE_STOOD) continue;
+    if (!period.ended) return 'a period that has not ended is followed by another';
+    if (period.until && next.from && comparePlaceDates(period.until, next.from) > 0) return 'two periods overlap';
+  }
+  return null;
 }
 
 /** Whether two dates are the same date, every field compared. */
