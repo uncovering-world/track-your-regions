@@ -1,16 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import type { RecordDates, SourcedDate } from '../../db/placeDatesWriter.js';
+import type { RecordPeriods, SourcedDate, SourcedPeriod } from '../../db/placePeriodsWriter.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienceUpsert.js';
 
 /**
- * A run writes a place's dates through the gate (#1719, ADR-0214 decision 4),
- * executed against PostgreSQL: the upsert writes its source's view on its own
- * record and the place's dates the gate lets through, under the place's lock.
+ * A run writes a place's periods through the gate (#2578, ADR-0217
+ * decision 3), executed against PostgreSQL: the upsert writes its source's
+ * view on its own record and the place's periods the gate lets through, under
+ * the place's lock.
  *
- * The fixture is Göbekli Tepe as Archaeology, a gated source, brings it: begun
- * about the 10th millennium BC, in use until about the 7th. Ids are the
- * fixture's own, deleted before and after.
+ * The fixture is Göbekli Tepe as Archaeology, a gated source, brings it:
+ * standing from about the 10th millennium BC, in use until about the 7th. Ids
+ * are the fixture's own, deleted before and after.
  */
 
 const QID = 'Q9719101';
@@ -19,13 +20,17 @@ let archaeology = 0;
 let logId = 0;
 let wasGated: boolean | null = null;
 
-const date = (year: number, rest: Partial<SourcedDate> = {}): SourcedDate => ({
-  year, month: null, day: null, span: null, circa: false, ending: null, property: 'P571', statement: null, ...rest,
+const on = (year: number, rest: Partial<SourcedDate> = {}): SourcedDate => ({
+  year, month: null, day: null, span: null, circa: false, property: 'P571', statement: null, ...rest,
 });
+const open = (from: SourcedDate | null): SourcedPeriod => ({ from, ended: false, until: null, ending: null, what: null });
+const until = (from: SourcedDate | null, end: SourcedDate | null, ending: SourcedPeriod['ending'] = null): SourcedPeriod =>
+  ({ from, ended: true, until: end, ending, what: null });
 
-const GOBEKLI: RecordDates = {
-  began: date(-9999, { span: 'millennium', circa: true, statement: 'Q9719101$aa01' }),
-  use_ended: date(-7000, { span: 'millennium', property: 'P576' }),
+const BEGAN = on(-9999, { span: 'millennium', circa: true, statement: 'Q9719101$aa01' });
+const GOBEKLI: RecordPeriods = {
+  stood: [open(BEGAN)],
+  used: [until(null, on(-7000, { span: 'millennium', property: 'P576' }))],
 };
 
 const record = (): ExperienceUpsertParams => ({
@@ -45,7 +50,7 @@ const record = (): ExperienceUpsertParams => ({
   metadata: { wikidataQid: QID },
 });
 
-const write = (lifetime: RecordDates, dryRun = false) =>
+const write = (lifetime: RecordPeriods, dryRun = false) =>
   upsertExperienceRecord(record(), { syncLogId: logId, dryRun, lifetimes: new Map([[QID, lifetime]]) });
 
 async function clear(): Promise<void> {
@@ -56,17 +61,20 @@ async function clear(): Promise<void> {
   }
 }
 
-const placeDates = async () => (await pool.query(
-  `SELECT d.slot, d.year, d.span, d.circa, d.property, d.statement, d.source_id = $2 AS own
-     FROM place_dates d JOIN experiences e ON e.id = d.experience_id
-    WHERE e.external_id = $1 ORDER BY d.slot`,
+const placePeriods = async () => (await pool.query(
+  `SELECT p.says, p.ordinal, p.from_year, p.from_statement, p.ended, p.until_year, p.source_id = $2 AS own
+     FROM place_periods p JOIN experiences e ON e.id = p.experience_id
+    WHERE e.external_id = $1 ORDER BY p.says, p.ordinal`,
   [QID, archaeology],
 )).rows;
-const recordDates = async () => (await pool.query(
-  `SELECT rd.slot, rd.year FROM record_dates rd JOIN source_records m ON m.id = rd.record_id
-    WHERE m.source_id = $1 AND m.external_id = $2 ORDER BY rd.slot`,
+const recordPeriods = async () => (await pool.query(
+  `SELECT rp.says, rp.from_year, rp.ended, rp.until_year FROM record_periods rp JOIN source_records m ON m.id = rp.record_id
+    WHERE m.source_id = $1 AND m.external_id = $2 ORDER BY rp.says, rp.ordinal`,
   [archaeology, QID],
 )).rows;
+const standsToday = async () => (await pool.query<{ stands_today: boolean }>(
+  'SELECT stands_today FROM experiences WHERE external_id = $1', [QID],
+)).rows[0].stands_today;
 
 beforeEach(async () => {
   await clear();
@@ -88,35 +96,50 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe('a run writes a place\'s dates through the gate (#1719)', () => {
-  it('fills the dates of a place it creates, and files them as passed', async () => {
+describe('a run writes a place\'s periods through the gate (#2578)', () => {
+  it('fills the periods of a place it creates, and files them as passed', async () => {
     const created = await write(GOBEKLI);
     expect(created.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([
-      ['began', 'first-date'], ['use_ended', 'first-date'],
+      ['stood', 'first-date'], ['used', 'first-date'],
     ]);
-    expect(await placeDates()).toEqual([
-      { slot: 'began', year: -9999, span: 'millennium', circa: true, property: 'P571', statement: 'Q9719101$aa01', own: true },
-      { slot: 'use_ended', year: -7000, span: 'millennium', circa: false, property: 'P576', statement: null, own: true },
+    expect(await placePeriods()).toEqual([
+      { says: 'stood', ordinal: 1, from_year: -9999, from_statement: 'Q9719101$aa01', ended: false, until_year: null, own: true },
+      { says: 'used', ordinal: 1, from_year: null, from_statement: null, ended: true, until_year: -7000, own: true },
     ]);
-    expect(await recordDates()).toEqual([{ slot: 'began', year: -9999 }, { slot: 'use_ended', year: -7000 }]);
+    expect(await recordPeriods()).toEqual([
+      { says: 'stood', from_year: -9999, ended: false, until_year: null },
+      { says: 'used', from_year: null, ended: true, until_year: -7000 },
+    ]);
+    expect(await standsToday()).toBe(true);
   });
 
-  it('holds a change to a date a reader sees, and every end, for a curator, while its record reports them', async () => {
+  it('writes the end of a place that arrives already gone, with the arrival', async () => {
+    const created = await write({ stood: [until(BEGAN, on(-7000, { span: 'millennium', property: 'P576' }), 'destroyed')] });
+    expect(created.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([['stood', undefined]]);
+    expect(await placePeriods()).toMatchObject([{ says: 'stood', from_year: -9999, ended: true, until_year: -7000 }]);
+    expect(await standsToday()).toBe(false);
+  });
+
+  it('holds a moved date and the end of a place a reader sees, for a curator, while its record reports them', async () => {
     const created = await write(GOBEKLI);
     await pool.query(
       `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
+    // The start moved to the 96th century BC, and the place said to be gone since the 7th millennium.
     const changed = await write({
-      began: date(-9600, { span: 'century' }),
-      use_ended: GOBEKLI.use_ended,
-      ended: date(-7000, { property: 'P576', ending: 'destroyed' }),
+      stood: [until(on(-9600, { span: 'century' }), on(-7000, { span: 'millennium', property: 'P576' }), 'destroyed')],
+      used: GOBEKLI.used,
     });
-    expect(changed.changeSet.changedFields.filter((f) => ['began', 'ended'].includes(f.field))).toEqual([]);
+    expect(changed.changeSet.changedFields.filter((f) => ['stood', 'used'].includes(f.field))).toEqual([]);
     expect(changed.changeSet.heldFields).toEqual([]);
-    expect((await placeDates()).map((d) => [d.slot, d.year])).toEqual([['began', -9999], ['use_ended', -7000]]);
-    expect(await recordDates()).toEqual([{ slot: 'began', year: -9600 }, { slot: 'ended', year: -7000 }, { slot: 'use_ended', year: -7000 }]);
+    expect((await placePeriods()).map((p) => [p.says, p.from_year, p.ended])).toEqual([['stood', -9999, false], ['used', null, true]]);
+    expect(await standsToday()).toBe(true);
+    expect(await recordPeriods()).toEqual([
+      { says: 'stood', from_year: -9600, ended: true, until_year: -7000 },
+      { says: 'used', from_year: null, ended: true, until_year: -7000 },
+    ]);
     const membership = (await pool.query<{ state: string; pointer: number | null }>(
       `SELECT curation_state AS state, pending_change_sync_log_id AS pointer FROM source_records
         WHERE experience_id = $1 AND source_id = $2`,
@@ -125,30 +148,45 @@ describe('a run writes a place\'s dates through the gate (#1719)', () => {
     expect(membership).toEqual({ state: 'verified', pointer: null });
   });
 
+  it('fills a gap into the period a seen place holds, which moves no date of it and leaves it standing', async () => {
+    const created = await write({ stood: [open(on(1883))] });
+    await pool.query(
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const filled = await write({ stood: [until(on(1883), on(1931, { month: 12, day: 5, property: 'P576' })), open(on(2000))] });
+    expect(filled.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([['stood', 'first-date']]);
+    expect((await placePeriods()).map((p) => [p.ordinal, p.from_year, p.until_year])).toEqual([[1, 1883, 1931], [2, 2000, null]]);
+    expect(await standsToday()).toBe(true);
+  });
+
   it('writes an end under a trusted source, and none where a curator\'s admission pin keeps the place', async () => {
     await pool.query('UPDATE experience_sources SET requires_curation = FALSE WHERE id = $1', [archaeology]);
-    const ENDED = date(2024, { month: 1, property: 'P576', ending: 'destroyed' });
-    const created = await write({ began: GOBEKLI.began });
+    const gone = { stood: [until(BEGAN, on(2024, { month: 1, property: 'P576' }), 'destroyed')] };
+    const created = await write({ stood: [open(BEGAN)] });
     await pool.query(
       `UPDATE source_records SET curated_fields = '["admission"]'::jsonb WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
-    await write({ began: GOBEKLI.began, ended: ENDED });
-    expect((await placeDates()).map((d) => d.slot)).toEqual(['began']);
+    await write(gone);
+    expect((await placePeriods()).map((p) => [p.says, p.ended])).toEqual([['stood', false]]);
+    expect(await standsToday()).toBe(true);
     await pool.query(
       `UPDATE source_records SET curated_fields = '[]'::jsonb WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
-    const ended = await write({ began: GOBEKLI.began, ended: ENDED });
-    expect(ended.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([['ended', 'first-date']]);
-    expect((await placeDates()).map((d) => [d.slot, d.year])).toEqual([['began', -9999], ['ended', 2024]]);
+    const ended = await write(gone);
+    expect(ended.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([['stood', undefined]]);
+    expect((await placePeriods()).map((p) => [p.says, p.from_year, p.until_year])).toEqual([['stood', -9999, 2024]]);
+    expect(await standsToday()).toBe(false);
   });
 
   it('says in a preview what a run would fill, and writes nothing', async () => {
     const created = await write(GOBEKLI, true);
     expect(created.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([
-      ['began', 'first-date'], ['use_ended', 'first-date'],
+      ['stood', 'first-date'], ['used', 'first-date'],
     ]);
-    expect(await placeDates()).toEqual([]);
+    expect(await placePeriods()).toEqual([]);
   });
 });

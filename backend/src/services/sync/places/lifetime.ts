@@ -1,26 +1,49 @@
 /**
- * A place's lifetime as its Wikidata item states it (#1719, ADR-0214): the four
- * dates a run reports as its source's view of the place, read from the same
- * statements the gone rules read (`fetchStandingFacts`).
+ * A place's periods as its Wikidata item states them (#2578, ADR-0217
+ * decision 3; #1719): the view a run reports as its source's, read from the
+ * same statements the gone rules read (`fetchStandingFacts`). Four dates are
+ * read, and written as the periods in which the place stood and the end of
+ * what it was used for.
  *
- * - **began**: the earliest inception (`P571`) or official opening (`P1619`).
- *   The earliest, because an opening is as often a reopening: Notre-Dame de
- *   Paris was begun in 1163 and states an opening of 7 December 2024.
- * - **rebuilt**: the first start after the latest end the place outlived, an
- *   end after the beginning that a start follows. The Cathedral of Christ the
- *   Saviour in Moscow opened in 1883, was blown up on 5 December 1931, and
- *   states its inception as 2000; Ponte Santa Trinita, destroyed in 1557 and
- *   in 1944, reopened in 1958.
- * - **ended**: only where the gone rules read the place as gone (`goneReason`,
- *   `goneWorkReason`): the latest end (`P576` dissolved or demolished, `P3999`
- *   official closure), or a place gone with no date.
- * - **use_ended**: the latest end not followed by a start, on a place the gone
- *   rules do not read as gone. Göbekli Tepe was abandoned about 7000 BC and
- *   stands; the Registan's 1420 ends a role. An end before the beginning is the
- *   end of an earlier building, not of this one: Bath Abbey's monastery was
- *   dissolved in 1539, and the church stands built from 1572.
+ * - **The beginning**: the earliest inception (`P571`) or official opening
+ *   (`P1619`). The earliest, because an opening is as often a reopening:
+ *   Notre-Dame de Paris was begun in 1163 and states an opening of
+ *   7 December 2024.
+ * - **A rebuild**: the first start after the latest end the place outlived, an
+ *   end after the beginning that a start follows. The two make a gap, and the
+ *   place stood in two periods: the Cathedral of Christ the Saviour in Moscow
+ *   opened in 1883, was blown up on 5 December 1931, and states its inception
+ *   as 2000, so it stood from 1883 until 5 December 1931 and stands from 2000.
+ *   One gap is read, the latest: Ponte Santa Trinita, destroyed in 1557 and in
+ *   1944, reads 1252 until 1944 and from 1958.
+ * - **The end of the place**: only where the gone rules read the place as
+ *   gone (`goneReason`, `goneWorkReason`): its last standing period ends at
+ *   the latest end (`P576` dissolved or demolished, `P3999` official closure),
+ *   or at no date. A start wholly after that end is no rebuild of a place
+ *   read as gone.
+ * - **The end of a use**: the latest end not followed by a start, on a place
+ *   the gone rules do not read as gone, as a use that ended then and began at
+ *   a date not known. Göbekli Tepe was abandoned about 7000 BC and stands; the
+ *   Registan's 1420 ends a role. An end before the beginning is the end of an
+ *   earlier building, not of this one: Bath Abbey's monastery was dissolved in
+ *   1539, and the church stands built from 1572.
  *
- * An item that states none of those four, whether or not their dates can be
+ * A place with a beginning or an end stood in one period, or in two around a
+ * gap; an item that states neither reports no standing period.
+ *
+ * **A date still ahead has not come** (`latestDayOnEarth`): a demolition
+ * announced for next month, or for next year, is no end yet, and an opening
+ * announced is no beginning. Such a statement is read as nothing, so the place
+ * keeps its beginning and its standing period stays open. Where no end has
+ * come, an end still ahead also overrules the gone rules, which read the
+ * item's state and not its dates: an item marked demolished whose only end is
+ * dated ahead stands until that day, and the run after it reads the end. The
+ * other way round would take a standing place off today's lists on an
+ * announcement. An end that has come keeps the place gone, whatever is dated
+ * after it. A list the shared rule refuses all the same (`periodsFault`) is
+ * not reported.
+ *
+ * An item that states none of those four dates, whether or not they can be
  * read, is read by its start time (`P580`) and end time (`P582`) instead: Mohenjo-daro ends about 1700 BC. Where it
  * states any of them, a start or end time is the time of something else, the
  * Dohány Street Synagogue's building (1854 to 1859) among them.
@@ -47,9 +70,10 @@
 
 import { SOURCE_ID_SHAPES } from '@tyr/shared/identifiers';
 import {
-  comparePlaceDates, isValidPlaceDate, julianToGregorian, periodOf, type DateSpan, type LifetimeSlot, type PlaceEnding,
+  comparePlaceDates, FURTHEST_YEARS_AHEAD, isValidPlaceDate, julianToGregorian, latestDayOnEarth, periodOf, periodsFault,
+  type CalendarDay, type DateSpan, type PlaceEnding,
 } from '@tyr/shared/lifetime';
-import type { RecordDates, SourcedDate } from '../../../db/placeDatesWriter.js';
+import type { RecordPeriods, SourcedDate, SourcedPeriod } from '../../../db/placePeriodsWriter.js';
 import { LIFETIME_PROPERTIES, type DatedStatement, type LifetimeProperty, type StandingFacts } from '../subset/standing.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { fetchStandingFacts } from './gone.js';
@@ -91,13 +115,11 @@ function readStatement(statement: DatedStatement, latestYear: number): Read | nu
     day: precision >= 11 && month > 0 && day > 0 ? day : null,
     span,
     circa: statement.circa,
-    ending: null,
     property: statement.property,
     statement: statementId(statement.statement),
   };
-  const period = periodOf(date);
-  if (!period || !isValidPlaceDate(date, 'began', latestYear)) return null;
-  return { date, property: statement.property, ...period };
+  if (!isValidPlaceDate(date, latestYear)) return null;
+  return { date, property: statement.property, ...periodOf(date) };
 }
 
 /** The one order of dates (`comparePlaceDates`): nonzero only where the periods do not overlap. */
@@ -137,19 +159,59 @@ function endingOf(reason: string): PlaceEnding | null {
   return null;
 }
 
+/**
+ * The item's dated statements as dates, apart by whether their day has come:
+ * `ahead` holds those dated wholly after `today`, which say nothing of the
+ * place yet.
+ */
+function readDated(facts: StandingFacts, today: CalendarDay): { reads: Read[]; ahead: Read[] } {
+  const now = periodOf({ ...today, span: null, circa: false }).first;
+  const all = facts.dated.flatMap((statement) => {
+    const read = readStatement(statement, today.year + FURTHEST_YEARS_AHEAD);
+    return read ? [read] : [];
+  });
+  return { reads: all.filter((read) => read.first <= now), ahead: all.filter((read) => read.first > now) };
+}
+
 /** Whether a gone rule's reason says the place stood and then went, rather than that it was never built. */
 const readsAsGone = (reason: string | null): reason is string => reason !== null && !reason.startsWith('never built');
 
 /**
- * A place's dates as its item states them, given what the gone rules read of
+ * The periods in which a place stood: two around a gap, one from its
+ * beginning, or none for a place with no beginning that is not read as gone.
+ * `last` is how the last of them ends, or that it is open.
+ */
+function standingOf(
+  began: Read | null,
+  gap: { outlived: Read; rebuilt: Read } | null,
+  last: Pick<SourcedPeriod, 'ended' | 'until' | 'ending' | 'what'>,
+  gone: boolean,
+): SourcedPeriod[] {
+  const from = began?.date ?? null;
+  if (gap) return [{ from, ended: true, until: gap.outlived.date, ending: null, what: null }, { from: gap.rebuilt.date, ...last }];
+  return began || gone ? [{ from, ...last }] : [];
+}
+
+/** The lists a view reports: each that holds a period and that the shared rule does not refuse. */
+function reported(lists: Record<'stood' | 'used', SourcedPeriod[]>, today: CalendarDay): RecordPeriods {
+  const out: RecordPeriods = {};
+  for (const says of ['stood', 'used'] as const) {
+    if (lists[says].length > 0 && periodsFault(says, lists[says], today) === null) out[says] = lists[says];
+  }
+  return out;
+}
+
+/**
+ * A place's periods as its item states them, given what the gone rules read of
  * it (`goneReason`, or `goneWorkReason` for a kind that holds works; null for
  * a place they do not read as gone). Writes nothing.
  */
-export function lifetimeOf(facts: StandingFacts, goneReasonOf: string | null, latestYear = new Date().getUTCFullYear()): RecordDates {
-  const reads = facts.dated.flatMap((statement) => {
-    const read = readStatement(statement, latestYear);
-    return read ? [read] : [];
-  });
+export function lifetimeOf(
+  facts: StandingFacts,
+  goneReasonOf: string | null,
+  today: CalendarDay = latestDayOnEarth(new Date()),
+): RecordPeriods {
+  const { reads, ahead } = readDated(facts, today);
   // Start and end times stand in only for an item that states no inception,
   // opening, end or closure, whether or not its date could be read.
   const lifetimeStated = facts.dated.some((statement) => STARTS.includes(statement.property) || ENDS.includes(statement.property));
@@ -159,33 +221,32 @@ export function lifetimeOf(facts: StandingFacts, goneReasonOf: string | null, la
   // An end before the beginning ends an earlier building, not this place; one
   // in the same period may be either, and stays.
   const ends = reads.filter((read) => endProperties.includes(read.property)).filter((end) => !began || compare(end, began) >= 0);
-  const gone = readsAsGone(goneReasonOf);
+  // Where no end has come, one dated to a day still ahead says the place
+  // stands until then, whatever state the gone rules read.
+  const onlyEndAhead = ends.length === 0 && ahead.some((read) => endProperties.includes(read.property));
+  const reason = readsAsGone(goneReasonOf) && !onlyEndAhead ? goneReasonOf : null;
+  const gone = reason !== null;
   const finalEnd = latest(ends);
   // A start besides the beginning in the same period as the last end leaves
   // unsaid which came first: no end of use is read from that end.
   const ambiguous = !gone && finalEnd !== null && starts.some((start) => start !== began && compare(start, finalEnd) === 0);
   // A rebuild follows the latest end the place outlived, which a start follows
-  // wholly after it: for a gone place, an end before its last. An end whose
-  // order with a start is unsaid is outlived only by a start wholly after it.
+  // wholly after it: for a gone place, an end before its last, and a start not
+  // wholly after its last. An end whose order with a start is unsaid is
+  // outlived only by a start wholly after it.
   const candidates = gone && finalEnd ? ends.filter((end) => compare(end, finalEnd) < 0) : ends;
-  const outlived = latest(candidates.filter((end) => starts.some((start) => compare(start, end) > 0)));
-  const rebuilt = outlived ? earliest(starts.filter((start) => compare(start, outlived) > 0)) : null;
+  const restarts = gone && finalEnd ? starts.filter((start) => compare(start, finalEnd) <= 0) : starts;
+  const outlived = latest(candidates.filter((end) => restarts.some((start) => compare(start, end) > 0)));
+  const rebuilt = outlived ? earliest(restarts.filter((start) => compare(start, outlived) > 0)) : null;
 
-  const out: RecordDates = {};
-  const put = (slot: LifetimeSlot, date: SourcedDate) => {
-    if (isValidPlaceDate(date, slot, latestYear)) out[slot] = date;
-  };
-  if (began) put('began', began.date);
-  if (rebuilt) put('rebuilt', rebuilt.date);
-  if (gone) {
-    const ending = endingOf(goneReasonOf);
-    put('ended', finalEnd
-      ? { ...finalEnd.date, ending }
-      : { year: null, month: null, day: null, span: null, circa: false, ending, property: null, statement: null });
-  } else if (finalEnd && !ambiguous && (!rebuilt || compare(finalEnd, rebuilt) > 0)) {
-    put('use_ended', finalEnd.date);
-  }
-  return out;
+  // The last standing period is open unless the gone rules read the place as gone.
+  const last = gone
+    ? { ended: true, until: finalEnd?.date ?? null, ending: endingOf(reason), what: null }
+    : { ended: false, until: null, ending: null, what: null };
+  const stood = standingOf(began, outlived && rebuilt ? { outlived, rebuilt } : null, last, gone);
+  const useEnded = !gone && finalEnd && !ambiguous && (!rebuilt || compare(finalEnd, rebuilt) > 0);
+  const used: SourcedPeriod[] = useEnded ? [{ from: null, ended: true, until: finalEnd.date, ending: null, what: null }] : [];
+  return reported({ stood, used }, today);
 }
 
 /**
@@ -200,9 +261,9 @@ export async function readLifetimes(
   sparql: SparqlFn,
   items: readonly { key: string; qid: string }[],
   goneOf?: (facts: StandingFacts) => string | null,
-): Promise<Map<string, RecordDates>> {
+): Promise<Map<string, RecordPeriods>> {
   const facts = await fetchStandingFacts(sparql, items.map((item) => item.qid));
-  const out = new Map<string, RecordDates>();
+  const out = new Map<string, RecordPeriods>();
   for (const { key, qid } of items) {
     const known = facts.get(qid);
     if (known) out.set(key, lifetimeOf(known, goneOf ? goneOf(known) : null));

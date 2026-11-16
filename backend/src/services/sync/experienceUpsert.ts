@@ -92,9 +92,9 @@ import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@t
 import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockExperience, lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
-import type { RecordDates } from '../../db/placeDatesWriter.js';
+import type { RecordPeriods } from '../../db/placePeriodsWriter.js';
 import {
-  decideLifetime, heldDatesOf, withLifetimeChanges, writeLifetime, type LifetimeDecision, type LifetimeGate,
+  decideLifetime, heldPeriodsOf, withLifetimeChanges, writeLifetime, type LifetimeDecision, type LifetimeGate,
 } from './lifetimeWrites.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts.js';
@@ -527,7 +527,7 @@ function namedRecord(params: ExperienceUpsertParams): NamedRecord {
   return { sourceId: params.sourceId, label: params.name, description: params.subtitle };
 }
 
-async function previewUpsert(sent: ExperienceUpsertParams, lifetime: RecordDates | undefined): Promise<UpsertOutcome> {
+async function previewUpsert(sent: ExperienceUpsertParams, lifetime: RecordPeriods | undefined): Promise<UpsertOutcome> {
   // The place the run would write: its own membership's, or else the one an
   // item identifies, as the run finds it (unlocked, since nothing is written).
   const result = await pool.query(
@@ -592,7 +592,7 @@ async function previewUpsert(sent: ExperienceUpsertParams, lifetime: RecordDates
     // rides along so it lands in the bucket that says it was refused.
     changeSet: withDates(
       proposedBy(row, computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView)),
-      lifetime && decideLifetime(await heldDatesOf(pool, row.id), lifetime, storedPlaceGate(params.sourceId, row, curatedFields)),
+      lifetime && decideLifetime(await heldPeriodsOf(pool, row.id), lifetime, storedPlaceGate(params.sourceId, row, curatedFields)),
     ),
     nameSnapshot: curatedFields.includes('name') || heldFromView
       ? (row.name as string)
@@ -719,15 +719,14 @@ const storedPlaceGate = (sourceId: number, stored: Record<string, unknown>, clai
   pinned: Boolean(stored.kept_by_pin),
 });
 
-/** The change set with what the run wrote of the place's dates, where it read any. */
+/** The change set with what the run wrote of the place's periods, where it read any. */
 const withDates = (changeSet: ChangeSetResult, dates: LifetimeDecision | undefined): ChangeSetResult =>
   (dates ? withLifetimeChanges(changeSet, dates) : changeSet);
 
 /**
- * The run's view of the place's lifetime on its own record, and the place's
- * dates the gate lets through (`lifetimeWrites.ts`), where the run read one,
- * under the lock the upsert
- * holds: the place's, or, for a place the statement just created, its insert's
+ * The run's view of the place's periods on its own record, and the place's
+ * periods the gate lets through (`lifetimeWrites.ts`), where the run read any,
+ * under the lock the upsert holds: the place's, or, for a place the statement just created, its insert's
  * row lock, which taking it again only names.
  */
 async function writeOwnLifetime(
@@ -735,7 +734,7 @@ async function writeOwnLifetime(
   locked: LockedExperience | null,
   row: Record<string, unknown>,
   params: ExperienceUpsertParams,
-  lifetime: RecordDates | undefined,
+  lifetime: RecordPeriods | undefined,
   held: boolean,
 ): Promise<LifetimeDecision | undefined> {
   if (lifetime === undefined) return undefined;
@@ -764,7 +763,7 @@ async function writeOwnLifetime(
  */
 export async function upsertExperienceRecord(
   rawParams: ExperienceUpsertParams,
-  options: { dryRun?: boolean; syncLogId?: number | null; lifetimes?: ReadonlyMap<string, RecordDates> } = {},
+  options: { dryRun?: boolean; syncLogId?: number | null; lifetimes?: ReadonlyMap<string, RecordPeriods> } = {},
 ): Promise<UpsertOutcome> {
   // Before the dry-run branch, so a preview says what the run would do rather
   // than what the source proposed.
@@ -860,7 +859,7 @@ async function writeUnderLock(
   client: PoolClient,
   sent: ExperienceUpsertParams,
   syncLogId: number | null,
-  lifetime: RecordDates | undefined,
+  lifetime: RecordPeriods | undefined,
 ): Promise<UpsertOutcome> {
   // The lock first, in a statement of its own — the mode every curator write
   // takes on the same row. A place the run has not created yet locks nothing

@@ -36,8 +36,7 @@ import {
   type Admission, type CurationState, type Existence, type SourceMembership,
 } from '@tyr/shared/lifecycle';
 import {
-  DATE_SPANS, LIFETIME_SLOTS, PERIOD_SAYS, PLACE_ENDINGS,
-  type DateSpan, type LifetimeSlot, type PeriodSays, type PlaceEnding,
+  DATE_SPANS, PERIOD_SAYS, PLACE_ENDINGS, type DateSpan, type PeriodSays, type PlaceEnding,
 } from '@tyr/shared/lifetime';
 import {
   CHECK_VALUES,
@@ -108,19 +107,6 @@ describe('the identifier vocabularies both sides import (#1896)', () => {
   it("name exactly the words place_identifier_verdicts.verdict allows", () => {
     expectTypeOf<IdentifierVerdict>().toEqualTypeOf<CheckValue<'place_identifier_verdicts', 'verdict'>>();
     expect([...IDENTIFIER_VERDICTS]).toEqual([...CHECK_VALUES.place_identifier_verdicts.verdict]);
-  });
-});
-
-describe('the lifetime vocabularies both sides import (#1719)', () => {
-  it('name exactly the slots, spans and endings both date tables allow', () => {
-    expectTypeOf<LifetimeSlot>().toEqualTypeOf<CheckValue<'place_dates', 'slot'>>();
-    expectTypeOf<DateSpan>().toEqualTypeOf<CheckValue<'place_dates', 'span'>>();
-    expectTypeOf<PlaceEnding>().toEqualTypeOf<CheckValue<'place_dates', 'ending'>>();
-    for (const table of ['place_dates', 'record_dates'] as const) {
-      expect([...LIFETIME_SLOTS]).toEqual([...CHECK_VALUES[table].slot]);
-      expect([...DATE_SPANS]).toEqual([...CHECK_VALUES[table].span]);
-      expect([...PLACE_ENDINGS]).toEqual([...CHECK_VALUES[table].ending]);
-    }
   });
 });
 

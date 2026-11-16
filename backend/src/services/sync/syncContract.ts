@@ -11,7 +11,7 @@
 import type { ChangeSetResult } from './changeSet.js';
 import type { SourceCompleteness } from './missingDetection.js';
 import type { SyncProgress, ErrorDetail, ContentsByKind } from './types.js';
-import type { RecordDates } from '../../db/placeDatesWriter.js';
+import type { RecordPeriods } from '../../db/placePeriodsWriter.js';
 import type { StandingFacts } from './subset/standing.js';
 
 /**
@@ -125,7 +125,7 @@ export interface SyncRunContext {
    * item absent here is one the run read no lifetime of, and its record's view
    * is left as it stands.
    */
-  lifetimes?: ReadonlyMap<string, RecordDates>;
+  lifetimes?: ReadonlyMap<string, RecordPeriods>;
 }
 
 export interface ProcessItemResult {

@@ -70,14 +70,15 @@ import { wikidataRunDoor } from './subset/runDoor.js';
 import type { SyncRunContext } from './syncContract.js';
 import { TEST_SOURCE_ID, makeConfig, processed, resetOrchestratorMocks, restoreOrchestratorTimers } from './syncOrchestrator.fixtures.js';
 
-const BEGAN = { year: -9999, month: null, day: null, span: 'millennium' as const, circa: true, ending: null, property: 'P571', statement: null };
+const BEGAN = { year: -9999, month: null, day: null, span: 'millennium' as const, circa: true, property: 'P571', statement: null };
+const STOOD = { stood: [{ from: BEGAN, ended: false, until: null, ending: null, what: null }] };
 
 describe('the places\' lifetimes a run reads (#1719)', () => {
   beforeEach(resetOrchestratorMocks);
   afterEach(restoreOrchestratorTimers);
 
   it('reads them once, by each item\'s item, and hands every item the map', async () => {
-    vi.mocked(readLifetimes).mockResolvedValue(new Map([['1', { began: BEGAN }]]));
+    vi.mocked(readLifetimes).mockResolvedValue(new Map([['1', STOOD]]));
     const processItem = vi.fn().mockResolvedValue(processed('updated'));
     const gone = vi.fn(() => null);
     await orchestrateSync(makeConfig({
@@ -88,13 +89,13 @@ describe('the places\' lifetimes a run reads (#1719)', () => {
     expect(readLifetimes).toHaveBeenCalledTimes(1);
     expect(vi.mocked(readLifetimes).mock.calls[0].slice(1)).toEqual([[{ key: '1', qid: 'Q214944' }], gone]);
     const contexts = processItem.mock.calls.map((call) => call[2] as SyncRunContext);
-    expect(contexts.map((context) => context.lifetimes?.get('1'))).toEqual([{ began: BEGAN }, { began: BEGAN }]);
+    expect(contexts.map((context) => context.lifetimes?.get('1'))).toEqual([STOOD, STOOD]);
   });
 
   it('empties the view of an item the source found no one item for, and leaves one it read nothing about', async () => {
     // Göbekli Tepe's one item; a serial site of several items; a site Wikidata did not answer for.
     const ITEMS = new Map<string, string | null | undefined>([['1', 'Q214944'], ['2', null], ['3', undefined]]);
-    vi.mocked(readLifetimes).mockResolvedValue(new Map([['1', { began: BEGAN }]]));
+    vi.mocked(readLifetimes).mockResolvedValue(new Map([['1', STOOD]]));
     const processItem = vi.fn().mockResolvedValue(processed('updated'));
     const fetchItems = vi.fn().mockResolvedValue({
       items: [{ id: '1', name: 'Göbekli Tepe' }, { id: '2', name: 'a serial site' }, { id: '3', name: 'unanswered' }], fetchedCount: 3,
@@ -104,7 +105,7 @@ describe('the places\' lifetimes a run reads (#1719)', () => {
     }), 1);
     expect(vi.mocked(readLifetimes).mock.calls[0][1]).toEqual([{ key: '1', qid: 'Q214944' }]);
     const lifetimes = (processItem.mock.calls[0][2] as SyncRunContext).lifetimes;
-    expect([lifetimes?.get('1'), lifetimes?.get('2'), lifetimes?.has('3')]).toEqual([{ began: BEGAN }, {}, false]);
+    expect([lifetimes?.get('1'), lifetimes?.get('2'), lifetimes?.has('3')]).toEqual([STOOD, {}, false]);
   });
 
   it('reads none for a source that names no item', async () => {
