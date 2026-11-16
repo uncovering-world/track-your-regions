@@ -40,7 +40,7 @@ import type { SyncProgress, RunVerdict, ErrorDetail, SyncRunOptions } from './ty
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
 import { passOf } from './passes.js';
 import { refreshRobotsForRun } from '../robots/robotsSignals.js';
-import type { RecordDates } from '../../db/placeDatesWriter.js';
+import type { RecordPeriods } from '../../db/placePeriodsWriter.js';
 import { readLifetimes } from './places/lifetime.js';
 import { wikidataRunDoor } from './subset/runDoor.js';
 import { SPARQL_WAIT_BUDGET_MS, WaitBudget, wikidataDoor } from './wikidataUtils.js';
@@ -95,7 +95,7 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
  * door that does not answer leaves every record's view as it stands: the run
  * goes on, as for any answer Wikidata did not give.
  */
-async function runLifetimes<T>(config: SyncServiceConfig<T>, items: T[], progress: SyncProgress): Promise<ReadonlyMap<string, RecordDates>> {
+async function runLifetimes<T>(config: SyncServiceConfig<T>, items: T[], progress: SyncProgress): Promise<ReadonlyMap<string, RecordPeriods>> {
   const { lifetimeItem } = config;
   if (!lifetimeItem) return new Map();
   const asked = items.flatMap((item) => {

@@ -125,7 +125,7 @@ describe('orchestrateSync changeset recording', () => {
     dated.outcome = 'updated';
     dated.changeSet.changeType = 'updated';
     dated.changeSet.changedFields = [{
-      field: 'began', old: null, new: { year: 1793 }, significance: 'minor' as const,
+      field: 'stood', old: null, new: [{ from: { year: 1793 }, ended: false, until: null }], significance: 'minor' as const,
       curatedConflict: false, held: false, passedTheGate: 'first-date' as const,
     }];
     const config = makeConfig({ processItem: vi.fn().mockResolvedValue(dated) });

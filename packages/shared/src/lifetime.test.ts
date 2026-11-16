@@ -5,49 +5,41 @@ import {
   type PlaceDate, type PlacePeriod,
 } from './lifetime.js';
 
-const date = (year: number | null, rest: Partial<Omit<PlaceDate, 'year'>> = {}): PlaceDate =>
+const date = (year: number, rest: Partial<Omit<PlaceDate, 'year'>> = {}): PlaceDate =>
   ({ year, month: null, day: null, span: null, circa: false, ...rest });
 
 describe('a date of a place\'s lifetime (#1719)', () => {
   it('holds a BC year to the millennium, about, as Göbekli Tepe begins', () => {
-    expect(isValidPlaceDate(date(-9999, { span: 'millennium', circa: true }), 'began', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(-35000, { span: 'millennium' }), 'began', 2026)).toBe(true);
+    expect(isValidPlaceDate(date(-9999, { span: 'millennium', circa: true }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(-35000, { span: 'millennium' }), 2026)).toBe(true);
   });
 
   it('refuses year zero, a year past the latest and one before the earliest', () => {
-    expect(isValidPlaceDate(date(0), 'began', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(2027), 'began', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(-100_001), 'began', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(1.5), 'began', 2026)).toBe(false);
+    expect(isValidPlaceDate(date(0), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(2027), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(-100_001), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(1.5), 2026)).toBe(false);
   });
 
   it('holds a month only within a year and a day only within a month the month has', () => {
-    expect(isValidPlaceDate(date(1931, { month: 12, day: 5 }), 'use_ended', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(2024, { month: 1 }), 'ended', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(1931, { day: 5 }), 'use_ended', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(1931, { month: 13 }), 'use_ended', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(1931, { month: 4, day: 31 }), 'use_ended', 2026)).toBe(false);
+    expect(isValidPlaceDate(date(1931, { month: 12, day: 5 }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(2024, { month: 1 }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(1931, { day: 5 }), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(1931, { month: 13 }), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(1931, { month: 4, day: 31 }), 2026)).toBe(false);
   });
 
   it('counts a BC leap year one later than an AD one, as 1 BC and 5 BC are', () => {
-    expect(isValidPlaceDate(date(-1, { month: 2, day: 29 }), 'began', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(-5, { month: 2, day: 29 }), 'began', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(-4, { month: 2, day: 29 }), 'began', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(1900, { month: 2, day: 29 }), 'began', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(2000, { month: 2, day: 29 }), 'began', 2026)).toBe(true);
+    expect(isValidPlaceDate(date(-1, { month: 2, day: 29 }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(-5, { month: 2, day: 29 }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(-4, { month: 2, day: 29 }), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(1900, { month: 2, day: 29 }), 2026)).toBe(false);
+    expect(isValidPlaceDate(date(2000, { month: 2, day: 29 }), 2026)).toBe(true);
   });
 
   it('holds a span only on a year with no month', () => {
-    expect(isValidPlaceDate(date(-3000, { span: 'century', circa: true }), 'began', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(1880, { span: 'decade', month: 3 }), 'began', 2026)).toBe(false);
-  });
-
-  it('lets only the place\'s end hold no year, and then nothing else', () => {
-    expect(isValidPlaceDate(date(null), 'ended', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(null), 'began', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(null), 'use_ended', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(null, { circa: true }), 'ended', 2026)).toBe(false);
-    expect(isValidPlaceDate(date(null, { span: 'century' }), 'ended', 2026)).toBe(false);
+    expect(isValidPlaceDate(date(-3000, { span: 'century', circa: true }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(1880, { span: 'decade', month: 3 }), 2026)).toBe(false);
   });
 
   it('compares two dates field by field', () => {
@@ -64,8 +56,8 @@ describe('a day of the Julian calendar, as the Gregorian day it is (#1719)', () 
     const gregorian = julianToGregorian(1500, 2, 29);
     expect(gregorian).toEqual({ year: 1500, month: 3, day: 10 });
     if (gregorian === null) return;
-    expect(isValidPlaceDate(date(gregorian.year, { month: gregorian.month, day: gregorian.day }), 'began', 2026)).toBe(true);
-    expect(isValidPlaceDate(date(1500, { month: 2, day: 29 }), 'began', 2026)).toBe(false);
+    expect(isValidPlaceDate(date(gregorian.year, { month: gregorian.month, day: gregorian.day }), 2026)).toBe(true);
+    expect(isValidPlaceDate(date(1500, { month: 2, day: 29 }), 2026)).toBe(false);
   });
 
   it('meets the days the two calendars are known to meet on', () => {
@@ -103,14 +95,13 @@ describe('the one order of dates (#1719, #2008)', () => {
     expect(comparePlaceDates(date(1600, { span: 'century' }), date(1550))).toBe(0);
     expect(comparePlaceDates(date(1808), date(1809, { month: 10, day: 21 }))).toBe(-1);
     expect(comparePlaceDates(date(-7000, { span: 'millennium' }), date(-9999, { span: 'millennium' }))).toBe(1);
-    expect(comparePlaceDates(date(null), date(1966))).toBe(0);
   });
 
-  it('agrees in sign with a trip\'s order on every date a trip can hold', () => {
+  it('agrees in sign with a trip\'s order on every dated trip, the only ones a place\'s date is compared with', () => {
     const trips = [
       { year: 2015, month: null, day: null }, { year: 2015, month: 5, day: null }, { year: 2015, month: 5, day: 12 },
       { year: 2022, month: 3, day: null }, { year: 2022, month: 3, day: 1 }, { year: 2022, month: 3, day: 2 },
-      { year: 1999, month: 12, day: 31 }, { year: null, month: null, day: null },
+      { year: 1999, month: 12, day: 31 },
     ];
     for (const a of trips) {
       for (const b of trips) {
@@ -139,16 +130,16 @@ describe('a period of a place (#2578, ADR-0217)', () => {
 
   it('keeps the first day its start may be and the last day its end may be', () => {
     const [first, second] = CATHEDRAL.map(outerDaysOf);
-    expect(first.fromFirst).toBe(periodOf(date(1883, { month: 1, day: 1 }))?.first);
-    expect(first.untilLast).toBe(periodOf(date(1931, { month: 12, day: 5 }))?.last);
-    expect(second).toEqual({ fromFirst: periodOf(date(2000, { month: 1, day: 1 }))?.first, untilLast: null });
+    expect(first.fromFirst).toBe(periodOf(date(1883, { month: 1, day: 1 })).first);
+    expect(first.untilLast).toBe(periodOf(date(1931, { month: 12, day: 5 })).last);
+    expect(second).toEqual({ fromFirst: periodOf(date(2000, { month: 1, day: 1 })).first, untilLast: null });
     // A trip of 1980 falls between the two periods' outer days.
     const trip = periodOf(date(1980));
-    expect(trip && first.untilLast !== null && second.fromFirst !== null
+    expect(first.untilLast !== null && second.fromFirst !== null
       && first.untilLast < trip.first && trip.last < second.fromFirst).toBe(true);
     // A century covers every year within a century either side of its year.
     expect(outerDaysOf(ended(date(1250, { span: 'century' }), null))).toEqual({
-      fromFirst: periodOf(date(1151, { month: 1, day: 1 }))?.first, untilLast: null,
+      fromFirst: periodOf(date(1151, { month: 1, day: 1 })).first, untilLast: null,
     });
   });
 

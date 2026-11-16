@@ -102,15 +102,15 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
   // commemorates is, and never said as a dedication.
   'metadata.depicts': place('shown'),
 
-  // A place's lifetime (#1719, ADR-0214): its dates in place_dates, each the
-  // place's whichever kind's run read it. No surface shows them yet; their
-  // gate is `lifetimeWrites.ts`'s (a date filled where the place held none
-  // passes, a change to a held one and every end under a gated source are
-  // asked), not this mark.
-  began: place('unseen'),
-  rebuilt: place('unseen'),
-  use_ended: place('unseen'),
-  ended: place('unseen'),
+  // A place's periods (#2578, ADR-0217): what a run reports of them, the
+  // periods in which the place stood and the end of a use, each a whole list
+  // and the place's whichever kind's run read it. No surface shows them yet;
+  // their gate is `lifetimeWrites.ts`'s (a view that only fills in what the
+  // place holds passes, any other difference and the end of the place's
+  // standing are asked under a gated source where a reader sees the place),
+  // not this mark.
+  stood: place('unseen'),
+  used: place('unseen'),
 
   // The inscription, the World Heritage kind's: a delisted site loses it with
   // its membership.

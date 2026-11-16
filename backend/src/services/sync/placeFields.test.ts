@@ -3,7 +3,7 @@ import { PLACE_FIELDS, placeFieldMark } from '@tyr/shared/placeFields';
 import { computeChangeSet, SYNC_OWNED_METADATA_KEYS, type ExperienceSnapshot } from './changeSet.js';
 import { FAMILY_FIELDS, WRITTEN_BY_SOURCES } from './fieldFamilies.js';
 import { KIND_FACT_KEYS } from './kindFacts.js';
-import { LIFETIME_SLOTS } from '@tyr/shared/lifetime';
+import { REPORTED_SAYS } from '@tyr/shared/lifetime';
 
 /**
  * Every field a run writes carries a mark saying whether a reader is shown it
@@ -53,8 +53,8 @@ describe('the reader mark of every field a run writes', () => {
       ...computeChangeSet(EVERY_FIELD, OTHER_VALUES, [], false).changedFields.map(f => f.field.replace(/^nameLocal\..*/, 'nameLocal')),
       'tags',
       ...METADATA_KEYS.map(key => `metadata.${key}`),
-      // A place's dates, which the run files beside the change record (`lifetimeWrites.ts`, #1719).
-      ...LIFETIME_SLOTS,
+      // A place's periods, which the run files beside the change record (`lifetimeWrites.ts`, #2578).
+      ...REPORTED_SAYS,
     ]);
     expect(Object.keys(PLACE_FIELDS).filter(field => !written.has(field))).toEqual([]);
   });

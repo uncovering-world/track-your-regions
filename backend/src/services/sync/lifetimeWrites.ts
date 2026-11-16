@@ -1,35 +1,49 @@
 /**
- * What a run writes of a place's lifetime (#1719, ADR-0214 decision 4): its
- * source's view on its record, always, and the place's own dates through the
- * gate.
+ * What a run writes of a place's periods (#2578, ADR-0217 decision 3): its
+ * source's view on its record, always, and the place's own periods through
+ * the gate. The gate decides a list whole per thing it says, the periods in
+ * which the place stood as one field and the end of a use as another.
  *
- * - **A date filled where the place held none passes the gate** (the
- *   maintainer, 2026-11-15), as an item, a subtitle and a credit do (ADR-0129,
- *   ADR-0133, ADR-0151): written, and filed as passed (`first-date`).
- * - **A change to a date the place holds is asked** under a gated source where
- *   a reader sees the place: the run does not write it, and its record keeps
- *   the date it reports for the curator's answer. Under a trusted source, or on
- *   a place no reader sees yet, it is written as any other field is.
- * - **An end is always asked under a gated source**, since it takes the place
- *   off today's lists: never written by such a run, filled or changed.
- * - **A curator's admission pin wins over a derived end**: the curator kept the
- *   place where its item says it is gone (the Barmaley Fountain, whose replica
- *   stands since 2013), so the run writes no end of it.
- * - **A date another source set, or a curator claimed, is the place's to
- *   keep**: the run records its own view and leaves it.
- * - A date the source no longer reports is taken off the place only where the
- *   source wrote it, by the same gate as a change.
+ * - **A fill passes the gate** (the maintainer, 2026-11-15), as an item, a
+ *   subtitle and a credit do (ADR-0129, ADR-0133, ADR-0151): a view that
+ *   leaves every date the place holds as it is, and the place standing or
+ *   not as it was, is written and filed as passed (`first-date`). The
+ *   Cathedral of Christ the Saviour held as "1883 → open" and reported as
+ *   "1883 → 1931, 2000 → open" is one.
+ * - **Any other difference is asked** under a gated source where a reader
+ *   sees the place: the run does not write it, and its record keeps the view
+ *   it reports for the curator's answer. Under a trusted source, or on a
+ *   place no reader sees yet, it is written as any other field is.
+ * - **The end of the place's last standing period is never a fill**, since it
+ *   takes the place off today's lists: under a gated source it is asked on a
+ *   place readers see, and written with the arrival on a new one (Nelson's
+ *   Pillar in Dublin, blown up in 1966, arrives with its end). A trusted
+ *   source writes it on either.
+ * - **A curator's admission pin wins over a derived end**: the curator kept
+ *   the place where its item says it is gone (the Barmaley Fountain, whose
+ *   replica stands since 2013), so the run reads its last standing period as
+ *   open.
+ * - **Periods another source set, or a curator set or claimed, are the
+ *   place's to keep**: the run records its own view and leaves them.
+ * - Periods the source no longer reports are taken off the place only where
+ *   the source wrote them, by the same gate as any other difference.
  */
 
 import type { PoolClient } from 'pg';
-import { LIFETIME_SLOTS, PLACE_END, samePlaceDate, type LifetimeSlot } from '@tyr/shared/lifetime';
+import {
+  PERIOD_SAYS, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy, type PeriodSays,
+} from '@tyr/shared/lifetime';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { clearPlaceDate, writePlaceDate, writeRecordDates, type RecordDates, type SourcedDate } from '../../db/placeDatesWriter.js';
+import {
+  writePlacePeriods, writeRecordPeriods, type RecordPeriods, type SourcedDate, type SourcedPeriod,
+} from '../../db/placePeriodsWriter.js';
 import type { ChangeSetResult, FieldChange } from './changeSet.js';
 
-/** A date the place holds, with whose view it was taken from and whether a curator set it. */
-export interface HeldDate extends SourcedDate {
+/** The periods a place holds that say one thing, with whose view they were taken from. */
+export interface HeldPeriods {
+  periods: readonly SourcedPeriod[];
   sourceId: number;
+  /** The curator who set them, or null for a run's. */
   decidedBy: number | null;
 }
 
@@ -40,100 +54,162 @@ export interface LifetimeGate {
   gated: boolean;
   /** A reader sees the place, so a gated source's change to it is held (`PLACE_HELD`). */
   held: boolean;
-  /** A curator's claims on the place (`curated_fields`), a slot's name among them. */
+  /** A curator's claims on the place (`curated_fields`), what a list says among them. */
   claimed: readonly string[];
   /** A curator's admission pin keeps the run's own membership admitted (`admissionPinnedSql`). */
   pinned: boolean;
 }
 
 export interface LifetimeDecision {
-  /** The dates the run writes onto the place. */
-  write: Partial<Record<LifetimeSlot, SourcedDate>>;
-  /** The slots it takes off the place. */
-  clear: LifetimeSlot[];
-  /** What it filed: every write and clear, a fill marked as passed. */
+  /** The lists the run writes onto the place, each whole; an empty one takes the place's off. */
+  write: Partial<Record<PeriodSays, readonly SourcedPeriod[]>>;
+  /** What it filed: every list it writes, a fill marked as passed. */
   changes: FieldChange[];
-  /** The slots it holds back for a curator. */
-  heldBack: LifetimeSlot[];
+  /** What it holds back for a curator. */
+  heldBack: PeriodSays[];
 }
 
-/** A date as the change set files it: the date and where it was read, not whose view the place took it from. */
-const filedDate = (date: SourcedDate | undefined): SourcedDate | null => (date ? {
-  year: date.year, month: date.month, day: date.day, span: date.span, circa: date.circa,
-  ending: date.ending, property: date.property, statement: date.statement,
-} : null);
+/** The same period: its dates, whether it ended, how, and what it is called. Where it was read from is not compared. */
+const samePeriod = (a: SourcedPeriod, b: SourcedPeriod): boolean =>
+  a.ended === b.ended && samePlaceDate(a.from, b.from) && samePlaceDate(a.until, b.until) && a.ending === b.ending && a.what === b.what;
 
-const change = (slot: LifetimeSlot, old: SourcedDate | undefined, next: SourcedDate | undefined): FieldChange => ({
-  field: slot, old: filedDate(old), new: filedDate(next), significance: 'minor', curatedConflict: false, held: false,
-  ...(old === undefined ? { passedTheGate: 'first-date' as const } : {}),
-});
+const sameList = (a: readonly SourcedPeriod[], b: readonly SourcedPeriod[]): boolean =>
+  a.length === b.length && a.every((period, index) => samePeriod(period, b[index]));
 
-/** The same date and, on an end, the same telling of how the place ended. */
-const sameSourcedDate = (a: SourcedDate, b: SourcedDate): boolean => samePlaceDate(a, b) && a.ending === b.ending;
+/**
+ * Whether `next` only fills `held` in (ADR-0217 decision 3): no period fewer,
+ * every start the place holds still a start, every end still an end and told
+ * the same way where the place says how, an end with no date among them, and
+ * the place standing or not as it was. A view that drops a held date, moves 1883 to 1881 or closes the last
+ * standing period is not one.
+ */
+function fills(says: PeriodSays, held: readonly SourcedPeriod[], next: readonly SourcedPeriod[]): boolean {
+  if (next.length < held.length) return false;
+  if (says === PLACE_STOOD && standsBy(held) !== standsBy(next)) return false;
+  const toldTheSame = (period: SourcedPeriod, other: SourcedPeriod): boolean =>
+    other.ended && (period.ending === null || period.ending === other.ending);
+  return held.every((period) =>
+    (period.from === null || next.some((other) => samePlaceDate(period.from, other.from)))
+    && (!period.ended || next.some((other) =>
+      toldTheSame(period, other) && (period.until === null || samePlaceDate(period.until, other.until)))));
+}
 
-/** What the gate does with one slot: nothing, hold it back, write the run's date, or take the place's off. */
-function slotAction(slot: LifetimeSlot, next: SourcedDate | undefined, held: HeldDate | undefined, gate: LifetimeGate) {
-  if (gate.claimed.includes(slot)) return 'keep';
+/**
+ * The standing periods a pinned place is read by: the curator's pin says the
+ * place stands, so its last period is open whatever end the source reports.
+ * A period left with nothing known of it says nothing and is not kept.
+ */
+function keptStanding(stood: readonly SourcedPeriod[]): readonly SourcedPeriod[] {
+  const last = stood.at(-1);
+  if (!last || standsBy(stood)) return stood;
+  if (stood.length === 1 && last.from === null) return [];
+  return [...stood.slice(0, -1), { ...last, ended: false, until: null, ending: null }];
+}
+
+/** A list as the change set files it: the periods, or null for none. */
+const filed = (periods: readonly SourcedPeriod[]): readonly SourcedPeriod[] | null => (periods.length > 0 ? periods : null);
+
+/** What the gate does with one list: nothing, hold it back, or write the run's, as a fill or as a change. */
+function listAction(says: PeriodSays, next: readonly SourcedPeriod[], held: HeldPeriods | undefined, gate: LifetimeGate) {
+  if (gate.claimed.includes(says)) return 'keep';
   if (held && (held.sourceId !== gate.sourceId || held.decidedBy !== null)) return 'keep';
-  if (next === undefined ? held === undefined : held !== undefined && sameSourcedDate(next, held)) return 'keep';
-  if (gate.gated && (slot === PLACE_END || (held !== undefined && gate.held))) return 'hold';
-  return next === undefined ? 'clear' : 'write';
+  const stored = held?.periods ?? [];
+  if (sameList(stored, next)) return 'keep';
+  if (fills(says, stored, next)) return 'fill';
+  return gate.gated && gate.held ? 'hold' : 'write';
 }
 
-/** The gate over one place: what of the run's view it writes, clears and holds back. Pure. */
+/** The gate over one place: what of the run's view it writes and holds back. Pure. */
 export function decideLifetime(
-  stored: Partial<Record<LifetimeSlot, HeldDate>>,
-  view: RecordDates,
+  stored: Partial<Record<PeriodSays, HeldPeriods>>,
+  view: RecordPeriods,
   gate: LifetimeGate,
 ): LifetimeDecision {
-  const decision: LifetimeDecision = { write: {}, clear: [], changes: [], heldBack: [] };
-  for (const slot of LIFETIME_SLOTS) {
-    const next = slot === PLACE_END && gate.pinned ? undefined : view[slot];
-    const held = stored[slot];
-    const action = slotAction(slot, next, held, gate);
-    if (action === 'hold') decision.heldBack.push(slot);
-    if (action === 'write' && next !== undefined) decision.write[slot] = next;
-    if (action === 'clear') decision.clear.push(slot);
-    if (action === 'write' || action === 'clear') decision.changes.push(change(slot, held, next));
+  const decision: LifetimeDecision = { write: {}, changes: [], heldBack: [] };
+  for (const says of REPORTED_SAYS) {
+    const reported = view[says] ?? [];
+    const next = says === PLACE_STOOD && gate.pinned ? keptStanding(reported) : reported;
+    const held = stored[says];
+    const action = listAction(says, next, held, gate);
+    if (action === 'hold') decision.heldBack.push(says);
+    if (action !== 'fill' && action !== 'write') continue;
+    decision.write[says] = next;
+    decision.changes.push({
+      field: says, old: filed(held?.periods ?? []), new: filed(next), significance: 'minor', curatedConflict: false, held: false,
+      ...(action === 'fill' ? { passedTheGate: 'first-date' as const } : {}),
+    });
   }
   return decision;
 }
 
-/** The dates the place holds, as the gate compares them. */
-export async function heldDatesOf(client: Pick<PoolClient, 'query'>, placeId: number): Promise<Partial<Record<LifetimeSlot, HeldDate>>> {
-  const rows = await client.query<HeldDate & { slot: LifetimeSlot }>(
-    `SELECT slot, year, month, day, span, circa, ending, property, statement,
-            source_id AS "sourceId", decided_by AS "decidedBy"
-       FROM place_dates WHERE experience_id = $1`,
+interface PeriodRow {
+  says: PeriodSays;
+  from_year: number | null; from_month: number | null; from_day: number | null; from_span: SourcedDate['span']; from_circa: boolean;
+  from_property: string | null; from_statement: string | null;
+  ended: boolean;
+  until_year: number | null; until_month: number | null; until_day: number | null; until_span: SourcedDate['span']; until_circa: boolean;
+  until_property: string | null; until_statement: string | null;
+  ending: SourcedPeriod['ending']; what: string | null;
+  source_id: number; decided_by: number | null;
+}
+
+const endOf = (
+  year: number | null, month: number | null, day: number | null, span: SourcedDate['span'], circa: boolean,
+  property: string | null, statement: string | null,
+): SourcedDate | null => (year === null ? null : { year, month, day, span, circa, property, statement });
+
+/** The periods the place holds, by what they say, as the gate compares them. */
+export async function heldPeriodsOf(client: Pick<PoolClient, 'query'>, placeId: number): Promise<Partial<Record<PeriodSays, HeldPeriods>>> {
+  const { rows } = await client.query<PeriodRow>(
+    `SELECT says, from_year, from_month, from_day, from_span, from_circa, from_property, from_statement, ended,
+            until_year, until_month, until_day, until_span, until_circa, until_property, until_statement,
+            ending, what, source_id, decided_by
+       FROM place_periods WHERE experience_id = $1 ORDER BY says, ordinal`,
     [placeId],
   );
-  return Object.fromEntries(rows.rows.map(({ slot, ...date }) => [slot, date]));
+  const held: Partial<Record<PeriodSays, HeldPeriods>> = {};
+  for (const says of PERIOD_SAYS) {
+    const own = rows.filter((row) => row.says === says);
+    if (own.length === 0) continue;
+    held[says] = {
+      sourceId: own[0].source_id,
+      decidedBy: own.find((row) => row.decided_by !== null)?.decided_by ?? null,
+      periods: own.map((row) => ({
+        from: endOf(row.from_year, row.from_month, row.from_day, row.from_span, row.from_circa, row.from_property, row.from_statement),
+        ended: row.ended,
+        until: endOf(row.until_year, row.until_month, row.until_day, row.until_span, row.until_circa, row.until_property, row.until_statement),
+        ending: row.ending,
+        what: row.what,
+      })),
+    };
+  }
+  return held;
 }
 
 /**
- * Write the run's view of the place's lifetime on its record, and the place's
- * dates the gate lets through, under the place's lock. Returns the decision,
- * whose changes the caller files on the run's change set.
+ * Write the run's view of the place's periods on its record, and the place's
+ * periods the gate lets through, under the place's lock. Returns the
+ * decision, whose changes the caller files on the run's change set.
  */
 export async function writeLifetime(
   client: PoolClient,
   lock: LockedExperience,
   recordId: number,
-  view: RecordDates,
+  view: RecordPeriods,
   gate: LifetimeGate,
 ): Promise<LifetimeDecision> {
-  await writeRecordDates(client, lock, recordId, view);
-  const decision = decideLifetime(await heldDatesOf(client, lock.id), view, gate);
-  for (const [slot, date] of Object.entries(decision.write) as [LifetimeSlot, SourcedDate][]) {
-    await writePlaceDate(client, lock, slot, { ...date, sourceId: gate.sourceId, decidedBy: null });
+  await writeRecordPeriods(client, lock, recordId, view);
+  const decision = decideLifetime(await heldPeriodsOf(client, lock.id), view, gate);
+  for (const says of REPORTED_SAYS) {
+    const periods = decision.write[says];
+    if (periods) await writePlacePeriods(client, lock, says, periods, { sourceId: gate.sourceId, decidedBy: null });
   }
-  for (const slot of decision.clear) await clearPlaceDate(client, lock, slot);
   return decision;
 }
 
 /**
- * The run's change set with what it wrote of the place's dates: an object
- * whose only write is a date is updated, as for any other field.
+ * The run's change set with what it wrote of the place's periods: an object
+ * whose only write is a period is updated, as for any other field.
  */
 export function withLifetimeChanges(changeSet: ChangeSetResult, decision: LifetimeDecision): ChangeSetResult {
   if (decision.changes.length === 0) return changeSet;

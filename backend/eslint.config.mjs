@@ -202,17 +202,6 @@ const CONFLICT_DECISION_WRITE = 'experience_conflict_decisions is written by its
 const CONFLICT_DECISION_WRITE_RULES = spelledWriteRules('experience_conflict_decisions', CONFLICT_DECISION_WRITE);
 
 /**
- * A place's lifetime and each source's view of it (#1719, ADR-0214): the two
- * tables `src/db/placeDatesWriter.ts` writes under the place's lock.
- */
-const PLACE_DATE_WRITE = 'place_dates and record_dates are written by their writer module only (ADR-0069): add a named '
-  + 'write to src/db/placeDatesWriter.ts, taking the place\'s LockedExperience token.';
-const PLACE_DATE_WRITE_RULES = [
-  ...spelledWriteRules('place_dates', PLACE_DATE_WRITE),
-  ...spelledWriteRules('record_dates', PLACE_DATE_WRITE),
-];
-
-/**
  * A place's periods and each source's view of them (#2578, ADR-0217): the two
  * tables `src/db/placePeriodsWriter.ts` writes under the place's lock.
  */
@@ -496,8 +485,7 @@ const SOURCE_RULE_FAMILIES = [
   TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  PART_WRITE_RULES, PLACE_DATE_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES,
-  VIEW_SUGGESTION_WRITE_RULES,
+  PART_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
   COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
@@ -510,8 +498,7 @@ const SOURCE_RULE_FAMILIES = [
 const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  PART_WRITE_RULES, PLACE_DATE_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES,
-  VIEW_SUGGESTION_WRITE_RULES,
+  PART_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
   COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
@@ -760,12 +747,6 @@ export default [
     files: ['src/controllers/experience/heldDecisions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(HELD_DECISION_WRITE_RULES),
-    },
-  },
-  {
-    files: ['src/db/placeDatesWriter.ts'],
-    rules: {
-      'no-restricted-syntax': restrictedSyntaxWithout(PLACE_DATE_WRITE_RULES),
     },
   },
   {

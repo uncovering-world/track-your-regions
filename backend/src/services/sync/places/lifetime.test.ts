@@ -1,5 +1,5 @@
 /**
- * #1719: a place's lifetime as its item states it, read through the subset's
+ * #2578, #1719: a place's periods as its item states them, read through the subset's
  * reader from the statements the development subset holds (dump of
  * 2026-10-26, read on 2026-11-16), cut to what the rule and the gone rules
  * read: the dated statements (P571, P1619, P576, P3999), the state of use
@@ -64,6 +64,13 @@ const STATEMENTS: Record<string, Record<string, unknown>> = {
   Q9719011: {"P571": [{"id": "Q9719011$aa22", "value": {"time": "+1800-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719011$aa23", "value": {"time": "+1950-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719011$aa24", "value": {"time": "+2010-00-00T00:00:00Z", "precision": 9}}], "P576": [{"id": "Q9719011$aa25", "value": {"time": "+1900-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719011$aa26", "value": {"time": "+2010-00-00T00:00:00Z", "precision": 9}}]},
   // Not an item: begun 1800, ended 2000, started 2000 and again 2005, all to the year.
   Q9719012: {"P571": [{"id": "Q9719012$aa27", "value": {"time": "+1800-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719012$aa28", "value": {"time": "+2000-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719012$aa29", "value": {"time": "+2005-00-00T00:00:00Z", "precision": 9}}], "P576": [{"id": "Q9719012$aa30", "value": {"time": "+2000-00-00T00:00:00Z", "precision": 9}}]},
+  // Not items: begun 1900, ended 1950, started 1960, ended 1990 and started 2000; begun 1900, ended 1990 and
+  // started 2000; begun 1900 and ended on 25 December 2026, a day still ahead of the day the tests read on;
+  // begun 1900 and ended in 2027, the year after it.
+  Q9719013: {"P571": [{"id": "Q9719013$aa31", "value": {"time": "+1900-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719013$aa32", "value": {"time": "+1960-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719013$aa33", "value": {"time": "+2000-00-00T00:00:00Z", "precision": 9}}], "P576": [{"id": "Q9719013$aa34", "value": {"time": "+1950-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719013$aa35", "value": {"time": "+1990-00-00T00:00:00Z", "precision": 9}}]},
+  Q9719014: {"P571": [{"id": "Q9719014$aa36", "value": {"time": "+1900-00-00T00:00:00Z", "precision": 9}}, {"id": "Q9719014$aa37", "value": {"time": "+2000-00-00T00:00:00Z", "precision": 9}}], "P576": [{"id": "Q9719014$aa38", "value": {"time": "+1990-00-00T00:00:00Z", "precision": 9}}]},
+  Q9719015: {"P571": [{"id": "Q9719015$aa39", "value": {"time": "+1900-00-00T00:00:00Z", "precision": 9}}], "P576": [{"id": "Q9719015$aa40", "value": {"time": "+2026-12-25T00:00:00Z", "precision": 11}}]},
+  Q9719016: {"P571": [{"id": "Q9719016$aa41", "value": {"time": "+1900-00-00T00:00:00Z", "precision": 9}}], "P576": [{"id": "Q9719016$aa42", "value": {"time": "+2027-00-00T00:00:00Z", "precision": 9}}]},
   // Not an item: the Tomb of the Unknown Soldier's 11 November 1920, stated to ten thousand years.
   Q9719003: {"P571": [{"id": "Q9719003$aa04", "value": {"time": "+1920-11-11T00:00:00Z", "precision": 5}}]},
 };
@@ -73,114 +80,164 @@ beforeEach(() => {
   for (const [qid, claims] of Object.entries(STATEMENTS)) claimsOf.set(qid, claims);
 });
 
-/** Each item's lifetime as the run would report it: a place kind's gone rule, or a works kind's. */
+const TODAY = { year: 2026, month: 11, day: 16 };
+
+/** Each item's periods as the run would report them: a place kind's gone rule, or a works kind's. */
 async function lifetimes(qids: string[], works = false) {
   const facts = await subsetStandingFacts(qids);
   return Object.fromEntries(qids.map((qid) => {
     const known = facts.get(qid);
     if (!known) return [qid, 'unread'];
-    return [qid, lifetimeOf(known, works ? goneWorkReason(known) : goneReason(known), 2026)];
+    return [qid, lifetimeOf(known, works ? goneWorkReason(known) : goneReason(known), TODAY)];
   }));
 }
 
-const year = (y: number, rest: Record<string, unknown> = {}) =>
-  expect.objectContaining({ year: y, month: null, day: null, span: null, circa: false, ending: null, ...rest });
+const on = (y: number, rest: Record<string, unknown> = {}) =>
+  expect.objectContaining({ year: y, month: null, day: null, span: null, circa: false, ...rest });
+/** A period still open, and one that ended: at `end`, or at no date. */
+const open = (from: unknown) => ({ from, ended: false, until: null, ending: null, what: null });
+const until = (from: unknown, end: unknown, ending: string | null = null) => ({ from, ended: true, until: end, ending, what: null });
 
-describe('a place\'s lifetime as its item states it (#1719)', () => {
-  it('reads Göbekli Tepe as begun about the 10th millennium BC and in use until the 7th', async () => {
+describe('a place\'s periods as its item states them (#2578, #1719)', () => {
+  it('reads Göbekli Tepe as standing from about the 10th millennium BC, and in use until the 7th', async () => {
     expect((await lifetimes(['Q214944'])).Q214944).toEqual({
-      began: year(-9999, { span: 'millennium', circa: true, property: 'P571', statement: 'Q214944$899b45c8-40f2-5adb-2e34-0709364b6161' }),
-      use_ended: year(-7000, { span: 'millennium', property: 'P576', statement: 'Q214944$50d835b9-4a90-f4cb-aade-f9eaac2895ac' }),
+      stood: [open(on(-9999, { span: 'millennium', circa: true, property: 'P571', statement: 'Q214944$899b45c8-40f2-5adb-2e34-0709364b6161' }))],
+      used: [until(null, on(-7000, { span: 'millennium', property: 'P576', statement: 'Q214944$50d835b9-4a90-f4cb-aade-f9eaac2895ac' }))],
     });
   });
 
-  it('reads the Pergamon Museum as begun in 1910, and nothing of its closure, which Wikidata does not state', async () => {
-    expect((await lifetimes(['Q157298'])).Q157298).toEqual({ began: year(1910, { property: 'P571' }) });
+  it('reads the Pergamon Museum as standing from 1910, and nothing of its closure, which Wikidata does not state', async () => {
+    expect((await lifetimes(['Q157298'])).Q157298).toEqual({ stood: [open(on(1910, { property: 'P571' }))] });
   });
 
-  it('reads the end of Nelson\'s Pillar and of the Arch of Reunification as the end of the place, how they went with it', async () => {
+  it('reads the end of Nelson\'s Pillar and of the Arch of Reunification as the end of their standing, how they went with it', async () => {
     const read = await lifetimes(['Q2350741', 'Q94731'], true);
     expect(read.Q2350741).toEqual({
-      began: year(1808, { property: 'P571' }),
-      ended: year(1966, { month: 3, day: 8, ending: 'destroyed', property: 'P576' }),
+      stood: [until(on(1808, { property: 'P571' }), on(1966, { month: 3, day: 8, property: 'P576' }), 'destroyed')],
     });
     expect(read.Q94731).toEqual({
-      began: year(2001, { property: 'P571' }),
-      ended: year(2024, { month: 1, ending: 'destroyed', property: 'P576' }),
+      stood: [until(on(2001, { property: 'P571' }), on(2024, { month: 1, property: 'P576' }), 'destroyed')],
     });
   });
 
-  it('reads the Cathedral of Christ the Saviour as built by 1883 and rebuilt in 2000, its demolition outlived', async () => {
+  it('reads the Cathedral of Christ the Saviour as standing from 1883 until 5 December 1931, and again from 2000', async () => {
     expect((await lifetimes(['Q194474'])).Q194474).toEqual({
-      began: year(1883, { property: 'P1619' }),
-      rebuilt: year(2000, { month: 8, day: 19, property: 'P571' }),
+      stood: [
+        until(on(1883, { property: 'P1619' }), on(1931, { month: 12, day: 5, property: 'P576', statement: 'Q194474$cb21ee04-40c9-437a-d682-4cc31e439511' })),
+        open(on(2000, { month: 8, day: 19, property: 'P571' })),
+      ],
     });
   });
 
   it('never reads Notre-Dame\'s reopening of 2024 as its beginning', async () => {
-    expect((await lifetimes(['Q2981'])).Q2981).toEqual({ began: year(1163, { property: 'P571' }) });
+    expect((await lifetimes(['Q2981'])).Q2981).toEqual({ stood: [open(on(1163, { property: 'P571' }))] });
   });
 
   it('keeps the end of a role or a use apart from the place: the Registan stands', async () => {
     expect((await lifetimes(['Q1373583'])).Q1373583).toEqual({
-      began: year(1417, { property: 'P571' }),
-      use_ended: year(1420, { property: 'P576' }),
+      stood: [open(on(1417, { property: 'P571' }))],
+      used: [until(null, on(1420, { property: 'P576' }))],
     });
   });
 
   it('drops an end before the beginning, which ends an earlier building: Bath Abbey\'s monastery, dissolved in 1539', async () => {
-    expect((await lifetimes(['Q334399'])).Q334399).toEqual({ began: year(1572, { property: 'P571' }) });
+    expect((await lifetimes(['Q334399'])).Q334399).toEqual({ stood: [open(on(1572, { property: 'P571' }))] });
   });
 
   it('reads the Kakhovka Dam\'s destruction as an end of use, since no gone rule reads its state of conservation', async () => {
     expect((await lifetimes(['Q119210467'])).Q119210467).toEqual({
-      began: year(1950, { property: 'P571' }),
-      use_ended: year(2023, { month: 6, day: 6, property: 'P576' }),
+      stood: [open(on(1950, { property: 'P571' }))],
+      used: [until(null, on(2023, { month: 6, day: 6, property: 'P576' }))],
     });
   });
 
   it('reads no start or end time on an item that states an inception: the Dohány Street Synagogue\'s are its building', async () => {
-    expect((await lifetimes(['Q754397'])).Q754397).toEqual({ began: year(1854, { property: 'P571' }) });
+    expect((await lifetimes(['Q754397'])).Q754397).toEqual({ stood: [open(on(1854, { property: 'P571' }))] });
   });
 
-  it('reads a start and an end time where the item states nothing else', async () => {
-    expect((await lifetimes(['Q9719004'])).Q9719004).toEqual({ use_ended: year(-1700, { span: 'century', circa: true, property: 'P582' }) });
+  it('reads a start and an end time where the item states nothing else, and no standing period of a place with no beginning', async () => {
+    expect((await lifetimes(['Q9719004'])).Q9719004).toEqual({
+      used: [until(null, on(-1700, { span: 'century', circa: true, property: 'P582' }))],
+    });
   });
 
-  it('reads neither a rebuild nor an end of use where a start shares the last end\'s period, since the item does not say which came first', async () => {
+  it('reads neither a gap nor an end of use where a start shares the last end\'s period, since the item does not say which came first', async () => {
     const read = await lifetimes(['Q9719005', 'Q9719006', 'Q9719008']);
     // Set up in 1998, taken down and set up again in 2010, and standing: the end and the second inception are one year.
-    expect(read.Q9719005).toEqual({ began: year(1998, { property: 'P571' }) });
+    expect(read.Q9719005).toEqual({ stood: [open(on(1998, { property: 'P571' }))] });
     // An end known to the year and an opening that year known to the day.
-    expect(read.Q9719006).toEqual({ began: year(1854, { property: 'P571' }) });
+    expect(read.Q9719006).toEqual({ stood: [open(on(1854, { property: 'P571' }))] });
     // An end in the 1950s and an opening in 1955.
-    expect(read.Q9719008).toEqual({ began: year(1800, { property: 'P571' }) });
+    expect(read.Q9719008).toEqual({ stood: [open(on(1800, { property: 'P571' }))] });
   });
 
-  it('still reads a rebuild whose order the item does state, beside a last end whose order it does not', async () => {
+  it('still reads a gap whose order the item does state, beside a last end whose order it does not', async () => {
     const read = await lifetimes(['Q9719011', 'Q9719012']);
     expect(read.Q9719011).toEqual({
-      began: year(1800, { property: 'P571' }),
-      rebuilt: year(1950, { property: 'P571' }),
+      stood: [until(on(1800, { property: 'P571' }), on(1900, { property: 'P576' })), open(on(1950, { property: 'P571' }))],
     });
     // The start of 2000 leaves its order with the end of 2000 unsaid; the start of 2005 does not.
     expect(read.Q9719012).toEqual({
-      began: year(1800, { property: 'P571' }),
-      rebuilt: year(2005, { property: 'P571' }),
+      stood: [until(on(1800, { property: 'P571' }), on(2000, { property: 'P576' })), open(on(2005, { property: 'P571' }))],
     });
+  });
+
+  it('reads a gap before the end of a place that is gone, and no rebuild from a start after that end', async () => {
+    const facts = await subsetStandingFacts(['Q9719013', 'Q9719014']);
+    const read = (qid: string) => lifetimeOf(facts.get(qid) as NonNullable<ReturnType<typeof facts.get>>, 'destroyed in 1990', TODAY);
+    expect(read('Q9719013')).toEqual({
+      stood: [until(on(1900), on(1950)), until(on(1960), on(1990, { property: 'P576' }), 'destroyed')],
+    });
+    expect(read('Q9719014')).toEqual({ stood: [until(on(1900), on(1990), 'destroyed')] });
+  });
+
+  it('reads an end still ahead as no end yet, later this year or next: the place stands from its beginning', async () => {
+    const facts = await subsetStandingFacts(['Q9719015', 'Q9719016']);
+    for (const qid of ['Q9719015', 'Q9719016']) {
+      const known = facts.get(qid) as NonNullable<ReturnType<typeof facts.get>>;
+      // An announced demolition, on a place the gone rules do not read as gone: no end, and no end of use.
+      expect([qid, lifetimeOf(known, null, TODAY)]).toEqual([qid, { stood: [open(on(1900))] }]);
+      // And on one whose state they read as gone already: its only end lies ahead, so it stands until then.
+      expect([qid, lifetimeOf(known, 'destroyed', TODAY)]).toEqual([qid, { stood: [open(on(1900))] }]);
+    }
+    // Read on the day itself, the end has come.
+    const known = facts.get('Q9719015') as NonNullable<ReturnType<typeof facts.get>>;
+    expect(lifetimeOf(known, 'destroyed', { year: 2026, month: 12, day: 25 })).toEqual({
+      stood: [until(on(1900), on(2026, { month: 12, day: 25 }), 'destroyed')],
+    });
+    expect(lifetimeOf(known, null, { year: 2026, month: 12, day: 25 })).toEqual({
+      stood: [open(on(1900))], used: [until(null, on(2026, { month: 12, day: 25 }))],
+    });
+  });
+
+  it('still reads a place as gone by an end that has come, beside one dated ahead only where none is', async () => {
+    // Nelson's Pillar's end of 1966 has come: gone, whatever day it is read on.
+    const facts = await subsetStandingFacts(['Q2350741']);
+    const known = facts.get('Q2350741') as NonNullable<ReturnType<typeof facts.get>>;
+    expect(lifetimeOf(known, 'destroyed in 1966', TODAY).stood).toEqual([
+      until(on(1808), on(1966, { month: 3, day: 8 }), 'destroyed'),
+    ]);
+    // A second end dated to 2027 beside it changes nothing: the end of 1966 has come.
+    const later = { ...known.dated.find((d) => d.property === 'P576') as (typeof known.dated)[number] };
+    later.time = { ...later.time, year: 2027, month: 0, day: 0, precision: 9 };
+    expect(lifetimeOf({ ...known, dated: [...known.dated, later] }, 'destroyed in 1966', TODAY).stood).toEqual([
+      until(on(1808), on(1966, { month: 3, day: 8 }), 'destroyed'),
+    ]);
+    // Gone with no dated end at all stays gone, when is not known.
+    expect(lifetimeOf({ ...known, dated: known.dated.filter((d) => d.property === 'P571') }, 'destroyed', TODAY).stood)
+      .toEqual([until(on(1808), null, 'destroyed')]);
   });
 
   it('keeps an end in the same period as the beginning: a work set up in 2019 and removed on 14 June 2019', async () => {
     expect((await lifetimes(['Q9719007'], true)).Q9719007).toEqual({
-      began: year(2019, { property: 'P571' }),
-      ended: year(2019, { month: 6, day: 14, ending: 'removed', property: 'P576' }),
+      stood: [until(on(2019, { property: 'P571' }), on(2019, { month: 6, day: 14, property: 'P576' }), 'removed')],
     });
   });
 
   it('keeps an end within the century the beginning is known to', async () => {
     expect((await lifetimes(['Q9719009'])).Q9719009).toEqual({
-      began: year(1600, { span: 'century', property: 'P571' }),
-      use_ended: year(1550, { property: 'P576' }),
+      stood: [open(on(1600, { span: 'century', property: 'P571' }))],
+      used: [until(null, on(1550, { property: 'P576' }))],
     });
   });
 
@@ -190,12 +247,12 @@ describe('a place\'s lifetime as its item states it (#1719)', () => {
 
   it('turns a Julian day into the Gregorian day it is, and skips a day the Julian calendar lacks', async () => {
     const read = await lifetimes(['Q9719001', 'Q9719002']);
-    expect(read.Q9719001).toEqual({ began: year(1500, { month: 3, day: 10, property: 'P571' }) });
-    expect(read.Q9719002).toEqual({ began: year(1501, { property: 'P571' }) });
+    expect(read.Q9719001).toEqual({ stood: [open(on(1500, { month: 3, day: 10, property: 'P571' }))] });
+    expect(read.Q9719002).toEqual({ stood: [open(on(1501, { property: 'P571' }))] });
   });
 
   it('reads a recent date stated to ten thousand years as its year', async () => {
-    expect((await lifetimes(['Q9719003'])).Q9719003).toEqual({ began: year(1920, { property: 'P571' }) });
+    expect((await lifetimes(['Q9719003'])).Q9719003).toEqual({ stood: [open(on(1920, { property: 'P571' }))] });
   });
 });
 
