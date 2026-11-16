@@ -76,6 +76,38 @@ describe('the gate over a place\'s periods (#2578)', () => {
     expect(decideLifetime({ stood: held([open(on(1252))]) }, { stood: gone }, gate()).heldBack).toEqual(['stood']);
   });
 
+  it('asks about a gap longer than a century, which an item cannot tell a ruin from: the Odeon of Herodes Atticus', () => {
+    // Destroyed in 267 and rebuilt by 1953 as its item has it; the ruin was there to visit in 1900.
+    const odeon = [until(on(161), on(267, { property: 'P793' }), 'destroyed'), open(on(1953, { property: 'P793' }))];
+    // Bethlehem Chapel in Prague, pulled down in 1786 and rebuilt by 1952, was truly gone: the same question, another answer.
+    const chapel = [until(on(1391), on(1786, { property: 'P576' })), open(on(1952, { property: 'P793' }))];
+    for (const [stored, view] of [[[open(on(161))], odeon], [[], odeon], [[open(on(1391))], chapel]] as const) {
+      const decision = decideLifetime(stored.length ? { stood: held([...stored]) } : {}, { stood: [...view] }, gate());
+      expect(decision).toEqual({ write: {}, heldBack: ['stood'], changes: [] });
+    }
+    // On a place no reader sees yet it arrives with the place, and a trusted source writes it: neither as a fill.
+    for (const elsewhere of [gate({ held: false }), gate({ gated: false })]) {
+      const decision = decideLifetime({}, { stood: odeon }, elsewhere);
+      expect(decision.write).toEqual({ stood: odeon });
+      expect(decision.changes.map((c) => [c.field, c.passedTheGate])).toEqual([['stood', undefined]]);
+    }
+    // A long gap the place already holds is not asked again when another is filled in beside it.
+    const withEarlier = [until(on(100), on(120)), until(on(161), odeon[0].until, 'destroyed'), odeon[1]];
+    expect(decideLifetime({ stood: held(odeon) }, { stood: withEarlier }, gate()).changes)
+      .toMatchObject([{ field: 'stood', passedTheGate: 'first-date' }]);
+  });
+
+  it('fills a gap of a century or less, and one with an end not known, which has no length', () => {
+    // Christ the Saviour's 69 years; a monument removed in 1920 and set up again in 2006; exactly a hundred years.
+    for (const view of [CATHEDRAL, [until(on(1907), on(1920)), open(on(2006))], [until(on(1800), on(1850)), open(on(1950))]]) {
+      expect(decideLifetime({}, { stood: view }, gate()).changes).toMatchObject([{ field: 'stood', passedTheGate: 'first-date' }]);
+    }
+    expect(decideLifetime({}, { stood: [until(on(161), null), open(on(1953))] }, gate()).changes).toMatchObject([{ passedTheGate: 'first-date' }]);
+    // A century and a year, and a century that the dates' own width may not reach.
+    expect(decideLifetime({}, { stood: [until(on(1800), on(1850)), open(on(1952))] }, gate()).heldBack).toEqual(['stood']);
+    expect(decideLifetime({}, { stood: [until(on(1700), on(1800, { span: 'century' })), open(on(1960))] }, gate()).heldBack).toEqual([]);
+  });
+
   it('asks about the end of a use a run no longer reports once the item says the place was rebuilt after it', () => {
     // The Frauenkirche in Dresden: its end of 1945 was read as the end of a use, and is now the end of a standing period.
     const stored = { stood: held([open(on(1726))]), used: held([until(null, on(1945, { month: 2, day: 15, property: 'P576' }))]) };

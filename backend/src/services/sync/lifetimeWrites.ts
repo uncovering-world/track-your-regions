@@ -19,6 +19,14 @@
  *   place readers see, and written with the arrival on a new one (Nelson's
  *   Pillar in Dublin, blown up in 1966, arrives with its end). A trusted
  *   source writes it on either.
+ * - **A gap longer than a century is never a fill either** (`opensLongGap`).
+ *   An item that states a destruction and a rebuilding more than a hundred
+ *   years apart cannot say what stood in between: the Odeon of Herodes
+ *   Atticus in Athens, destroyed in 267 and rebuilt by 1953, was a ruin
+ *   travellers visited for all of that time, where Bethlehem Chapel in
+ *   Prague, pulled down in 1786 and rebuilt by 1952, was not there. So the
+ *   list is asked on a place readers see under a gated source, and written
+ *   with the arrival on a new one.
  * - **A curator's admission pin wins over a derived end**: the curator kept
  *   the place where its item says it is gone (the Barmaley Fountain, whose
  *   replica stands since 2013), so the run reads its last standing period as
@@ -31,7 +39,7 @@
 
 import type { PoolClient } from 'pg';
 import {
-  PERIOD_SAYS, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy, type PeriodSays,
+  PERIOD_SAYS, periodOf, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy, type PeriodSays,
 } from '@tyr/shared/lifetime';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import {
@@ -94,6 +102,29 @@ function fills(says: PeriodSays, held: readonly SourcedPeriod[], next: readonly 
       toldTheSame(period, other) && (period.until === null || samePlaceDate(period.until, other.until)))));
 }
 
+/** How long a gap in a place's standing a run may fill in unasked, in years. */
+export const LONGEST_GAP_FILLED = 100;
+
+/** The days of `LONGEST_GAP_FILLED` years, in the count `periodOf` orders days by: every month has 31. */
+const LONGEST_GAP_DAYS = LONGEST_GAP_FILLED * 12 * 31;
+
+/**
+ * Whether `next` opens a gap in the place's standing that is certainly longer
+ * than `LONGEST_GAP_FILLED` years and that the place does not hold: from the
+ * last day one period may have ended to the first day the next may have
+ * begun. A gap with an end not known has no length.
+ */
+function opensLongGap(held: readonly SourcedPeriod[], next: readonly SourcedPeriod[]): boolean {
+  const holds = (until: SourcedDate, from: SourcedDate) => held.some((period, index) =>
+    samePlaceDate(period.until, until) && samePlaceDate(held[index + 1]?.from ?? null, from));
+  return next.some((period, index) => {
+    const until = period.until;
+    const from = next[index + 1]?.from;
+    if (!until || !from || holds(until, from)) return false;
+    return periodOf(from).first - periodOf(until).last > LONGEST_GAP_DAYS;
+  });
+}
+
 /**
  * The standing periods a pinned place is read by: the curator's pin says the
  * place stands, so its last period is open whatever end the source reports.
@@ -115,7 +146,7 @@ function listAction(says: PeriodSays, next: readonly SourcedPeriod[], held: Held
   if (held && (held.sourceId !== gate.sourceId || held.decidedBy !== null)) return 'keep';
   const stored = held?.periods ?? [];
   if (sameList(stored, next)) return 'keep';
-  if (fills(says, stored, next)) return 'fill';
+  if (fills(says, stored, next) && !(says === PLACE_STOOD && opensLongGap(stored, next))) return 'fill';
   return gate.gated && gate.held ? 'hold' : 'write';
 }
 
