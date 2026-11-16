@@ -25,13 +25,18 @@ describe('the gate over a place\'s dates (#1719)', () => {
     expect(decision.changes.map((c) => [c.field, c.passedTheGate, c.old])).toEqual([
       ['began', 'first-date', null], ['use_ended', 'first-date', null],
     ]);
-    expect(decision.heldBack).toEqual([]);
+    expect(decision.held).toEqual([]);
   });
 
   it('holds a change to a date a reader sees under a gated source, and writes it elsewhere', () => {
     const stored = { began: held(BEGAN) };
     const view = { began: date(-9600, { span: 'century' }) };
-    expect(decideLifetime(stored, view, gate())).toMatchObject({ write: {}, heldBack: ['began'], changes: [] });
+    const asked = decideLifetime(stored, view, gate());
+    expect(asked).toMatchObject({ write: {}, changes: [] });
+    expect(asked.held).toEqual([{
+      field: 'began', significance: 'minor', curatedConflict: false, held: true,
+      old: { ...BEGAN }, new: { ...view.began },
+    }]);
     const trusted = decideLifetime(stored, view, gate({ gated: false, held: false }));
     expect(trusted.write).toEqual(view);
     expect(trusted.changes.map((c) => [c.field, c.passedTheGate])).toEqual([['began', undefined]]);
@@ -39,7 +44,10 @@ describe('the gate over a place\'s dates (#1719)', () => {
   });
 
   it('holds every end under a gated source, filled or changed, and writes one under a trusted source', () => {
-    expect(decideLifetime({}, { ended: ENDED }, gate({ held: false })).heldBack).toEqual(['ended']);
+    const unseen = decideLifetime({}, { ended: ENDED }, gate({ held: false }));
+    expect(unseen).toMatchObject({ write: {}, changes: [], held: [] });
+    expect(decideLifetime({}, { ended: ENDED }, gate()).held.map((c) => [c.field, c.old, c.significance]))
+      .toEqual([['ended', null, 'major']]);
     expect(decideLifetime({}, { ended: ENDED }, gate({ gated: false, held: false })).write).toEqual({ ended: ENDED });
   });
 
@@ -57,8 +65,10 @@ describe('the gate over a place\'s dates (#1719)', () => {
 
   it('takes off a date the source wrote and no longer reports, through the same gate', () => {
     const stored = { use_ended: held(USE_ENDED) };
-    expect(decideLifetime(stored, {}, gate({ held: false }))).toMatchObject({ clear: ['use_ended'], heldBack: [] });
-    expect(decideLifetime(stored, {}, gate())).toMatchObject({ clear: [], heldBack: ['use_ended'] });
+    expect(decideLifetime(stored, {}, gate({ held: false }))).toMatchObject({ clear: ['use_ended'], held: [] });
+    const asked = decideLifetime(stored, {}, gate());
+    expect(asked.clear).toEqual([]);
+    expect(asked.held.map((c) => [c.field, c.new])).toEqual([['use_ended', null]]);
   });
 
   it('writes an end whose date stands and whose telling of how the place ended changed', () => {
@@ -66,12 +76,12 @@ describe('the gate over a place\'s dates (#1719)', () => {
     const trusted = decideLifetime(stored, { ended: ENDED }, gate({ gated: false, held: false }));
     expect(trusted.write).toEqual({ ended: ENDED });
     expect(trusted.changes.map((c) => [c.field, c.passedTheGate])).toEqual([['ended', undefined]]);
-    expect(decideLifetime(stored, { ended: ENDED }, gate()).heldBack).toEqual(['ended']);
+    expect(decideLifetime(stored, { ended: ENDED }, gate()).held.map((c) => c.field)).toEqual(['ended']);
   });
 
   it('writes nothing for a date the place holds as the source reports it', () => {
     expect(decideLifetime({ began: held(BEGAN) }, { began: BEGAN }, gate({ gated: false }))).toEqual({
-      write: {}, clear: [], changes: [], heldBack: [],
+      write: {}, clear: [], changes: [], held: [],
     });
   });
 
@@ -80,5 +90,13 @@ describe('the gate over a place\'s dates (#1719)', () => {
     const decision = decideLifetime({}, { began: BEGAN }, gate());
     expect(withLifetimeChanges(unchanged, decision)).toMatchObject({ changeType: 'updated', significance: 'minor' });
     expect(withLifetimeChanges({ ...unchanged, changeType: 'created' }, decision).changeType).toBe('created');
+  });
+
+  it('files a held date beside the run\'s held fields, weighing an end as major', () => {
+    const unchanged = { changeType: 'unchanged' as const, changedFields: [], significance: null, curatedConflicts: [], heldFields: [] };
+    const decision = decideLifetime({}, { ended: ENDED }, gate());
+    const filed = withLifetimeChanges(unchanged, decision);
+    expect(filed).toMatchObject({ changeType: 'unchanged', significance: 'major', changedFields: [] });
+    expect(filed.heldFields.map((f) => [f.field, f.held])).toEqual([['ended', true]]);
   });
 });

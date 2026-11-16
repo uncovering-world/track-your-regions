@@ -46,6 +46,7 @@ import { PictureFact } from './PictureFact';
 import { MoveFact } from './MoveFact';
 import { CheckedWebsite } from './CheckedWebsite';
 import { TEXT_CREDITS } from '@tyr/shared/textCredits';
+import { LIFETIME_MEANINGS } from './lifetimeMeaning';
 
 /** One field of a proposal, as the queue carries it: the part of its `ChangedField` a rendering reads. */
 export type ProposedField = Pick<ChangedField, 'field' | 'old' | 'new' | 'regionCrossings'>;
@@ -753,6 +754,9 @@ const MEANINGS: Record<string, FieldMeaning> = {
     whenItChanges: 'A different picture on Wikimedia Commons. Its credit is answered with it: each side shows whose photograph it is.',
     render: pictureFact,
   },
+
+  // A place's lifetime, each date by what it says (#1719).
+  ...LIFETIME_MEANINGS,
 };
 
 /** A stored key as words: `totalArtworkSitelinks` → "total artwork sitelinks". */

@@ -29,6 +29,7 @@ import type { PoolClient } from 'pg';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { keepSubjectsOnOneLine, SUBJECT_LINES, type OpenLines } from './subjectLines.js';
+import { isLifetimeField, proposedDate, type PublishedDate } from './heldPlaceDates.js';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 export interface ProposedField {
@@ -525,6 +526,11 @@ export interface HeldFieldWrites {
    * a kind's own fact lives on its membership (ADR-0153).
    */
   membershipFacts?: { value: Record<string, unknown> };
+  /**
+   * The place's dates this call publishes (#1719): written into `place_dates`
+   * rather than assigned, since a date is a row of its own (`heldPlaceDates.ts`).
+   */
+  placeDates: PublishedDate[];
   /** `$1` is the experience id; the rest is whatever the assignments bound. */
   params: unknown[];
   applied: string[];
@@ -605,12 +611,21 @@ function openLines(open: ProposedField[], selected: ProposedField[], claimed: st
 
 /**
  * One held field of a column of its own into `writes`: the membership's type,
- * a dispersed whole's coordinate released (`releasedOnTheWhole`), or the
- * field's assignment, else unwritable.
+ * a date of the place, a dispersed whole's coordinate released
+ * (`releasedOnTheWhole`), or the field's assignment, else unwritable.
  */
 function writeOneHeld(
   writes: HeldFieldWrites, field: ProposedField, before: HeldBefore, bind: (value: unknown) => string,
 ): void {
+  if (isLifetimeField(field.field)) {
+    const date = proposedDate(field.field, field.new);
+    if (date === undefined) writes.unwritable.push(field.field);
+    else {
+      writes.placeDates.push({ slot: field.field, date });
+      writes.applied.push(field.field);
+    }
+    return;
+  }
   // The type within the kind is the membership's (ADR-0084): it rides out
   // beside the place's assignments, for the membership being published.
   if (field.field === 'type') {
@@ -664,7 +679,7 @@ export async function heldFieldWrites(
   const params: unknown[] = [experienceId];
   const bind = (value: unknown) => `$${params.push(value)}`;
   const writes: HeldFieldWrites = {
-    assignments: [], params, applied: [], released: [], claimedFieldsSkipped: [], unwritable: [],
+    assignments: [], params, applied: [], released: [], claimedFieldsSkipped: [], unwritable: [], placeDates: [],
     proposalMissing: false, contents: null, answered: new Map(), written: [],
     leftOpen: [], unmatched: [],
   };

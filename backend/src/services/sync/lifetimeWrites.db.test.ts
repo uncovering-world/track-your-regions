@@ -101,7 +101,7 @@ describe('a run writes a place\'s dates through the gate (#1719)', () => {
     expect(await recordDates()).toEqual([{ slot: 'began', year: -9999 }, { slot: 'use_ended', year: -7000 }]);
   });
 
-  it('holds a change to a date a reader sees, and every end, for a curator, while its record reports them', async () => {
+  it('holds a change to a date a reader sees, and an end, as a question to a curator, while its record reports them', async () => {
     const created = await write(GOBEKLI);
     await pool.query(
       `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
@@ -114,7 +114,8 @@ describe('a run writes a place\'s dates through the gate (#1719)', () => {
       ended: date(-7000, { property: 'P576', ending: 'destroyed' }),
     });
     expect(changed.changeSet.changedFields.filter((f) => ['began', 'ended'].includes(f.field))).toEqual([]);
-    expect(changed.changeSet.heldFields).toEqual([]);
+    expect(changed.changeSet.heldFields.map((f) => [f.field, f.held, (f.old as SourcedDate | null)?.year ?? null,
+      (f.new as SourcedDate | null)?.year])).toEqual([['began', true, -9999, -9600], ['ended', true, null, -7000]]);
     expect((await placeDates()).map((d) => [d.slot, d.year])).toEqual([['began', -9999], ['use_ended', -7000]]);
     expect(await recordDates()).toEqual([{ slot: 'began', year: -9600 }, { slot: 'ended', year: -7000 }, { slot: 'use_ended', year: -7000 }]);
     const membership = (await pool.query<{ state: string; pointer: number | null }>(
@@ -122,7 +123,7 @@ describe('a run writes a place\'s dates through the gate (#1719)', () => {
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     )).rows[0];
-    expect(membership).toEqual({ state: 'verified', pointer: null });
+    expect(membership).toEqual({ state: 'verified', pointer: logId });
   });
 
   it('writes an end under a trusted source, and none where a curator\'s admission pin keeps the place', async () => {

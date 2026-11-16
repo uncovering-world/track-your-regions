@@ -103,14 +103,16 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
   'metadata.depicts': place('shown'),
 
   // A place's lifetime (#1719, ADR-0214): its dates in place_dates, each the
-  // place's whichever kind's run read it. No surface shows them yet; their
-  // gate is `lifetimeWrites.ts`'s (a date filled where the place held none
-  // passes, a change to a held one and every end under a gated source are
-  // asked), not this mark.
+  // place's whichever kind's run read it. Their gate is `lifetimeWrites.ts`'s
+  // (a date filled where the place held none passes, a change to a held one
+  // and every end under a gated source are asked), not this mark. No surface
+  // shows a date yet; the end is shown, since it is what takes a place off
+  // today's lists (ADR-0214 decision 3), so the review card never says of
+  // one that nothing readers see changes.
   began: place('unseen'),
   rebuilt: place('unseen'),
   use_ended: place('unseen'),
-  ended: place('unseen'),
+  ended: place('shown'),
 
   // The inscription, the World Heritage kind's: a delisted site loses it with
   // its membership.

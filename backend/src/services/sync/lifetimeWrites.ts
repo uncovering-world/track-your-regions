@@ -7,11 +7,14 @@
  *   maintainer, 2026-11-15), as an item, a subtitle and a credit do (ADR-0129,
  *   ADR-0133, ADR-0151): written, and filed as passed (`first-date`).
  * - **A change to a date the place holds is asked** under a gated source where
- *   a reader sees the place: the run does not write it, and its record keeps
- *   the date it reports for the curator's answer. Under a trusted source, or on
+ *   a reader sees the place: the run does not write it, its record keeps the
+ *   date it reports, and the run files it as a held field, which raises the
+ *   review queue's held card as a held name does. Under a trusted source, or on
  *   a place no reader sees yet, it is written as any other field is.
  * - **An end is always asked under a gated source**, since it takes the place
- *   off today's lists: never written by such a run, filled or changed.
+ *   off today's lists: never written by such a run, filled or changed. On a
+ *   place a reader sees it is filed as held, and so asked; on one no reader
+ *   sees yet it is only kept back.
  * - **A curator's admission pin wins over a derived end**: the curator kept the
  *   place where its item says it is gone (the Barmaley Fountain, whose replica
  *   stands since 2013), so the run writes no end of it.
@@ -53,8 +56,12 @@ export interface LifetimeDecision {
   clear: LifetimeSlot[];
   /** What it filed: every write and clear, a fill marked as passed. */
   changes: FieldChange[];
-  /** The slots it holds back for a curator. */
-  heldBack: LifetimeSlot[];
+  /**
+   * What it holds back where a reader sees the place, filed as held: the date
+   * the place holds and the one the source reports, which the held card shows
+   * and publishing writes (`heldPlaceDates.ts`).
+   */
+  held: FieldChange[];
 }
 
 /** A date as the change set files it: the date and where it was read, not whose view the place took it from. */
@@ -66,6 +73,12 @@ const filedDate = (date: SourcedDate | undefined): SourcedDate | null => (date ?
 const change = (slot: LifetimeSlot, old: SourcedDate | undefined, next: SourcedDate | undefined): FieldChange => ({
   field: slot, old: filedDate(old), new: filedDate(next), significance: 'minor', curatedConflict: false, held: false,
   ...(old === undefined ? { passedTheGate: 'first-date' as const } : {}),
+});
+
+/** A date held back for a curator; an end weighs as major, since publishing it takes the place off today's lists. */
+const heldChange = (slot: LifetimeSlot, old: SourcedDate | undefined, next: SourcedDate | undefined): FieldChange => ({
+  field: slot, old: filedDate(old), new: filedDate(next),
+  significance: slot === PLACE_END ? 'major' : 'minor', curatedConflict: false, held: true,
 });
 
 /** The same date and, on an end, the same telling of how the place ended. */
@@ -86,12 +99,12 @@ export function decideLifetime(
   view: RecordDates,
   gate: LifetimeGate,
 ): LifetimeDecision {
-  const decision: LifetimeDecision = { write: {}, clear: [], changes: [], heldBack: [] };
+  const decision: LifetimeDecision = { write: {}, clear: [], changes: [], held: [] };
   for (const slot of LIFETIME_SLOTS) {
     const next = slot === PLACE_END && gate.pinned ? undefined : view[slot];
     const held = stored[slot];
     const action = slotAction(slot, next, held, gate);
-    if (action === 'hold') decision.heldBack.push(slot);
+    if (action === 'hold' && gate.held) decision.held.push(heldChange(slot, held, next));
     if (action === 'write' && next !== undefined) decision.write[slot] = next;
     if (action === 'clear') decision.clear.push(slot);
     if (action === 'write' || action === 'clear') decision.changes.push(change(slot, held, next));
@@ -132,15 +145,19 @@ export async function writeLifetime(
 }
 
 /**
- * The run's change set with what it wrote of the place's dates: an object
- * whose only write is a date is updated, as for any other field.
+ * The run's change set with what it wrote of the place's dates and what it
+ * held back: an object whose only write is a date is updated, as for any other
+ * field, and one whose only proposal is a held date is unchanged and holds it.
  */
 export function withLifetimeChanges(changeSet: ChangeSetResult, decision: LifetimeDecision): ChangeSetResult {
-  if (decision.changes.length === 0) return changeSet;
+  const filed = [...decision.changes, ...decision.held];
+  if (filed.length === 0) return changeSet;
+  const wrote = decision.changes.length > 0 && changeSet.changeType !== 'created';
   return {
     ...changeSet,
     changedFields: [...changeSet.changedFields, ...decision.changes],
-    changeType: changeSet.changeType === 'created' ? 'created' : 'updated',
-    significance: changeSet.significance ?? 'minor',
+    heldFields: [...changeSet.heldFields, ...decision.held],
+    changeType: wrote ? 'updated' : changeSet.changeType,
+    significance: changeSet.significance === 'major' || filed.some((f) => f.significance === 'major') ? 'major' : 'minor',
   };
 }
