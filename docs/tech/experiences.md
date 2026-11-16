@@ -150,6 +150,49 @@ the place's `LockedExperience`: `writePlaceDate` and `clearPlaceDate` for the pl
 and `writeRecordDates` for a record's whole view, which replaces the slots it reports and clears
 the rest. Both are serving tables (ADR-0124). No run and no curator screen writes them yet.
 
+**How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
+derives a record's dates from the statements the gone rules already read (`fetchStandingFacts`,
+whose answer now carries every best-rank dated statement, `dated`, through the subset's reader
+`subset/standing.ts` or its live twin in `places/gone.ts`), given the gone rules' reason for the
+place. It writes nothing; no run calls it yet.
+
+- `began` is the earliest inception (`P571`) or official opening (`P1619`), so Notre-Dame's
+  reopening of 7 December 2024 never reads as its beginning (1163).
+- `rebuilt` is the first start after the latest end the place outlived: the Cathedral of Christ the
+  Saviour in Moscow, opened 1883 and blown up in 1931, is rebuilt in 2000.
+- `ended` is written only where the gone rules read the place as gone, from its latest end
+  (`P576`, `P3999`) or with no year, and says how where the reason does: Nelson's Pillar
+  "destroyed in 1966" ends 8 March 1966, destroyed.
+- `use_ended` is the latest end no start follows on a place not read as gone: Göbekli Tepe, begun
+  about the 10th millennium BC, is in use until the 7th; the Registan's 1420 ends a role.
+- An end before the beginning ends an earlier building and is dropped: Bath Abbey begins in 1572,
+  and its monastery's dissolution in 1539 is not its end.
+- Start and end times (`P580`, `P582`) are read only on an item that states none of the four
+  above (Mohenjo-daro's end about 1700 BC); otherwise they time something else, such as the
+  Dohány Street Synagogue's building.
+- An end before the beginning is dropped only where it is wholly before it: an end in the same
+  period is kept, as a work set up in 2019 and removed on 14 June 2019 keeps its date.
+
+A time becomes a date as precisely as the item states it, a precision coarser than a year being a
+`span` and ten millennia or coarser a millennium, except a date after AD 1000 stated coarser than
+a century, an entry error read as its year (the Tomb of the Unknown Soldier in Paris). Two dates
+are ordered by the one order of dates, `comparePlaceDates` in `@tyr/shared/lifetime`, which a trip
+is compared with a place's date by too (#2008): one follows another only where the periods they may
+be do not overlap, a span covering every year within one span either side of its stated year, since
+a century is stated both by its first and by its last year. An end in the same period as the
+beginning is kept. Where a start besides the beginning shares the period of the last end, the item
+leaves unsaid which came first: no end of use is read from that end, and it counts toward a rebuild
+only for a start wholly after it. An end in the 1950s beside an opening in 1955, or the Arch of Neutrality, taken
+down and set up again in 2010, reads neither; a place begun in 1800, ended in 1900 and started
+again in 1950 keeps its rebuild of 1950 beside an end and a start in 2010. A Julian date to the
+day becomes the Gregorian day
+(`julianToGregorian`), and one the Julian calendar lacks is skipped. Start and end times stand in
+only where the item states no inception, opening, end or closure at all, whether or not its date
+could be read. The new live reader turns a BC year back into the item's numbering with `itemYearOf`
+(`services/sync/wikidataYears.ts`), and the service has already written a Julian day as the
+Gregorian one. The live works and public-art queries #2564 names still store `YEAR(?inception)`
+unshifted, so a BC year they write is one year late until #2564 moves them onto `itemYearOf`.
+
 ### Location model
 
 An experience can have zero, one, or many locations. Location-bound experiences (museums, monuments) have physical coordinates; non-location-bound ones (books, films) are tied to regions conceptually. Multi-location experiences (UNESCO serial nominations) have independently trackable child locations.
