@@ -1,7 +1,7 @@
 # ADR-0156: A virtual kind holds how a source knows a part
 
 **Date:** 2026-10-27
-**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md): no kind is virtual, and a part's record is a record in its whole, one per relation, under the component's reference
+**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md): no kind is virtual, and a part's record is a record in its whole, one per relation, under the component's reference; decisions 2 and 4 amended by [ADR-0213](0213-a-parts-gate-is-its-record-in-its-whole.md): the record is the part's gate, and the curator is asked about the record, never the point
 **Issue:** [#1426](https://github.com/uncovering-world/track-your-regions/issues/1426)
 **Narrows:** [ADR-0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) decisions 2 and 3
 

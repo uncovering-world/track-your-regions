@@ -162,7 +162,7 @@ and accepted by it.
 | [0140](0140-a-short-move-passes-the-gate.md) | A short move passes the gate | Accepted | 2026-10-23 |
 | [0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) | The catalogue accepts a component candidate of the point's own name at the point | Accepted | 2026-10-23 |
 | [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | A place is found by its identifiers before a run creates one | Accepted — decision 2 narrowed by [0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md) | 2026-10-23 |
-| [0144](0144-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md) | A curator separates one kind's membership of a place into a place of its own | Accepted | 2026-10-24 |
+| [0144](0144-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md) | A curator separates one kind's membership of a place into a place of its own | Accepted — decision 3 narrowed by [0213](0213-a-parts-gate-is-its-record-in-its-whole.md) | 2026-10-24 |
 | [0145](0145-an-edition-is-one-place-with-a-point-at-every-cast.md) | An edition is one place with a point at every cast | Accepted — decision 2(b) narrowed by [0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md); decision 5 by [0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md) | 2026-10-23 |
 | [0146](0146-a-places-outline-belongs-to-the-source-that-drew-it.md) | A place's outline belongs to the source that drew it | Accepted | 2026-10-25 |
 | [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | The World Heritage list's typesetting defects are mended on reading, and the mend passes the gate | Accepted | 2026-10-25 |
@@ -174,7 +174,7 @@ and accepted by it.
 | [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | A field belongs to the place or to one kind, by what it means | Accepted — decision 2 narrowed by [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md); decision 1 narrowed by [0190](0190-a-place-field-some-sources-read-is-kept-while-one-of-them-stands.md) | 2026-10-26 |
 | [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | A kind's fact a reader is shown waits for a curator | Accepted | 2026-10-26 |
 | [0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md) | A work based on a group of casts is its cast only by the group's creator | Accepted | 2026-10-26 |
-| [0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md) | A virtual kind holds how a source knows a part | Accepted — decisions 1 and 2 narrowed by [0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md) | 2026-10-27 |
+| [0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md) | A virtual kind holds how a source knows a part | Accepted — decisions 1 and 2 narrowed by [0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md); decisions 2 and 4 amended by [0213](0213-a-parts-gate-is-its-record-in-its-whole.md) | 2026-10-27 |
 | [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | The OpenStreetMap layer keeps whole the objects of the items a world-view import names | Accepted — decision 1 narrowed by [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | 2026-10-27 |
 | [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | The OpenStreetMap layer also keeps whole the items the mapshapes of imported pages list | Accepted | 2026-10-27 |
 | [0159](0159-a-region-no-object-draws-takes-the-union-of-its-child-regions-shapes.md) | A region no object draws takes the union of its child regions' shapes | Accepted | 2026-10-27 |
@@ -231,7 +231,7 @@ and accepted by it.
 | [0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md) | A dispersed whole holds no point, and every line of a serial site is a part | Accepted | 2026-11-15 |
 | [0211](0211-a-nested-whole-is-shown-and-placed-by-its-leaves.md) | A nested whole is shown and placed by its leaves | Accepted | 2026-11-15 |
 | [0212](0212-the-openstreetmap-layer-keeps-whole-the-objects-of-a-bridges-item-and-its-line-places-it.md) | The OpenStreetMap layer keeps whole the objects of a bridge's item, and its line places it | Accepted | 2026-11-15 |
-| [0213](0213-a-parts-gate-is-its-record-in-its-whole.md) | A part's gate is its record in its whole, by the rules of its whole's source | Draft | 2026-11-15 |
+| [0213](0213-a-parts-gate-is-its-record-in-its-whole.md) | A part's gate is its record in its whole, by the rules of its whole's source | Accepted | 2026-11-15 |
 | [0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md) | A place carries its lifetime, and only the place's own end hides it | Draft | 2026-11-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
