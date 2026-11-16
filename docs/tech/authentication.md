@@ -7,7 +7,7 @@ This document describes the authentication system for Track Your Regions, includ
 The authentication system uses:
 - **JWT tokens** for stateless authentication (no server sessions)
 - **Passport.js** for authentication strategies
-- **bcryptjs** for password hashing
+- **bcryptjs** for password hashing, over a digest of the whole password (§ Password Security)
 - **OAuth 2.0** for social login (Google, Apple)
 
 ## Access Levels
@@ -377,6 +377,7 @@ Uses `draft-7` standard headers (`RateLimit-Policy`, `RateLimit`).
 ## Password Security
 
 - **Minimum length**: 8 characters. **Maximum**: 128 characters. No composition rules (per ASVS V6.2.5).
+- **Checked whole** ([ADR-0215](../decisions/0215-a-password-is-digested-whole-before-bcrypt.md), `backend/src/services/passwordHash.ts`): bcrypt reads only the first 72 bytes of its input, so `hashPassword` gives it the base64 HMAC-SHA-256 of the whole password, keyed by a fixed label, and stores the result as `hmac-sha256-bcrypt$` + the bcrypt hash. Every byte of a 128-character password counts, in any script: 64 Cyrillic characters are 128 bytes. A stored hash without the label is bcrypt over the raw password, from before; `verifyPassword` matches it only for a password of at most 72 bytes, in the same one compare, and the local strategy (`auth/strategies/local.ts`) stores it again in the new scheme once its owner signs in, only while the account still holds the hash it checked (`replacePasswordHash`), so a password changed in between stays changed. A failed rewrite leaves the old hash and lets the sign-in through.
 - **Breached password check**: Passwords are checked against the [Have I Been Pwned](https://haveibeenpwned.com/API/v3#PwnedPasswords) breached password database on registration and password change. Uses the k-Anonymity API — only the first 5 characters of the SHA-1 hash are sent, so the full password never leaves the server — with `Add-Padding`, so the answer's size says nothing of the prefix; a padded line counts 0 and is no breach. The check is bounded by a 3 s timeout (`BREACH_CHECK_TIMEOUT_MS` in `authService.ts`) and fails open on it, as on any error, so a slow or absent service never holds a registration or a password change.
 - **Fails open**: If the HIBP API is unavailable, registration/change proceeds without the check (availability over security for a non-critical check).
 - **Password change** (`POST /api/auth/change-password`): Requires the current password, checks the new password against HIBP, then revokes all existing refresh tokens (forcing re-login on all other devices). Returns new tokens for the current session.
