@@ -190,6 +190,7 @@ export const queryKeys = {
     shadowedArrivalsWithin: (region: number | 'none') => ['curation', 'shadowedArrivals', region] as const,
     /** The Wikivoyage articles that use a membership's item (#2520), read when a curator opens them. */
     guideArticles: (membershipId: number) => ['curation', 'guideArticles', membershipId] as const,
+    articleLead: (placeId: number, article: string | null) => ['curation', 'articleLead', placeId, article] as const,
   },
 
   /** Per user: each key names the caller. */

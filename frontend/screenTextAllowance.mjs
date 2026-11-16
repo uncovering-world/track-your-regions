@@ -31,7 +31,7 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/components/curation/ComponentItemsCard.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/CuratePlaceButton.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/FactTable.tsx': { breaches: 2, slice: '#2444' },
-  'src/components/curation/GatedSection.tsx': { breaches: 11, slice: '#2444' },
+  'src/components/curation/GatedSection.tsx': { breaches: 9, slice: '#2444' },
   'src/components/curation/KindMissingCard.tsx': { breaches: 3, slice: '#2444' },
   'src/components/curation/KindReadingLine.tsx': { breaches: 2, slice: '#2444' },
   'src/components/curation/MergeProposalsCard.tsx': { breaches: 2, slice: '#2444' },

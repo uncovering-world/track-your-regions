@@ -21,6 +21,7 @@ import { kindWithType } from '../../utils/experienceTypes';
 import { ObjectContext } from './ObjectContext';
 import { SourceId, worldHeritagePartsHref } from './SourceId';
 import { CuratePlaceButton } from './CuratePlaceButton';
+import type { ArticleLead } from '../../api/articleLeads';
 
 /**
  * How a part is named before its whole, on every card that names one: by the
@@ -85,10 +86,12 @@ export interface KindOfCard {
  * the place, the page it came from. Both live here so every kind of card carries the
  * same amount, which is the property that made this module worth having.
  */
-export function ItemHeader({ item, kinds = [item] }: {
+export function ItemHeader({ item, kinds = [item], lead = null }: {
   item: ReviewQueueItem;
   /** Every membership the card asks about, one chip each — the item's own when omitted (#1264). */
   kinds?: readonly KindOfCard[];
+  /** The first sentence of the place's article, where the card read it (#2185). */
+  lead?: ArticleLead | null;
 }) {
   return (
     <>
@@ -103,7 +106,7 @@ export function ItemHeader({ item, kinds = [item] }: {
         <CuratePlaceButton placeId={item.id} />
       </Stack>
       {item.part_of && <PartOfLine partOf={item.part_of} />}
-      <ObjectContext item={item} />
+      <ObjectContext item={item} lead={lead} />
     </>
   );
 }

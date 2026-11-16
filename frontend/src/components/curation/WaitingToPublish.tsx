@@ -27,7 +27,11 @@
  * `conflict` card: the same museum can legitimately appear under both.
  */
 
-import { Card, CardContent, Stack } from '@mui/material';
+import { Card, CardContent, Stack, Typography } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { fetchArticleLead } from '../../api/articleLeads';
+import { queryKeys } from '../../api/queryKeys';
+import { kindQuestion } from '../../utils/experienceTypes';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { ItemHeader } from './queueCard';
 import { GatedSection } from './GatedSection';
@@ -68,6 +72,15 @@ export function groupGated(
 }
 
 /**
+ * How long a card keeps its lead: a sentence for good, and no sentence a minute,
+ * since none may only mean Wikipedia did not answer in time, and the card opened
+ * again should ask again.
+ */
+export function leadStaleTime(query: { state: { data: unknown } }): number {
+  return query.state.data ? Infinity : 60_000;
+}
+
+/**
  * One place's card: its header once, then a section per kind that asks. Each
  * section is keyed on its place and membership and starts afresh on the next row.
  */
@@ -75,11 +88,28 @@ export function GatedCard({ sections, onDone }: { sections: GatedGroup[]; onDone
   const first = sections[0];
   const item = (first.arrival ?? first.held ?? first.contents)!;
   const several = sections.length > 1;
+  // A card that asks whether a place belongs in a kind opens with that question, then shows the place
+  // in its article's first sentence (#2185); a card of several kinds asks each in its own section.
+  const arrival = sections.find(group => group.arrival)?.arrival;
+  // Keyed by the article too: a curator who corrects the place's Wikipedia URL reads the new article's sentence.
+  const lead = useQuery({
+    queryKey: queryKeys.curation.articleLead(item.id, item.wikipedia_url ?? null),
+    queryFn: () => fetchArticleLead(item.id),
+    enabled: arrival !== undefined && Boolean(item.wikipedia_url),
+    staleTime: leadStaleTime,
+  });
 
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={item} kinds={several || first.sharedBy ? sectionsMemberships(sections) : undefined} />
+        {arrival && !several && (
+          <Typography variant="h6" component="h3" sx={{ mb: 1 }}>{kindQuestion(arrival.kind_id, arrival.kind_name)}</Typography>
+        )}
+        <ItemHeader
+          item={item}
+          kinds={several || first.sharedBy ? sectionsMemberships(sections) : undefined}
+          lead={lead.data ?? null}
+        />
         <Stack spacing={2}>
           {sections.map(group => (
             <GatedSection
@@ -99,5 +129,6 @@ export function GatedCard({ sections, onDone }: { sections: GatedGroup[]; onDone
 
 /** A section's heading on a card with several: the place's own facts, or the kind that asks. */
 function headingOf(group: GatedGroup): string {
-  return group.sharedBy ? sectionLabel(group) : `${sectionKind(group)} asks`;
+  if (group.sharedBy) return sectionLabel(group);
+  return group.arrival ? kindQuestion(group.arrival.kind_id, group.arrival.kind_name) : `${sectionKind(group)} asks`;
 }

@@ -241,7 +241,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /readers may see it/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Keep' }));
 
       // A `pending` row holds no proposal — the pointer is set only on a row
       // that is not pending — so sending the run that first saw it would be
@@ -307,7 +307,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      await screen.findByRole('button', { name: /readers may see it/i });
+      await screen.findByRole('button', { name: 'Keep' });
       expect(screen.queryByText(/nothing waiting/i)).not.toBeInTheDocument();
     });
 
