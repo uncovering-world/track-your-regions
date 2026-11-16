@@ -12,6 +12,7 @@
  * there — see `missing_since` below.
  */
 
+import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
 import type { LocationStateResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
@@ -21,8 +22,11 @@ import type { lifecycleStateBodySchema, locationIdParamSchema } from '../../type
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, setLifecycleVerdict, type LockedExperience } from '../../db/experienceWriter.js';
 import { setPointVerdict } from './experienceLocationWriter.js';
+import { setPartRecordListingVerdict } from './membershipWriter.js';
+import { MEMBERSHIPS, partRecordSql, partRecordWithdrawnSql } from '../../db/membership.js';
+import { hideLostSql, partOfferedSql } from '../../db/readerPredicates.js';
 import { answeringPlaceSql } from '../../db/placePoints.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
@@ -163,6 +167,81 @@ export async function setLocationState(
   return outcome.result!;
 }
 
+/** A serial site's part's record in its site, as a verdict on its line point reads it. */
+interface PartLine {
+  id: number;
+  part: number;
+  missing_since: Date | null;
+  source_membership: string;
+  /** Withdrawn by the list and not yet judged (`partRecordWithdrawnSql`). */
+  withdrawn: boolean;
+  part_existence: string;
+}
+
+/**
+ * The record of a serial site's part of which the point `locationId` is a
+ * line point (ADR-0216), read under the site's lock, whether or not a curator
+ * has answered for it; null for every other point.
+ */
+async function partLineOf(client: PoolClient, locationId: number): Promise<PartLine | null> {
+  const found = await client.query<PartLine>(
+    `SELECT rec.id, rec.experience_id AS part, rec.missing_since, rec.source_membership,
+            ${partRecordWithdrawnSql('rec')} AS withdrawn, part.existence AS part_existence
+       FROM ${MEMBERSHIPS} rec
+       JOIN experiences part ON part.id = rec.experience_id
+       JOIN experience_locations el ON el.id = $1 AND el.experience_id = rec.experience_id
+      WHERE ${partRecordSql('rec')} AND is_part_line_point(el.id, rec.whole_id)
+      ORDER BY rec.whole_id
+      LIMIT 1`,
+    [locationId],
+  );
+  return found.rows[0] ?? null;
+}
+
+/** Whether a reader is shown the part `part` (`partOfferedSql`), as the transaction sees it now. */
+async function partShown(client: PoolClient, part: number): Promise<boolean> {
+  const shown = await client.query<{ shown: boolean }>(
+    `SELECT ${partOfferedSql('e')} AND ${hideLostSql('e')} AS shown FROM experiences e WHERE e.id = $1`, [part],
+  );
+  return shown.rows[0]?.shown === true;
+}
+
+/**
+ * A verdict on a part's line, beside its point's (ADR-0216). The listing is
+ * written on the part's record when the answer is about the record's own
+ * withdrawal: *former* on a line the list withdrew, a false alarm on it, or
+ * *former* taken back, each of which brings the point back clean and clears
+ * the record's mark until the site's next run finds the line missing again.
+ * Taking *lost* back says the part still stands, not that the list gives it:
+ * the record keeps its mark, and the site's card asks again. A verdict on a
+ * point the list moved is the point's.
+ * *Lost*, and taking it back, are written on the part, under its own lock
+ * taken after its site's (a whole before its parts, `db/locks.ts`).
+ */
+async function answerPartLine(
+  client: PoolClient,
+  siteLock: LockedExperience,
+  line: PartLine,
+  verdict: {
+    nextMembership: string; nextExistence: string; clearFlag: boolean; wasLost: boolean;
+    userId: number; note: string | null;
+  },
+): Promise<void> {
+  const listingAnswered = line.withdrawn
+    ? verdict.nextMembership === 'former' || (verdict.clearFlag && !verdict.wasLost)
+    : verdict.clearFlag && line.source_membership === 'former';
+  if (listingAnswered) {
+    await setPartRecordListingVerdict(client, siteLock, line.id, verdict.nextMembership);
+  }
+  const lostNow = verdict.nextExistence === 'lost' && line.withdrawn && line.part_existence !== 'lost';
+  const backNow = verdict.nextExistence === 'extant' && line.part_existence === 'lost';
+  if (!lostNow && !backNow) return;
+  const part = await lockExperience(client, line.part);
+  if (part) {
+    await setLifecycleVerdict(client, part.lock, { existence: verdict.nextExistence, decidedBy: verdict.userId, note: verdict.note });
+  }
+}
+
 /** What a curator sends about one point, and the point as they were looking at it. */
 export interface LocationStateAnswer {
   membership?: Membership;
@@ -236,12 +315,17 @@ export async function answerLocationStateUnderLock(
     // The object going takes its points with it, so a missing object is the
     // same 404 as a missing point.
     if (!before || !object) return await refuse({ status: 404, error: 'Location not found' });
+    // A serial site's part whose line the list withdrew is withdrawn on its
+    // record, its point still standing (ADR-0216): the record's mark is the
+    // flag the card showed, and the verdict is written on the record too.
+    const line = await partLineOf(client, locationId);
+    const flaggedSince = before.missing_since ?? (line?.withdrawn ? line.missing_since : null);
     nextMembership = membership ?? (before.source_membership as Membership);
     nextExistence = existence ?? (before.existence as Existence);
 
     if (before.source_membership !== expected.membership
       || before.existence !== expected.existence
-      || (before.missing_since != null) !== expected.flagged) {
+      || (flaggedSince != null) !== expected.flagged) {
       return await refuse({
         status: 409,
         error: 'Someone else answered this first — reload to see where it stands',
@@ -268,7 +352,7 @@ export async function answerLocationStateUnderLock(
       // withdrawal card, which sends the waiting state and so collides above —
       // reachable for every other client of a documented endpoint, which is the
       // audience the correction path exists for.
-      if (before.missing_since == null || !clearFlag) {
+      if (flaggedSince == null || !clearFlag) {
         return await refuse({
           status: 409,
           error: 'Already answered: this point is not waiting on a decision',
@@ -299,7 +383,9 @@ export async function answerLocationStateUnderLock(
     // `placeAfterRelease` recomputes the experience from scratch either way — it
     // deletes the `auto` rows and reinserts for the points that qualify now — so one
     // call serves both directions and repeating it is harmless.
-    const wasVisible = offeredToReaders(
+    // A part's line point is as visible as its part, which its record and its
+    // own row gate too (ADR-0216): asked of the readers' own predicate.
+    const wasVisible = line !== null ? await partShown(client, line.part) : offeredToReaders(
       before.missing_since == null, before.existence as Existence);
     // Visible *after* is not `clearFlag`. That means "both axes came out clean",
     // which is stricter: the UPDATE clears the flag only when it holds, so a row
@@ -312,13 +398,22 @@ export async function answerLocationStateUnderLock(
     // demolished point the source has since offered again — and a curator taking the
     // `lost` back. `nextMembership` inherits `former`, so `clearFlag` is false while
     // the row does become visible, and a gate keyed on `clearFlag` places nothing.
-    isVisible = offeredToReaders(clearFlag || before.missing_since == null, nextExistence);
-    visibilityChanged = isVisible !== wasVisible;
+    // A withdrawn line's point holds no flag of its own, and takes its record's
+    // when the verdict keeps the part off the map.
+    const hidesLine = line?.withdrawn === true && !clearFlag;
 
     await setPointVerdict(client, object.lock, locationId, {
       sourceMembership: nextMembership, existence: nextExistence, clearFlag,
-      decidedBy: userId, note: note ?? null,
+      decidedBy: userId, note: note ?? null, flagSince: hidesLine ? line.missing_since : null,
     });
+    if (line !== null) {
+      await answerPartLine(client, object.lock, line, {
+        nextMembership, nextExistence, clearFlag, wasLost: before.existence === 'lost', userId, note: note ?? null,
+      });
+    }
+    isVisible = line !== null ? await partShown(client, line.part)
+      : offeredToReaders(clearFlag || before.missing_since == null, nextExistence);
+    visibilityChanged = isVisible !== wasVisible;
 
     for (const action of actions) {
       // Against the experience, because the trail a curator reads is the object's —

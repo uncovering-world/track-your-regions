@@ -453,6 +453,28 @@ export async function setMembershipListingVerdict(
 }
 
 /**
+ * A curator's verdict on a serial site's part whose line the list withdrew,
+ * on the part's record in the site the lock holds (ADR-0216): `former`, the
+ * list no longer gives it, keeping the mark; `present`, a false alarm,
+ * clearing it. Whether the part still stands is the part's own
+ * (`setLifecycleVerdict`). The record's line points are the caller's to hide.
+ */
+export async function setPartRecordListingVerdict(
+  client: PoolClient,
+  lock: LockedExperience,
+  recordId: number,
+  sourceMembership: string,
+): Promise<void> {
+  await client.query(`
+    UPDATE ${MEMBERSHIPS} rec
+    SET source_membership = $2,
+        missing_since = CASE WHEN $4 THEN NULL ELSE missing_since END,
+        updated_at = NOW()
+    WHERE rec.id = $1 AND rec.whole_id = $3 AND ${partRecordSql('rec')}
+  `, [recordId, sourceMembership, lock.id, sourceMembership === 'present']);
+}
+
+/**
  * Move memberships from one place to another (ADR-0086): every membership of
  * `from` on a merge, or the ones a merge moved, named, on its undo. The place's
  * own listing follows through `derive_place_listing()`, which recomputes both

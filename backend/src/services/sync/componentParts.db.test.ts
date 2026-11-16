@@ -113,7 +113,7 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     expect(await parts(THEBES)).toEqual(first);
   });
 
-  it('parts a component that arrives later, and withdraws one the source dropped, through its part', async () => {
+  it('parts a component that arrives later, and withdraws one the source dropped on its record (ADR-0216)', async () => {
     await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
     const [karnak, luxor] = await parts(THEBES);
 
@@ -122,10 +122,14 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     const now = await parts(THEBES);
     expect(now.map(p => p.external_ref)).toEqual(['87-001', '87-002', '87-003']);
     expect(now[0].location_id).toBe(karnak.location_id);
-    const withdrawn = await pool.query<{ missing: boolean }>(
-      'SELECT missing_since IS NOT NULL AS missing FROM experience_locations WHERE id = $1', [luxor.location_id],
+    // The point stands, so the temple stays shown until a curator answers; its record says the list dropped it.
+    const withdrawn = await pool.query<{ point_missing: boolean; record_missing: boolean }>(
+      `SELECT el.missing_since IS NOT NULL AS point_missing, rec.missing_since IS NOT NULL AS record_missing
+         FROM experience_locations el
+         JOIN source_records rec ON rec.experience_id = el.experience_id AND rec.whole_id = $2 AND rec.source_id = 10
+        WHERE el.id = $1`, [luxor.location_id, THEBES],
     );
-    expect(withdrawn.rows[0].missing).toBe(true);
+    expect(withdrawn.rows[0]).toEqual({ point_missing: false, record_missing: true });
   });
 
   it('leaves alone a point another source placed on the site', async () => {
