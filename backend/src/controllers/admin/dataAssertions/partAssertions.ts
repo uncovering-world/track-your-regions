@@ -9,7 +9,7 @@
 import {
   MEMBERSHIPS, membershipAdmittedSql, partRecordSql, partRecordUnreadSql, partRecordWithdrawnSql, placeOfferedSql,
 } from '../../../db/membership.js';
-import { hideLostSql, offeredLocationSql, partRecordShownSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import { hideLostSql, offeredLocationSql, partRecordShownSql, publishedContentSql, shownByPartsSql } from '../../../db/readerPredicates.js';
 import { MOST_LEVELS } from '../../experience/partRecordController.js';
 import { withdrawnPointOpenSql } from '../../experience/reviewQueuePredicates.js';
 import { unreadPointSql } from '../../experience/waitingCounts.js';
@@ -206,44 +206,45 @@ const partsInALoopOrTooDeep: CatalogueAssertion = {
 };
 
 /**
- * A whole whose shape is not the one its parts and records give it (ADR-0210).
+ * A record whose shape is not the one its parts and records give it
+ * (ADR-0218 decision 3).
  *
- * `whole_shape_follows_parts()` gives a place its shape when it gains its
- * first part and takes it away with its last, so a row here is a writer that
- * went around the trigger: a serial World Heritage site that is not dispersed,
- * a place with no part that keeps a shape, a whole with none. A container is
- * not shaped again as parts come, so one whose parts now lie more than a
- * kilometre apart is listed too: it may be dispersed, and #2125's curator pin
- * is what will settle it. The reverse, a dispersed whole whose parts came
- * within a walk, stays dispersed and is not listed.
+ * `shape_follows_parts()` gives a record its shape when it gains its first
+ * part and makes it a point again with its last, so a row here is a writer
+ * that went around the trigger: a serial World Heritage site that is not
+ * `none`, a record with no part that is not a point, a record with parts that
+ * is one. An area is not shaped again as parts come, so one whose parts now
+ * lie more than a kilometre apart is listed too: it may be `none`, and
+ * #2125's curator pin is what will settle it. The reverse, a record of shape
+ * `none` whose parts came within a walk, keeps its shape and is not listed.
  */
 const wholeShapeDrift: CatalogueAssertion = {
   id: 'whole-shape-drift',
   area: 'places',
-  title: 'A whole whose shape is not the one its parts give it',
+  title: 'A place whose shape is not the one its parts give it',
   kind: 'invariant',
   meaning:
-    'A serial World Heritage site is its parts and has no point of its own, and only a place made of parts has a shape. '
+    'A serial World Heritage site has the shape "none": it is its parts and has no point of its own. '
     + 'A row means a writer went around the database\'s rule, so tell the admin who runs it. '
-    + 'A container whose parts now lie more than a kilometre apart may be dispersed instead.',
-  sql: `SELECT e.id, e.name, e.whole_shape AS shape, expected.shape AS expected
+    + 'A place with parts within a walk of each other is an "area", and is listed once they lie over a kilometre apart.',
+  // The function is asked only of a record with parts: it measures them, and
+  // every other record is a point by default.
+  sql: `SELECT e.id, e.name, e.shape, expected.by_default AS expected
           FROM experiences e
          CROSS JOIN LATERAL (
            SELECT CASE WHEN EXISTS (SELECT 1 FROM experience_parts p WHERE p.whole_id = e.id)
-                       THEN whole_shape_of(e.id) END AS shape) expected
+                       THEN default_shape_of(e.id) ELSE 'point' END AS by_default) expected
          WHERE e.merged_into_id IS NULL
-           AND e.whole_shape IS DISTINCT FROM expected.shape
-           -- IS NOT TRUE, not NOT: a place made of parts with no shape, or a
-           -- dispersed one left with none, is a row too.
-           AND (e.whole_shape = 'dispersed' AND expected.shape = 'container') IS NOT TRUE
+           AND e.shape IS DISTINCT FROM expected.by_default
+           AND NOT (${shownByPartsSql('e')} AND expected.by_default = 'area')
          ORDER BY e.id`,
   describe: (row: AssertionRow) =>
-    `${text(row, 'name')} (#${count(row, 'id')}) is ${text(row, 'shape') || 'not a whole'}, `
-    + `and its parts make it ${text(row, 'expected') || 'not a whole'}`,
+    `${text(row, 'name')} (#${count(row, 'id')}) is ${text(row, 'shape')}, `
+    + `and its parts make it ${text(row, 'expected')}`,
 };
 
 /**
- * A dispersed whole holding a standing point of its own (ADR-0210).
+ * A record shown by its parts holding a standing point of its own (ADR-0218).
  *
  * Every line of a serial site is a part (`part_site_components()`), and the
  * migration that took the wholes' points away left none standing. A point the
@@ -262,7 +263,7 @@ const wholeOwnPoint: CatalogueAssertion = {
   sql: `SELECT e.id, e.name, el.id AS point_id, el.external_ref AS reference
           FROM experiences e
           JOIN experience_locations el ON el.experience_id = e.id AND el.merged_into_id IS NULL
-         WHERE e.whole_shape = 'dispersed'
+         WHERE ${shownByPartsSql('e')}
            AND ${offeredLocationSql('el')} AND el.refused_at IS NULL
          ORDER BY e.id, el.id`,
   describe: (row: AssertionRow) => {

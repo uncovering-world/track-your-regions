@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from './membership.js';
 import {
   claimablePlaceSql,
+  hasPinSql,
   hideLostSql,
   lifecycleSelectSql,
   offeredLocationSql,
@@ -21,6 +22,7 @@ import {
   readerPositionSql,
   readerRegionMembershipSql,
   readableByIdSql,
+  shownByPartsSql,
 } from './readerPredicates.js';
 
 describe('offeredLocationSql', () => {
@@ -248,17 +250,23 @@ describe('readerPositionSql', () => {
     expect(readerPositionSql('x')).toContain('WHERE el_own.experience_id = x.id');
     expect(readerPositionSql('x')).toContain('WHERE el_wl.whole_id = x.id');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
-    expect(readerPositionSql('x')).toContain('CASE WHEN x.location IS NULL THEN');
+    expect(readerPositionSql('x')).toContain(`CASE WHEN ${hasPinSql('x')} THEN ST_X(`);
+    expect(readerPositionSql('x')).toContain(`CASE WHEN ${shownByPartsSql('x')} THEN`);
   });
 
   it('answers a dispersed whole with no coordinate, and with the frame of its places (#2122)', () => {
     // Seville's site is its three places, and no point of it stands for the
-    // other two: a dispersed whole is the one place with no location (ADR-0210),
-    // both axes are null on it, and only it has a frame.
+    // other two: a record shown by its parts has no pin (ADR-0218), both axes
+    // are null on it, and only it has a frame.
     const sql = readerPositionSql('e');
     expect(sql).toMatch(/CASE WHEN e\.location IS NOT NULL THEN ST_X\([\s\S]*?END as longitude/);
     expect(sql).toMatch(/CASE WHEN e\.location IS NOT NULL THEN ST_Y\([\s\S]*?END as latitude/);
-    expect(sql).toMatch(/CASE WHEN e\.location IS NULL THEN \(SELECT json_build_object[\s\S]*?END as focus$/);
+    expect(sql).toMatch(/CASE WHEN e\.shape = 'none' THEN \(SELECT json_build_object[\s\S]*?END as focus$/);
+  });
+
+  it('asks the shape and the pin of the alias it is given (ADR-0218)', () => {
+    expect(shownByPartsSql('x')).toBe("x.shape = 'none'");
+    expect(hasPinSql('x')).toBe('x.location IS NOT NULL');
   });
 
   it("frames a whole by the rule a region is framed by, over the places this caller is shown", () => {

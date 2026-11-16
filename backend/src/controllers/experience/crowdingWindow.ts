@@ -33,7 +33,7 @@ import { pool } from '../../db/index.js';
 import {
   FAME, KINDS, kindRecordSql, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql,
 } from '../../db/membership.js';
-import { hideLostSql } from '../../db/readerPredicates.js';
+import { hasPinSql, hideLostSql } from '../../db/readerPredicates.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import { notFound, Refusal } from '../../middleware/errorHandler.js';
 import type {
@@ -336,7 +336,7 @@ export async function getCrowdingGroup(
       JOIN experiences e ON e.id = m.experience_id
       ${joins}
       ${leaf}
-     WHERE m.kind_id = $2 AND m.type IS NOT DISTINCT FROM $3::text AND e.location IS NOT NULL
+     WHERE m.kind_id = $2 AND m.type IS NOT DISTINCT FROM $3::text AND ${hasPinSql('e')}
        AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${listedSql(isAdmin)}
        AND ${inRegion}
      ORDER BY f.score DESC NULLS LAST, e.name, m.id
@@ -373,7 +373,7 @@ export async function getCrowdingPlace(
   },
 ): Promise<CrowdingPlaceView> {
   const found = await pool.query<{ kind_id: number; type: string | null; experience_id: number; located: boolean }>(
-    `SELECT m.kind_id, m.type, m.experience_id, e.location IS NOT NULL AS located
+    `SELECT m.kind_id, m.type, m.experience_id, ${hasPinSql('e')} AS located
        FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id WHERE m.id = $1`, [membershipId]);
   const centre = found.rows[0];
   if (!centre) throw notFound('Membership not found');

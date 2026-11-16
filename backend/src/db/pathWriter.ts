@@ -24,6 +24,7 @@
 
 import { pool } from './index.js';
 import { membershipOfferedSql, MEMBERSHIPS } from './membership.js';
+import { hasPinSql } from './readerPredicates.js';
 
 /** How far from a place's point an object carrying its item may lie and still be its line: the Øresund Bridge's ways run 4 km from its point. */
 export const LINE_REACH_M = 5000;
@@ -69,7 +70,7 @@ export const LINES_SQL = `
   WITH lined AS MATERIALIZED (
     SELECT m.experience_id AS id, m.external_id AS item, e.location
       FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id
-     WHERE ${linedRecordsSql('m')} AND e.location IS NOT NULL AND e.merged_into_id IS NULL),
+     WHERE ${linedRecordsSql('m')} AND ${hasPinSql('e')} AND e.merged_into_id IS NULL),
   drawn AS (
     SELECT lined.id, o.osm_type || o.osm_id AS ref, o.geom
       FROM lined JOIN osm_objects o ON o.wikidata = lined.item

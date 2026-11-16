@@ -25,7 +25,7 @@
 import type { PoolClient } from 'pg';
 import { OBJECT_LOCK, placeLockOrderSql } from './locks.js';
 import { DESCRIPTION_SOURCE_ID, MEMBERSHIPS } from './membership.js';
-import { offeredLocationSql, placeStandsAtSql, publishedContentSql } from './readerPredicates.js';
+import { offeredLocationSql, placeStandsAtSql, publishedContentSql, shownByPartsSql } from './readerPredicates.js';
 import { madeOfSql, shownBySql } from './placePoints.js';
 
 declare const locked: unique symbol;
@@ -316,8 +316,8 @@ export async function anchorToItsPoint(
             -- coordinate moved.
             updated_at = NOW()
       WHERE e.id = $1
-        -- A dispersed whole holds no point to follow (ADR-0210).
-        AND e.whole_shape IS DISTINCT FROM 'dispersed'
+        -- A record shown by its parts holds no point to follow (ADR-0218).
+        AND NOT ${shownByPartsSql('e')}
         -- Of every point the object shows, its parts' included (ADR-0100).
         AND (SELECT COUNT(*) FROM experience_locations el
               WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
@@ -555,7 +555,7 @@ export async function insertSeparatedExperience(
                 THEN 'separated-' || next.id ELSE m.external_id END,
            COALESCE(m.reported_name, e.name), e.name_local,
            CASE WHEN m.reported_name IS NULL THEN e.subtitle ELSE m.reported_subtitle END,
-           CASE WHEN m.source_id = $3 AND NOT (COALESCE(e.curated_fields, '[]'::jsonb) ? 'description' AND e.metadata->>'descriptionAdaptedFrom' IS NULL) THEN e.description END, e.tags, stands.location,
+           CASE WHEN m.source_id = $3 AND NOT (COALESCE(e.curated_fields, '[]'::jsonb) ? 'description' AND e.metadata->>'descriptionAdaptedFrom' IS NULL) THEN e.description END, e.tags, stands.point,
            e.country_codes, e.country_names,
            CASE WHEN m.reported_name IS NULL THEN e.image_url ELSE m.reported_image_url END,
            -- What OpenStreetMap said goes only with the outline it is about;
@@ -582,8 +582,8 @@ export async function insertSeparatedExperience(
       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.id = $2
       -- The membership's view of the point, else where the original stands: a
       -- dispersed whole holds no point of its own (ADR-0210).
-      CROSS JOIN LATERAL (SELECT COALESCE(m.reported_location, ${placeStandsAtSql('e')}) AS location) stands
-     WHERE e.id = $1 AND stands.location IS NOT NULL
+      CROSS JOIN LATERAL (SELECT COALESCE(m.reported_location, ${placeStandsAtSql('e')}) AS point) stands
+     WHERE e.id = $1 AND stands.point IS NOT NULL
     RETURNING id, source_id
   `, [original.id, membershipId, DESCRIPTION_SOURCE_ID]);
   if (inserted.rows.length === 0) return null;

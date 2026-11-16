@@ -37,6 +37,7 @@ import type { z } from 'zod/v4';
 import type { PublishResult, AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql, withTypeClaim } from '../../db/membership.js';
+import { shownByPartsSql } from '../../db/readerPredicates.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
@@ -543,7 +544,7 @@ export async function publishUnderLock(
       // this read and the write below. Which membership: the one the card
       // named (#1264), or the one `membershipToAnswerSql` picks where it named
       // none.
-      `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url, e.whole_shape,
+      `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url, ${shownByPartsSql('e')} AS shown_by_parts,
               m.id AS membership_id, m.curation_state, m.admission, m.facts AS membership_facts,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e

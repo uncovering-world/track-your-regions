@@ -28,6 +28,7 @@ import type { CardCrowding } from '../../api/responses/curation.js';
 import type { ReviewQueueItem } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import { CROWDING, FAME, KINDS, MEMBERSHIPS, membershipCrowdedSql } from '../../db/membership.js';
+import { hasPinSql } from '../../db/readerPredicates.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import { aroundSql, measuringRun } from './crowdingWindow.js';
 import { measurableSql } from '../../services/sync/crowding.js';
@@ -74,7 +75,7 @@ export async function crowdingOf(
                 ELSE around.higher END AS better_known
       FROM ${MEMBERSHIPS} c
       JOIN ${KINDS} k ON k.id = c.kind_id AND k.crowding_limit IS NOT NULL
-      JOIN experiences ce ON ce.id = c.experience_id AND ce.location IS NOT NULL
+      JOIN experiences ce ON ce.id = c.experience_id AND ${hasPinSql('ce')}
       LEFT JOIN ${FAME} cf ON cf.membership_id = c.id
       CROSS JOIN LATERAL (
         SELECT count(*)::int AS places, (count(*) FILTER (WHERE f.score > cf.score))::int AS higher
