@@ -1,17 +1,21 @@
-import bcrypt from 'bcryptjs';
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
-import { findUserByEmail, verifyPassword, getPasswordHash } from '../../services/authService.js';
+import {
+  findUserByEmail, getPasswordHash, hashPassword, needsRehash, replacePasswordHash, verifyPassword,
+} from '../../services/authService.js';
 
-// Pre-computed dummy hash for timing-safe user-not-found responses.
-// Comparing against this takes the same time as a real bcrypt compare,
-// preventing attackers from distinguishing "user not found" via timing.
-const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 12);
+// A hash of the current scheme to check an unknown address against: the same
+// compare a real account costs, so "user not found" cannot be told by timing.
+// Started when the strategy is configured, not when the module loads, so it is
+// ready before the first request and an import makes no hash.
+let dummyHash: Promise<string> | undefined;
+const dummy = (): Promise<string> => (dummyHash ??= hashPassword('dummy-password-for-timing'));
 
 /**
  * Local Strategy: Email/Password Authentication
  */
 export function configureLocalStrategy(): void {
+  void dummy();
   passport.use(
     new LocalStrategy(
       {
@@ -24,7 +28,7 @@ export function configureLocalStrategy(): void {
 
           if (!user) {
             // Perform dummy bcrypt compare to prevent timing oracle (ASVS V6.3.8)
-            await bcrypt.compare(password, DUMMY_HASH);
+            await verifyPassword(password, await dummy());
             return done(null, false, { message: 'Invalid email or password' });
           }
 
@@ -37,6 +41,14 @@ export function configureLocalStrategy(): void {
           const isValid = await verifyPassword(password, passwordHash);
           if (!isValid) {
             return done(null, false, { message: 'Invalid email or password' });
+          }
+          // A hash from before ADR-0215 is made again from the password just
+          // checked, so the next sign-in reads the whole of it.
+          // A failed write leaves the old hash, which still verifies: the sign-in goes on.
+          if (needsRehash(passwordHash)) {
+            await hashPassword(password)
+              .then((hash) => replacePasswordHash(user.id, passwordHash, hash))
+              .catch((error: unknown) => console.warn('Password rehash failed for user id=%d:', user.id, error));
           }
 
           return done(null, {

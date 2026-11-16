@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db/index.js';
 import type { PublicUser } from '../api/responses/auth.js';
@@ -18,18 +17,10 @@ const ACCESS_TOKEN_EXPIRY = '15m';
 export const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
 // =============================================================================
-// Password Hashing
+// Password Hashing (passwordHash.ts, ADR-0215)
 // =============================================================================
 
-const SALT_ROUNDS = 12;
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
+export { hashPassword, needsRehash, verifyPassword } from './passwordHash.js';
 
 // =============================================================================
 // Token Hashing (for refresh tokens stored in DB)
@@ -331,6 +322,18 @@ export async function updatePasswordHash(userId: number, passwordHash: string): 
   await pool.query(
     `UPDATE users SET password_hash = $1 WHERE id = $2`,
     [passwordHash, userId]
+  );
+}
+
+/**
+ * Stores `newHash` only while the account still holds `verifiedHash`, the one
+ * a sign-in just checked: a password changed in between keeps its new hash
+ * (ADR-0215 decision 3).
+ */
+export async function replacePasswordHash(userId: number, verifiedHash: string, newHash: string): Promise<void> {
+  await pool.query(
+    `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
+    [newHash, userId, verifiedHash]
   );
 }
 
