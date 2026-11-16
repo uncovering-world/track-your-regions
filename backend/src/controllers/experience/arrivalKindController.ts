@@ -36,7 +36,7 @@ import { lockExperience, recordDecisionOnExperience } from '../../db/experienceW
 import { KINDS, MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { badRequest, createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { arrivalKindBodySchema, idParamSchema } from '../../types/index.js';
-import { CURATOR_REFUSAL_REASON } from './curatorRefusalController.js';
+import { CURATOR_REFUSAL_REASON } from './membershipWriter.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { addKindWithin, INSCRIBED_KIND_ID, kindSourceSql } from './kindAddController.js';
 import type { AnswerRefusal } from './lifecycleController.js';

@@ -1,7 +1,12 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { PoolClient } from 'pg';
 import { pool } from './index.js';
+import { lockExperience, type LockedExperience } from './experienceWriter.js';
+import {
+  markUnreadPointsRefused, publishUnreadPoints, restoreRefusedPoints,
+} from '../controllers/experience/experienceLocationWriter.js';
 import { partAssertions } from '../controllers/admin/dataAssertions/partAssertions.js';
-import { CURATOR_REFUSAL_REASON } from '../controllers/experience/curatorRefusalController.js';
+import { CURATOR_REFUSAL_REASON } from '../controllers/experience/membershipWriter.js';
 import { queryQueueKeys } from '../controllers/experience/reviewQueueKeys.js';
 import { arrivalOpenSql } from '../controllers/experience/reviewQueuePredicates.js';
 import { partOfferedSql } from './readerPredicates.js';
@@ -103,8 +108,19 @@ beforeEach(async () => {
   await pool.query('SELECT part_site_components($1, $2)', [SITE, membershipId]);
 });
 
+// The World Heritage source holds its new points for a curator, as on the
+// catalogue: the record of a new part arrives by that gate (ADR-0213).
+let unescoGated: boolean;
+beforeAll(async () => {
+  unescoGated = (await pool.query<{ gated: boolean }>(
+    "SELECT requires_curation AS gated FROM experience_sources WHERE name = 'UNESCO World Heritage Sites'",
+  )).rows[0].gated;
+  await pool.query("UPDATE experience_sources SET requires_curation = true WHERE name = 'UNESCO World Heritage Sites'");
+});
+
 afterAll(async () => {
   await clear();
+  await pool.query("UPDATE experience_sources SET requires_curation = $1 WHERE name = 'UNESCO World Heritage Sites'", [unescoGated]);
   await pool.end();
 });
 
@@ -333,6 +349,105 @@ describe('the review queue and a reader ask a part\'s gate of its record (ADR-02
     expect((await pool.query<{ offered: boolean }>(
       `SELECT ${partOfferedSql('e')} AS offered FROM experiences e WHERE e.id = $1`, [quarry],
     )).rows[0].offered).toBe(true);
+  });
+});
+
+describe('a curator\'s answer about a part is written on its record, and its points follow (ADR-0213)', () => {
+  /** A curator's answer through the point writers the review queue calls, under the site's lock. */
+  async function answer(write: (client: PoolClient, lock: LockedExperience) => Promise<unknown>): Promise<unknown> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await lockExperience(client, SITE);
+      const result = await write(client, locked!.lock);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** The quarry's line points: the one the list gives, and a duplicate of it a later run read. */
+  async function quarryPoints(): Promise<Array<{ curation_state: string; refused_at: Date | null }>> {
+    return (await pool.query(
+      'SELECT curation_state, refused_at FROM experience_locations WHERE experience_id = $1 ORDER BY id',
+      [await partOf(QUARRY.ref)],
+    )).rows;
+  }
+
+  beforeEach(async () => {
+    // A duplicate of the quarry's line, as a run that read the line twice leaves it.
+    await pool.query(
+      `WITH pt AS (
+         INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
+         VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), 'pending') RETURNING id)
+       INSERT INTO experience_location_placements (location_id, membership_id) SELECT id, $6 FROM pt`,
+      [await partOf(QUARRY.ref), QUARRY.name, QUARRY.ref, QUARRY.lon + 0.0001, QUARRY.lat, membershipId],
+    );
+  });
+
+  it('publishes the part on its record when the curator publishes one of its points, and every line point with it', async () => {
+    const [named] = (await pool.query<{ id: number }>(
+      'SELECT id FROM experience_locations WHERE experience_id = $1 ORDER BY id LIMIT 1', [await partOf(QUARRY.ref)],
+    )).rows;
+
+    const published = await answer((client, lock) => publishUnreadPoints(client, lock, [named.id]));
+
+    // The point named and the duplicate that followed its part.
+    expect(published).toBe(2);
+    const record = (await pool.query(
+      `SELECT curation_state, published_at FROM source_records WHERE source_id = $1 AND whole_id = $2 AND external_id = $3`,
+      [COMPONENTS_SOURCE, SITE, QUARRY.ref],
+    )).rows[0];
+    expect(record.curation_state).toBe('verified');
+    expect(record.published_at).not.toBeNull();
+    expect((await quarryPoints()).map(point => point.curation_state)).toEqual(['verified', 'verified']);
+    expect(await outOfStep()).toEqual([]);
+  });
+
+  it('turns the part down on its record, marking every line point at its answer, and takes it back', async () => {
+    const refused = await answer((client, lock) => markUnreadPointsRefused(client, lock));
+
+    expect(refused).toBe(2);
+    const record = (await pool.query(
+      `SELECT admission, admission_reason, admission_answered_at FROM source_records
+        WHERE source_id = $1 AND whole_id = $2 AND external_id = $3`,
+      [COMPONENTS_SOURCE, SITE, QUARRY.ref],
+    )).rows[0];
+    expect(record).toMatchObject({ admission: 'refused', admission_reason: CURATOR_REFUSAL_REASON });
+    expect((await quarryPoints()).map(point => point.refused_at?.toISOString()))
+      .toEqual([record.admission_answered_at.toISOString(), record.admission_answered_at.toISOString()]);
+    expect(await outOfStep()).toEqual([]);
+
+    await answer((client, lock) => restoreRefusedPoints(client, lock));
+
+    expect(await gate(QUARRY.ref)).toMatchObject({ admission: 'admitted', admission_reason: null });
+    expect((await quarryPoints()).map(point => point.refused_at)).toEqual([null, null]);
+  });
+
+  it('follows only a writer\'s write on the record: a point another writer publishes leaves its duplicate unread', async () => {
+    const [first] = (await pool.query<{ id: number }>(
+      'SELECT id FROM experience_locations WHERE experience_id = $1 ORDER BY id LIMIT 1', [await partOf(QUARRY.ref)],
+    )).rows;
+    await pool.query("UPDATE experience_locations SET curation_state = 'verified' WHERE id = $1", [first.id]);
+
+    // The record is read now, derived from the point, and the duplicate is no write of a curator's.
+    expect(await gate(QUARRY.ref)).toMatchObject({ curation_state: 'verified' });
+    expect((await quarryPoints()).map(point => point.curation_state)).toEqual(['verified', 'pending']);
+  });
+
+  it('gives a new part an unread record only while the site\'s source holds its points for a curator', async () => {
+    await pool.query("UPDATE experience_sources SET requires_curation = false WHERE name = 'UNESCO World Heritage Sites'");
+    try {
+      await line(MOSQUE, 'pending');
+      await pool.query('SELECT part_site_components($1, $2)', [SITE, membershipId]);
+      expect(await gate(MOSQUE.ref)).toMatchObject({ curation_state: 'auto' });
+    } finally {
+      await pool.query("UPDATE experience_sources SET requires_curation = true WHERE name = 'UNESCO World Heritage Sites'");
+    }
   });
 });
 

@@ -27,6 +27,7 @@ import { MEMBERSHIPS, placeHoldsKindSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
+import { partRecordAnswerSql, type PartRecordAnswer } from './membershipWriter.js';
 import { pointOfComponentSql, shownBySql } from '../../db/placePoints.js';
 import {
   followTheirPoints, isPartField, writePartFields, writePartItems, type PartField, type PartWrite,
@@ -89,6 +90,53 @@ export async function insertCuratedPoint(
 }
 
 /**
+ * A curator's answer on the object's points that `term` holds of, the named
+ * ones or all of them, and how many points it wrote and which. One statement: a
+ * serial site's part is answered on its record in its site
+ * (`partRecordAnswerSql`, ADR-0213), and the points the answer reaches are
+ * written with the line points of every record it answered, which follow their
+ * record until the points go (#2124): a duplicate of a part's line the curator
+ * did not name goes with its part. Every other point is written for itself: a
+ * museum's own point, an edition's casts, another kind's point on a part, a
+ * second point of a part already read. One statement, so the triggers that
+ * follow a point (its part's leaves and regions, its record's derivation) run
+ * once, and the record is written before they read it.
+ */
+async function answerPoints(
+  client: PoolClient,
+  lock: LockedExperience,
+  answer: PartRecordAnswer,
+  term: string,
+  set: string,
+  locationIds?: readonly number[],
+  membershipId?: number,
+): Promise<{ count: number; ids: number[] }> {
+  const named = namedPoints(locationIds, membershipId);
+  const params: unknown[] = [lock.id, ...named.params];
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const result = await client.query<{ id: number }>(
+    `WITH reached AS (
+       SELECT id FROM experience_locations
+        WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND ${term}
+        ${named.sql}
+     ),
+     answered AS (${partRecordAnswerSql(lock, answer, 'SELECT id FROM reached', bind)})
+     UPDATE experience_locations SET ${set}
+      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND ${term}
+        AND (id IN (SELECT id FROM reached)
+             OR EXISTS (SELECT 1 FROM answered
+                         WHERE answered.experience_id = experience_locations.experience_id
+                           AND is_part_line_point(experience_locations.id, answered.whole_id)))
+      RETURNING id`,
+    params,
+  );
+  return { count: result.rowCount ?? 0, ids: result.rows.map(row => row.id) };
+}
+
+/**
  * Publish the object's unread offered points — the named ones, or all of them.
  * Answers how many.
  *
@@ -112,15 +160,8 @@ export async function publishUnreadPoints(
   locationIds?: readonly number[],
   membershipId?: number,
 ): Promise<number> {
-  const named = namedPoints(locationIds, membershipId);
-  const result = await client.query(
-    `UPDATE experience_locations SET curation_state = 'verified'
-      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND ${unreadPointSql('experience_locations')}
-        AND ${offeredLocationSql('experience_locations')}
-      ${named.sql}`,
-    [lock.id, ...named.params],
-  );
-  return result.rowCount ?? 0;
+  const unread = `${unreadPointSql('experience_locations')} AND ${offeredLocationSql('experience_locations')}`;
+  return (await answerPoints(client, lock, 'publish', unread, "curation_state = 'verified'", locationIds, membershipId)).count;
 }
 
 /**
@@ -135,15 +176,8 @@ export async function markUnreadPointsRefused(
   locationIds?: readonly number[],
   membershipId?: number,
 ): Promise<number> {
-  const named = namedPoints(locationIds, membershipId);
-  const result = await client.query(
-    `UPDATE experience_locations SET refused_at = NOW()
-      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND ${unreadPointSql('experience_locations')}
-        AND ${offeredLocationSql('experience_locations')}
-      ${named.sql}`,
-    [lock.id, ...named.params],
-  );
-  return result.rowCount ?? 0;
+  const unread = `${unreadPointSql('experience_locations')} AND ${offeredLocationSql('experience_locations')}`;
+  return (await answerPoints(client, lock, 'refuse', unread, 'refused_at = NOW()', locationIds, membershipId)).count;
 }
 
 /**
@@ -165,15 +199,7 @@ export async function restoreRefusedPoints(
   locationIds?: readonly number[],
   membershipId?: number,
 ): Promise<number[]> {
-  const named = namedPoints(locationIds, membershipId);
-  const result = await client.query<{ id: number }>(
-    `UPDATE experience_locations SET refused_at = NULL
-      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND refused_at IS NOT NULL
-      ${named.sql}
-      RETURNING id`,
-    [lock.id, ...named.params],
-  );
-  return result.rows.map(row => row.id);
+  return (await answerPoints(client, lock, 'restore', 'refused_at IS NOT NULL', 'refused_at = NULL', locationIds, membershipId)).ids;
 }
 
 /**

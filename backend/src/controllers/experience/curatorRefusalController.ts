@@ -37,7 +37,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, refuseArrivalBodySchema, refuseContentsBodySchema } from '../../types/index.js';
-import { refuseOnMembership } from './membershipWriter.js';
+import { CURATOR_REFUSAL_REASON, refuseOnMembership } from './membershipWriter.js';
 import { answeredSourceId, contentsMembershipId, resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -46,9 +46,6 @@ import { contentsAnswerableSql, contentsMembershipToAnswerSql } from './waitingC
 import { lockExperience, recordDecisionOnExperience, type UnderLock } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
-
-/** The reason a curator's refusal carries, in the words the kept-out list shows. */
-export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
 
 /**
  * Keep out an object nobody has passed.
