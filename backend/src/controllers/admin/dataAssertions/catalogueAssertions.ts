@@ -76,6 +76,7 @@ import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
 import { identifierAssertions } from './identifierAssertions.js';
 import { partAssertions } from './partAssertions.js';
+import { partLineAssertions } from './partLineAssertions.js';
 import { coordinateAssertions, itemCoordinateAssertions } from './coordinateAssertions.js';
 import { roughPointAssertions } from './roughPointAssertions.js';
 import { workAssertions } from './workAssertions.js';
@@ -649,6 +650,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   withdrawnBesideItsReplacement,
   twoOfferedPlacesAtOneReference,
   ...partAssertions,
+  ...partLineAssertions,
   ...coordinateAssertions,
   listedWithNowhereToGo,
   visitsOnPlacesNoReaderIsShown,
