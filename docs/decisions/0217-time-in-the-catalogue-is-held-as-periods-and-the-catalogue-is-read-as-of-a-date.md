@@ -113,7 +113,34 @@ but for the end of a place no reader sees yet, which it asked and this writes:
   is the question (Nelson's Pillar). ADR-0214 decision 4 asked every end under a gated source, a
   new place's included; the maintainer's decision of 2026-11-16 on #1719 narrows it there.
 
-A run reads a gap from dated destruction and rebuilding events as well as from inceptions and ends.
+A run reads every gap an item states, from dated destruction and rebuilding events as well as
+from inceptions and ends: Ponte Santa Trinita's two, and the Old Bridge's in Mostar, which its item
+states only as a destruction on 9 November 1993 and a reconstruction that ended on 23 July 2004. An
+event is read for what it says of the whole place and of what was left of it, and for nothing else:
+
+- a rebuilding or a reopening opens a period only after an end, since the same event is stated of
+  work on a building that never fell (Berlin Cathedral's reconstruction of 1975 to 1993), and it is
+  never the place's beginning;
+- an event with no date is no boundary, and neither is one that names a part of the place (Hirano
+  Shrine's worship hall, destroyed in 2018);
+- an event that says what happened to a place and not what was left of it, a fire or a
+  bombardment, is not an end: Kinkaku-ji, burnt down in 1950 and rebuilt in 1955, reads as
+  standing throughout until a curator says otherwise;
+- a destruction that no start follows does not end the place, which is the gone rules' to read
+  (#2585), and ends no use.
+
+A gap longer than a century is never a fill: it is asked on a place readers see under a gated
+source, and written with the arrival on a new one, as the end of the last standing period is. An
+item cannot say what stood in so long a gap. The Odeon of Herodes Atticus in Athens states a
+destruction in 267 and a reconstruction that ended in 1953, and its ruin was visited for all of
+that time: a traveller of 1900 was at the Odeon. Measured on the 40 gaps the reader derives on the
+subset (17 offered places, 20 arriving): four are longer than a century (1,686, 249, 171 and 166
+years). One of the four is a place truly gone, Bethlehem Chapel in Prague (1786 to 1952); one is
+Andreevsky Monastery in Moscow, dissolved in 1764 and founded again in 2013; the fourth, the
+Tarikhaneh in Damghan (856 to 1027), was not looked into. The next longest are 86 years. Nothing else in the items separates the Odeon from
+the Old Bridge: it carries no state of conservation, both are designated heritage, both gaps are a
+*destruction* and an *architectural reconstruction*, and Ponte Pietra in Verona, offered in
+Archaeology as the Odeon is, was truly blown up in 1945 and rebuilt by 1959.
 
 **4. A membership holds its listing periods** (`record_listings`), in every kind. A record with
 none is listed at every date: a bridge is a bridge whenever it stood. A list kept by a body
@@ -193,6 +220,13 @@ derived column of decision 5 built; `existence` (decision 5), the listing period
 the read as of a date (decisions 6 to 8), seasons, the intake of delisted sites and past positions
 (decisions 9 to 11) are built by later slices of #2578.
 
+**Amended as a Draft, from what its second slice built (#2578):** decision 3 says that every gap is
+read, which events a run reads and what they may not say, and that a gap longer than a century is
+asked; three trade-offs of that reading are named. Read so on the subset of the Context's measurement, 17 offered places and 20 arriving ones
+have a gap (6 and 10 from inceptions and ends alone, as the first slice read them), where the
+Context's count by a simpler rule was 21 and 31: that rule counted every start later than an end,
+Bath Abbey's among them, whose end of 1539 is its monastery's, before the church was built.
+
 ## Alternatives Considered
 
 | Option | Why rejected |
@@ -235,6 +269,15 @@ the read as of a date (decisions 6 to 8), seasons, the intake of delisted sites 
 - A site once listed in its own right and listed today inside a larger property (the Château de
   Chambord, 1981–2000) keeps no listing of its own unless a curator gives it one.
 - An event that is not a place waits for #1676 to say which row its periods hang on.
+- A gap longer than a century is asked and not filled, so the place holds no standing period of
+  that source until a curator answers: its beginning waits with its gap. Bethlehem Chapel in
+  Prague, truly gone from 1786 to 1952, is asked as the Odeon is. A trusted source writes such a
+  gap unasked, as it writes any difference.
+- A gap of a century or less is filled as the item states it, right or not: the Liberty Bridge in
+  Budapest reads as gone from 1945 to 2009, since its item prefers an inception of 2009 to the
+  one of 20 August 1946 it also states.
+- A destruction its item states as a fire or a bombardment is not read, so Kinkaku-ji is offered
+  for a trip of 1952, when the pavilion was ash.
 
 ## References
 
