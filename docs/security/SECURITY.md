@@ -101,7 +101,7 @@ which is the Art. 9 risk. The catalogue's own data (places, works, pictures, cre
 
 | Layer | Implementation |
 |-------|---------------|
-| Password hashing | bcryptjs, 12 salt rounds |
+| Password hashing | bcryptjs, 12 salt rounds, over a keyed SHA-256 digest of the whole password, so bcrypt's 72-byte limit cuts nothing off; a stored hash names its scheme, and one from before is rehashed at its owner's next sign-in ([ADR-0215](../decisions/0215-a-password-is-digested-whole-before-bcrypt.md), `passwordHash.ts`) |
 | JWT | jsonwebtoken, HS256 only, iss/aud claims, 15min access + rotated refresh with family tracking |
 | Auth middleware | requireAuth, requireAdmin, requireCurator, optionalAuth |
 | Curator directory and activity | `/api/admin/curators`, `/:userId/activity` and the feed across curators, `/api/admin/curation-activity` (#611), require an authenticated admin; the feed's filters are validated (an action from the log's vocabulary, row ids within `integer`, ISO instants) and bound as parameters. The directory includes admins without assignments (#905); their displayed global scope comes from their role, creates no assignment, and has no revoke action. Real assignments remain independently revocable. |
@@ -340,9 +340,6 @@ The Python service has a smaller surface than the Node backend but introduces ne
   through the documented pre-push tier was covered; the exposure was anything
   merged on CI-green alone. Recorded because "the check was green" is not
   evidence for that period.
-- **A password over 72 bytes is checked on its first 72 alone (ASVS 5.0 V6.2.8, fail).** The
-  forms accept up to 128 characters, but bcrypt reads only the first 72 bytes, so two passwords
-  that share them both sign in. #2553 owns the fix.
 - **Two tokens travel in a URL (V14.2.1, partial).** The three event streams take the access
   token as `?token=`, since `EventSource` cannot send a header (§ Token Lifecycle in
   `docs/tech/authentication.md`), and the email verification link carries its one-time token in

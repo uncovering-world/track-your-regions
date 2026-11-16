@@ -8,7 +8,7 @@ meta:
   last_audit: "2026-05-10"
   last_audit_pass: 3  # Two passes 2026-02-10 (Node) + one pass 2026-05-10 (cv-python expansion)
   app: track-your-regions
-  result: "269 rows. 75 audited: 72 pass, 2 partial (V14.1.2, V14.2.1), 1 fail (V6.2.8); 9 of them are project-specific checks outside the ASVS 5.0 ids, and 4 pass rows (V2.2.2, V7.2.1, V7.2.2, V8.3.1) were recorded on 2026-11-15 from what other rows' notes establish. 194 rows not yet checked: the ASVS 5.0 L1/L2 requirements no audit has read the code against, added 2026-11-15 (#2524). Last full report at audit-2026-05-10.md"
+  result: "269 rows. 75 audited: 73 pass, 2 partial (V14.1.2, V14.2.1), 0 fail; 9 of them are project-specific checks outside the ASVS 5.0 ids, and 4 pass rows (V2.2.2, V7.2.1, V7.2.2, V8.3.1) were recorded on 2026-11-15 from what other rows' notes establish. 194 rows not yet checked: the ASVS 5.0 L1/L2 requirements no audit has read the code against, added 2026-11-15 (#2524). Last full report at audit-2026-05-10.md"
   scope_notes: "v3 audit (2026-05-10) widened scope to include the cv-python FastAPI microservice introduced in rebuild/41-43. New items: V4.1.5_cvpy, V5.1.1_cvpy, V5.1.2_cvpy, V8.1.1_cvpy, V13.4.3_cvpy, V16.1.1_cvpy. The requirement ids follow the ASVS 5.0.0 text since 2026-11-15 (#2524): rows filed under ASVS 4.0 numbers or under an id whose 5.0 requirement checks something else were moved to the id that checks what they record, and the moves are listed in that pull request; the cv-python items named above are V5.2.1_cvpy, V5.2.2_cvpy, V8.1.1_cvpy, V16.5.1_cvpy and V16.1.1_cvpy since then."
 
 chapters:
@@ -465,7 +465,7 @@ chapters:
       desc: "Password change requires the user's current and new password"
       level: 1
       status: pass
-      notes: "bcrypt.compare() verifies current password before allowing change. Fixed 2026-02-10"
+      notes: "verifyPassword (backend/src/services/passwordHash.ts) verifies the current password before allowing change. Fixed 2026-02-10"
     V6.2.4:
       desc: "Passwords at registration or change are checked against at least the top 3000 passwords that match the password policy"
       level: 1
@@ -489,8 +489,8 @@ chapters:
     V6.2.8:
       desc: "The password is verified exactly as received, without truncation or case transformation"
       level: 1
-      status: fail
-      notes: "Fail since 2026-11-15 (#2524, #2553): bcrypt.compare() takes the raw input with no case transformation, but bcrypt (bcryptjs, hashPassword and verifyPassword in authService.ts) reads only the first 72 bytes, while registerSchema and changePasswordSchema (types/auth.ts) accept up to 128 characters, so two passwords that share their first 72 bytes both sign in."
+      status: pass
+      notes: "Pass since 2026-11-16 (#2553, ADR-0215): the whole password is digested (HMAC-SHA-256, keyed by a fixed label, base64) before bcrypt, so bcrypt's 72-byte read cuts nothing off and a password sharing only the first 72 bytes is refused (hashPassword and verifyPassword in backend/src/services/passwordHash.ts, passwordHash.test.ts). No case transformation: the input is digested as received. A hash from before the scheme matches only a password of at most 72 bytes and is rehashed at its owner's next sign-in (auth/strategies/local.ts). Was fail from 2026-11-15 (#2524)."
     V6.2.9:
       desc: "Passwords of at least 64 characters are permitted"
       level: 2
@@ -1017,7 +1017,7 @@ chapters:
       desc: "Passwords are stored with an approved, computationally intensive key derivation (password hashing) function with parameters set by current guidance"
       level: 2
       status: pass
-      notes: "bcryptjs with 12 salt rounds"
+      notes: "bcryptjs with 12 salt rounds, over a keyed SHA-256 digest of the whole password so bcrypt reads all of it (ADR-0215, passwordHash.ts)"
     V11.4.3:
       desc: "Hash functions used in signatures, data authentication or integrity are collision resistant with appropriate output lengths"
       level: 2
