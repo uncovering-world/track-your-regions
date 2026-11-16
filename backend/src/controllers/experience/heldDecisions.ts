@@ -41,6 +41,13 @@
  * number — and one point carries no reference at all, so neither half alone is an
  * identity. IS NOT DISTINCT FROM on both is what lets the referenceless point be
  * matched and what keeps NULL from swallowing the comparison.
+ *
+ * A serial site's part is answered by its record in the site (ADR-0213
+ * decision 4): the answer stores the record the entry's reference resolves to
+ * (`itemRecordSql`), and an entry is matched by its record where both sides
+ * have one, so a line the list renumbers or renames keeps its answer. The changeset still
+ * names the part, never by id (ADR-0026 decision 4); every other part, a
+ * museum's work, a cast, is matched by its name as before.
  */
 
 import type { PoolClient } from 'pg';
@@ -49,6 +56,7 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import type { ContentKind } from '../../services/sync/types.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { sameTypographySql, tidyLabelSql } from '../../services/sync/labelFold.js';
+import { MEMBERSHIPS, partRecordSql } from '../../db/membership.js';
 
 /** The two answers a curator can give one held row — the column's own CHECK list. */
 export type HeldAnswer = CheckValue<'experience_held_decisions', 'answer'>;
@@ -192,11 +200,43 @@ function heldPartMatchSql(
       SELECT 1 FROM experience_held_decisions d
        WHERE d.experience_id = ${experience}
          AND d.part_kind = ${kind}
-         AND d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref')
-         AND ${partNamedSql(item)}
+         AND ${partAnsweredSql(experience, kind, item)}
          AND d.field = ${entry}->>'field'
          AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
          ${verdictClause})`;
+}
+
+/**
+ * The record of a serial site's part that a held row names, as an SQL
+ * expression (ADR-0213 decision 4): the part's record in the object
+ * `experience` under the row's reference, a record whose part or view carries
+ * the row's name first, since a component crossing a border is listed once per
+ * country under one number. NULL for a row of any other kind of part, and for
+ * one no record answers: a changeset filed under a reference the line has
+ * since left.
+ *
+ * @param ref SQL expression for the row's reference
+ * @param name SQL expression for the row's name
+ */
+export function itemRecordSql(experience: string, kind: string, ref: string, name: string): string {
+  return `(CASE WHEN ${kind} = 'locations' THEN (
+      SELECT ir.id FROM ${MEMBERSHIPS} ir JOIN experiences ip ON ip.id = ir.experience_id
+       WHERE ir.whole_id = ${experience} AND ${partRecordSql('ir')}
+         AND lower(ir.external_id) = lower(${ref})
+       ORDER BY (${tidyLabelSql('ip.name')} = ${tidyLabelSql(name)}
+                 OR ${tidyLabelSql('ir.reported_name')} = ${tidyLabelSql(name)}) IS TRUE DESC, ir.id
+       LIMIT 1) END)`;
+}
+
+/**
+ * Whether the answer `d` is about the part the contents entry `item` names:
+ * by its record where the answer and the entry both resolve to one, by its
+ * reference and name otherwise (`partNamedSql`).
+ */
+function partAnsweredSql(experience: string, kind: string, item: string): string {
+  const record = itemRecordSql(experience, kind, `(${item}->'item'->>'ref')`, `(${item}->'item'->>'name')`);
+  return `(CASE WHEN d.record_id IS NOT NULL AND ${record} IS NOT NULL THEN d.record_id = ${record}
+               ELSE d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref') AND ${partNamedSql(item)} END)`;
 }
 
 /** Whether a decision's part name names the record's item, by the rule above. */
@@ -237,8 +277,7 @@ function answerOfPartSql(
   return `(SELECT d.answer FROM experience_held_decisions d
             WHERE d.experience_id = ${experience}
               AND d.part_kind = ${kind}
-              AND d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref')
-              AND ${partNamedSql(item)}
+              AND ${partAnsweredSql(experience, kind, item)}
               AND d.field = ${entry}->>'field'
               AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
             ORDER BY d.decided_at DESC, d.id DESC LIMIT 1)`;
@@ -345,18 +384,31 @@ export async function recordHeldAnswers(
     // `answerOfPartSql` reads the latest.
     // A kind's field is answered for the source of the run that proposed it (ADR-0125).
     const forTheKind = row.kind === null && KIND_FIELDS.has(row.field);
+    const name = row.name === null ? null : tidyLabel(row.name);
+    // A serial site's part is answered by its record (ADR-0213 decision 4),
+    // under its own key; the reference and name it was answered under ride
+    // along, the latest of them, for the readers that name the part.
+    const record = row.kind !== 'locations' ? null : (await client.query<{ id: number | null }>(
+      `SELECT ${itemRecordSql('$1::int', '$2::text', '$3::text', '$4::text')} AS id`,
+      [experienceId, row.kind, row.ref, name],
+    )).rows[0]?.id ?? null;
     await client.query(
       `INSERT INTO experience_held_decisions
-              (experience_id, part_kind, part_ref, part_name, field, answer, value, decided_by, source_id)
+              (experience_id, part_kind, part_ref, part_name, field, answer, value, decided_by, source_id, record_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8,
-               CASE WHEN $9::boolean THEN (SELECT source_id FROM experience_sync_logs WHERE id = $10) END)
-       ON CONFLICT (experience_id, part_kind, part_ref, part_name, field, source_id)
-       DO UPDATE SET answer = EXCLUDED.answer,
+               CASE WHEN $9::boolean THEN (SELECT source_id FROM experience_sync_logs WHERE id = $10) END, $11)
+       ${record === null
+    ? `ON CONFLICT (experience_id, part_kind, part_ref, part_name, field, source_id) WHERE record_id IS NULL
+       DO UPDATE SET`
+    : `ON CONFLICT (experience_id, record_id, field, source_id) WHERE record_id IS NOT NULL
+       DO UPDATE SET part_ref = EXCLUDED.part_ref,
+                     part_name = EXCLUDED.part_name,`}
+                     answer = EXCLUDED.answer,
                      value = EXCLUDED.value,
                      decided_by = EXCLUDED.decided_by,
                      decided_at = NOW()`,
-      [experienceId, row.kind, row.ref, row.name === null ? null : tidyLabel(row.name), row.field, answer,
-        JSON.stringify(tidyNameValue(row.field, value ?? null)), userId, forTheKind, syncLogId],
+      [experienceId, row.kind, row.ref, name, row.field, answer,
+        JSON.stringify(tidyNameValue(row.field, value ?? null)), userId, forTheKind, syncLogId, record],
     );
   }
 }
@@ -364,8 +416,15 @@ export async function recordHeldAnswers(
 /**
  * Move a place's answers to held fields to another place on a merge, or the
  * ones a merge moved back on its undo (ADR-0086 decision 4): an answer goes
- * with the proposals it answers. Where the survivor already holds an answer to
- * the same field, the survivor's stands and the folded one stays where it is.
+ * with the proposals it answers. An answer keyed by a part's record in the
+ * place it leaves is keyed by the receiving place's record of the same part
+ * from the same source, where that place holds one: a merge leaves the folded
+ * site's record of a part the survivor already records where it is
+ * (`moveWholeRecords`), and the proposals moved with the answer are read
+ * against the survivor's record. The same rule takes it back on the undo.
+ * Where the receiving place already holds an answer to the same field, of
+ * that record or the same named part, its own stands and the moving one stays
+ * where it is.
  */
 export async function moveHeldDecisions(
   client: PoolClient,
@@ -374,13 +433,26 @@ export async function moveHeldDecisions(
   only?: number[],
 ): Promise<number[]> {
   const result = await client.query<{ id: number }>(
-    `UPDATE experience_held_decisions f SET experience_id = $2
-      WHERE f.experience_id = $1 AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
+    `WITH moving AS (
+       SELECT f.id, COALESCE(
+                (SELECT tr.id FROM ${MEMBERSHIPS} fr
+                   JOIN ${MEMBERSHIPS} tr ON tr.whole_id = $2 AND tr.experience_id = fr.experience_id
+                                         AND tr.source_id = fr.source_id
+                  WHERE fr.id = f.record_id AND fr.whole_id IS DISTINCT FROM $2
+                  ORDER BY tr.id LIMIT 1),
+                f.record_id) AS record_id
+         FROM experience_held_decisions f
+        WHERE f.experience_id = $1 AND ($3::int[] IS NULL OR f.id = ANY($3::int[])))
+     UPDATE experience_held_decisions f SET experience_id = $2, record_id = m.record_id
+       FROM moving m
+      WHERE f.id = m.id
         AND NOT EXISTS (
           SELECT 1 FROM experience_held_decisions s
-           WHERE s.experience_id = $2 AND s.field = f.field
-             AND s.part_kind IS NOT DISTINCT FROM f.part_kind AND s.part_ref IS NOT DISTINCT FROM f.part_ref
-             AND s.part_name IS NOT DISTINCT FROM f.part_name AND s.source_id IS NOT DISTINCT FROM f.source_id)
+           WHERE s.experience_id = $2 AND s.field = f.field AND s.source_id IS NOT DISTINCT FROM f.source_id
+             AND CASE WHEN m.record_id IS NOT NULL THEN s.record_id = m.record_id
+                      ELSE s.record_id IS NULL AND s.part_kind IS NOT DISTINCT FROM f.part_kind
+                           AND s.part_ref IS NOT DISTINCT FROM f.part_ref
+                           AND s.part_name IS NOT DISTINCT FROM f.part_name END)
       RETURNING f.id`,
     [from.id, to.id, only ?? null],
   );

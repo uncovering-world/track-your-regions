@@ -354,6 +354,7 @@ export interface ExperienceHeldDecisionsRow {
   decided_by: number | null;
   decided_at: Date;
   source_id: number | null;
+  record_id: number | null;
 }
 
 /** The table `experience_kind_suggestions`. */

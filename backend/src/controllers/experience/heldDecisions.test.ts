@@ -21,6 +21,13 @@ function fakeClient() {
   return { client: { query } as unknown as PoolClient, query };
 }
 
+/** The parameters of each answer's write, past the lookup of a part's record (ADR-0213 decision 4). */
+function inserts(query: { mock: { calls: unknown[][] } }): unknown[][] {
+  return query.mock.calls
+    .filter(call => String(call[0]).includes('INSERT INTO experience_held_decisions'))
+    .map(call => call[1] as unknown[]);
+}
+
 describe('recordHeldAnswers', () => {
   it('records the part name and a name-carrying value as a person would type them', async () => {
     const { client, query } = fakeClient();
@@ -31,7 +38,7 @@ describe('recordHeldAnswers', () => {
       { row: { kind: null, ref: null, name: null, field: 'nameLocal.ar' }, value: 'a  b' },
     ], 170);
 
-    const bound = query.mock.calls.map(call => call[1]);
+    const bound = inserts(query);
     expect(bound[0][3]).toBe('marmalo IV');
     expect(bound[0][6]).toBe(JSON.stringify('marmalo V'));
     expect(bound[1][6]).toBe(JSON.stringify(['Ivan Shishkin', 7]));
@@ -47,7 +54,7 @@ describe('recordHeldAnswers', () => {
       { row: { kind: null, ref: null, name: null, field: 'subtitle' }, value: 'x  y' },
     ], 170);
 
-    const bound = query.mock.calls.map(call => call[1]);
+    const bound = inserts(query);
     expect(bound[0][6]).toBe(JSON.stringify({ lon: 3, lat: 4 }));
     expect(bound[1][6]).toBe(JSON.stringify('x  y'));
   });
@@ -61,7 +68,7 @@ describe('recordHeldAnswers', () => {
       { row: { kind: 'treasures', ref: 'Q1', name: 'W', field: 'type' }, value: 'statue' },
     ], 170);
 
-    const bound = query.mock.calls.map(call => call[1]);
+    const bound = inserts(query);
     expect(bound.map(params => [params[8], params[9]])).toEqual([[true, 170], [false, 170], [false, 170]]);
   });
 });
