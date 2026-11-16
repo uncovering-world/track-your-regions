@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 import { mergePlaces, undoMerge, WHOLE_REFUSAL } from './placeMerge.js';
+import { separateMembership, undoSeparation } from './membershipSeparation.js';
 import { answerComponentItemsUnderLock } from './componentItemController.js';
 import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { editLocation } from './locationEditController.js';
@@ -28,6 +29,18 @@ const PLACES = `(SELECT part_id FROM experience_parts WHERE whole_id = ${THEBES}
                  UNION SELECT folded_id FROM experience_merges WHERE survivor_id = ${COMPLEX})`;
 
 async function clear(): Promise<void> {
+  // A place a separation made, before the record that names it goes.
+  const separated = (await pool.query<{ id: number }>(
+    `SELECT separated_id AS id FROM experience_separations
+      WHERE original_id = $1 OR original_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $2)`, [COMPLEX, THEBES],
+  )).rows.map(row => row.id);
+  await pool.query('DELETE FROM experience_separations WHERE separated_id = ANY($1::int[])', [separated]);
+  await pool.query('DELETE FROM experience_merges WHERE survivor_id = ANY($1::int[]) OR folded_id = ANY($1::int[])', [separated]);
+  await pool.query('DELETE FROM place_identifier_verdicts WHERE experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)', [THEBES]);
+  await pool.query('UPDATE experience_locations SET merged_into_id = NULL WHERE experience_id = ANY($1::int[])', [separated]);
+  await pool.query('UPDATE experiences SET merged_into_id = NULL WHERE id = ANY($1::int[])', [separated]);
+  await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1::int[])', [separated]);
+  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [separated]);
   await pool.query(`DELETE FROM experience_merges WHERE survivor_id = $1 OR folded_id = $1`, [COMPLEX]);
   await pool.query(`UPDATE experience_locations SET merged_into_id = NULL
                      WHERE experience_id IN ${PLACES} OR experience_id = ANY($1::int[])`, [[THEBES, COMPLEX]]);
@@ -280,6 +293,161 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
 
       expect(outcome.result).toMatchObject({ accepted: 1 });
       expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: COMPLEX });
+    });
+  });
+
+  describe('a kind separated off a part (ADR-0213 decision 6)', () => {
+    const ITEM = 'Q9961003';
+    const worship = async (placeId: number) => (await pool.query<{ id: number }>(
+      `SELECT m.id FROM source_records m JOIN experience_sources s ON s.id = m.source_id
+        WHERE m.experience_id = $1 AND s.name = 'Places of worship'`, [placeId],
+    )).rows[0]?.id;
+    /** What a place holds: its name, its kinds' sources, and of each standing point whether it is the part's list line. */
+    const holds = async (placeId: number) => (await pool.query<{ name: string; kinds: string[]; points: boolean[] }>(
+      `SELECT e.name,
+              ARRAY(SELECT s.name FROM source_records m JOIN experience_sources s ON s.id = m.source_id
+                     WHERE m.experience_id = e.id AND m.kind_id IS NOT NULL ORDER BY s.name) AS kinds,
+              ARRAY(SELECT is_part_line_point(el.id, $2) FROM experience_locations el
+                     WHERE el.experience_id = e.id AND el.merged_into_id IS NULL ORDER BY el.id) AS points
+         FROM experiences e WHERE e.id = $1`, [placeId, THEBES],
+    )).rows[0];
+    const temple = async () => (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
+    /**
+     * The Temple of Karnak as a run of Places of worship leaves it when it
+     * finds the part by an item the part's record carries (ADR-0143 decision
+     * 3): the part holds the kind and the kind's own point beside its line's.
+     * The item named another temple, a kilometre off.
+     */
+    async function joinedByItem(): Promise<{ templeId: number; membership: number }> {
+      const templeId = await temple();
+      await pool.query(
+        `UPDATE source_records SET wikidata_items = ARRAY[$1] WHERE experience_id = $2 AND source_id = 10`, [ITEM, templeId],
+      );
+      const membership = (await pool.query<{ id: number }>(
+        `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at,
+                                     reported_name, reported_location)
+         SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), 'Temple of Ptah', ST_SetSRID(ST_MakePoint(32.6660, 25.7200), 4326)
+           FROM experience_sources s WHERE s.name = 'Places of worship' RETURNING id`,
+        [templeId, ITEM],
+      )).rows[0].id;
+      const point = await pool.query<{ id: number }>(
+        `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+         VALUES ($1, 'Temple of Ptah', $2, ST_SetSRID(ST_MakePoint(32.6660, 25.7200), 4326)) RETURNING id`,
+        [templeId, ITEM],
+      );
+      await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [point.rows[0].id, membership]);
+      // While it holds a kind the part names and places itself (#1250).
+      await pool.query(
+        `UPDATE experiences SET name = 'Temple of Ptah', location = ST_SetSRID(ST_MakePoint(32.6660, 25.7200), 4326) WHERE id = $1`,
+        [templeId],
+      );
+      return { templeId, membership };
+    }
+
+    it('takes the part\'s only kind and its point to a place of its own, and the site keeps its part, named and placed for its line', async () => {
+      const { templeId, membership } = await joinedByItem();
+
+      const { result, refusal } = await separateMembership({ placeId: templeId, membershipId: membership, separatedBy: adminId });
+
+      expect(refusal).toBeUndefined();
+      expect((await parts()).map(p => [p.external_ref, p.part_id === templeId])).toEqual([['87-001', true], ['87-002', false]]);
+      expect(await holds(templeId)).toEqual({ name: 'Temple of Karnak', kinds: [], points: [true] });
+      expect(await holds(result!.separatedId)).toEqual({ name: 'Temple of Ptah', kinds: ['Places of worship'], points: [false] });
+      expect(await worship(result!.separatedId)).toBe(membership);
+      const at = await pool.query<{ id: number; lon: number }>(
+        'SELECT id, ST_X(location) AS lon FROM experiences WHERE id = ANY($1::int[]) ORDER BY id', [[templeId, result!.separatedId]],
+      );
+      expect(at.rows).toEqual([{ id: templeId, lon: KARNAK.lon }, { id: result!.separatedId, lon: 32.666 }]);
+      // The new place is no part of the site: the relation is the record's, which stayed.
+      const relations = await pool.query('SELECT 1 FROM experience_parts WHERE part_id = $1', [result!.separatedId]);
+      expect(relations.rowCount).toBe(0);
+    });
+
+    it('keeps the two apart: the item names the new place alone, and the join leaves the part alone', async () => {
+      const { templeId, membership } = await joinedByItem();
+      const { result } = await separateMembership({ placeId: templeId, membershipId: membership, separatedBy: adminId });
+
+      const registry = await pool.query<{ experience_id: number; identifies: boolean }>(
+        `SELECT experience_id, identifies FROM place_identifiers
+          WHERE scheme = 'wikidata' AND value = $1 ORDER BY identifies`, [ITEM],
+      );
+      expect(registry.rows).toEqual([
+        { experience_id: templeId, identifies: false }, { experience_id: result!.separatedId, identifies: true },
+      ]);
+      expect(await joinPlacesClaimingOneItem([ITEM])).toEqual({ merged: [], refused: [] });
+    });
+
+    it('leaves a part the site\'s run writes like any other: renamed by the list, and no new part', async () => {
+      const { templeId, membership } = await joinedByItem();
+      await separateMembership({ placeId: templeId, membershipId: membership, separatedBy: adminId });
+
+      await writeExperienceLocations(THEBES, [{ ...KARNAK, name: 'Temple of Amun-Ra at Karnak' }, LUXOR], run);
+
+      expect((await parts()).map(p => [p.external_ref, p.part_id === templeId, p.name])).toEqual([
+        ['87-001', true, 'Temple of Amun-Ra at Karnak'], ['87-002', false, 'Luxor Temple'],
+      ]);
+    });
+
+    it('is undone by merging the two again, the part holding its kind and its record', async () => {
+      const { templeId, membership } = await joinedByItem();
+      const { result } = await separateMembership({ placeId: templeId, membershipId: membership, separatedBy: adminId });
+
+      const undone = await undoSeparation(result!.separationId, adminId);
+
+      expect(undone.refusal).toBeUndefined();
+      expect(await worship(templeId)).toBe(membership);
+      expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: templeId });
+    });
+
+    it('refuses a kind a merge folded onto the point of the part\'s line, whichever of the two stayed, and changes nothing', async () => {
+      await mergeKarnak();
+      const membership = await worship(COMPLEX);
+
+      const outcome = await separateMembership({ placeId: COMPLEX, membershipId: membership, separatedBy: adminId });
+
+      expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('undo that merge') });
+      expect(await holds(COMPLEX)).toEqual({ name: 'Karnak Temple Complex', kinds: ['Places of worship'], points: [true] });
+    });
+
+    it('refuses it the same where the kind\'s place folded into the part', async () => {
+      const templeId = await temple();
+      await mergePlaces({ survivorId: templeId, foldedId: COMPLEX, mergedBy: null, reason: 'equal_wikidata_item' });
+
+      const outcome = await separateMembership({ placeId: templeId, membershipId: await worship(templeId), separatedBy: adminId });
+
+      expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('undo that merge') });
+      expect((await holds(templeId)).kinds).toEqual(['Places of worship']);
+    });
+
+    it('refuses a kind that places the only point the part stands at, and changes nothing', async () => {
+      const { templeId, membership } = await joinedByItem();
+      // The part as it would stand had its line's point been lost.
+      await pool.query('DELETE FROM experience_locations WHERE experience_id = $1 AND external_ref = $2', [templeId, KARNAK.externalRef]);
+
+      const outcome = await separateMembership({ placeId: templeId, membershipId: membership, separatedBy: adminId });
+
+      expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('only point of this part') });
+      expect(await worship(templeId)).toBe(membership);
+      expect((await holds(templeId)).points).toEqual([false]);
+    });
+
+    it('refuses it the same where the point the part would keep is one no reader is shown', async () => {
+      const { templeId, membership } = await joinedByItem();
+      // The line's point is still a row, and lost: it keeps no part on its site's map.
+      await pool.query(
+        "UPDATE experience_locations SET existence = 'lost' WHERE experience_id = $1 AND external_ref = $2",
+        [templeId, KARNAK.externalRef],
+      );
+
+      const outcome = await separateMembership({ placeId: templeId, membershipId: membership, separatedBy: adminId });
+
+      expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('only point of this part') });
+      expect(await worship(templeId)).toBe(membership);
+    });
+
+    it('still refuses the only kind of a place that is no component of a site', async () => {
+      const outcome = await separateMembership({ placeId: COMPLEX, membershipId: await worship(COMPLEX), separatedBy: adminId });
+      expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('only kind') });
     });
   });
 });

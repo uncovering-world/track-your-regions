@@ -26,6 +26,17 @@
  * place a traveller stood at. Each visit of the original raises a question to
  * its traveller instead (#1887).
  *
+ * A component part of a serial site that holds a kind of its own is separated
+ * the same way (ADR-0213 decision 6): its record in its whole is no kind and
+ * stays, with the relation and the point of its list line. Its only kind may
+ * leave, since the part is a place by its site's list: it is then a part like
+ * any other, shown through its whole, named and placed for its line again
+ * (`followTheirPoints`). The Archaeology side of a component of Ephesus, say,
+ * if its item named another ruin: the site keeps its component. Refused where
+ * the kind and the line stand at one point, which a merge folded them into: a
+ * copy of it would put the new place where the list places the part, and the
+ * undo of that merge gives each its own point back.
+ *
  * What keeps the two apart is the curator's word in the identifier registry
  * (ADR-0144 decision 4): where the original still claims the identifier the
  * membership carried — a World Heritage site's item, a point's item — the
@@ -35,8 +46,12 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { insertSeparatedExperience, lockExperience, returnSeparatedUnescoText, type LockedExperience } from '../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS, kindRecordSql } from '../../db/membership.js';
+import {
+  insertSeparatedExperience, lockExperience, lockPartsAndRegionKeys, returnSeparatedUnescoText, type LockedExperience,
+} from '../../db/experienceWriter.js';
+import { KINDS, MEMBERSHIPS, kindRecordSql, partRecordSql } from '../../db/membership.js';
+import { shownPointSql } from '../../db/readerPredicates.js';
+import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { copyPointsFor, movePoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
@@ -76,6 +91,7 @@ interface Separable {
   external_id: string;
   kind_name: string;
   memberships: number;
+  /** A component of a serial site: a place by its site's list, whatever kinds it holds. */
   is_part: boolean;
 }
 
@@ -153,11 +169,79 @@ async function stillClaimedBy(client: PoolClient, placeId: number, identifier: I
 }
 
 /**
+ * Whether the membership places a point that is the part's list line too
+ * (`is_part_line_point`): the one point a merge folded the kind's and the
+ * line's into, which the line's own point stays folded under.
+ */
+async function standsAtItsLine(client: PoolClient, partId: number, membershipId: number): Promise<boolean> {
+  const shared = await client.query(
+    `SELECT 1 FROM experience_location_placements p
+       JOIN experience_locations l ON l.id = p.location_id
+       JOIN ${MEMBERSHIPS} rec ON rec.experience_id = l.experience_id AND ${partRecordSql('rec')}
+      WHERE l.experience_id = $1 AND l.merged_into_id IS NULL AND p.membership_id = $2
+        AND is_part_line_point(l.id, rec.whole_id)
+      LIMIT 1`,
+    [partId, membershipId],
+  );
+  return shared.rows.length > 0;
+}
+
+/**
+ * Why the membership cannot leave its place, or null where it can: a place's
+ * only kind, unless its site's list makes it a place; on a part, a kind at
+ * the point of the part's line. For a part it also takes the keys its row is
+ * written under once the points have moved (`leaveThePartStanding`): before
+ * the first point write, as a merge takes them (`db/locks.ts`).
+ */
+async function claimOriginal(
+  client: PoolClient, original: LockedExperience, found: Separable, membershipId: number,
+): Promise<Refusal | null> {
+  if (!found.is_part) {
+    return found.memberships < 2
+      ? { status: 409, error: 'This is the place\'s only kind: there is nothing to separate it from' }
+      : null;
+  }
+  if (await standsAtItsLine(client, original.id, membershipId)) {
+    return {
+      status: 409,
+      error: 'This kind and the part\'s line on its site\'s list share one point here. '
+        + 'If a merge joined them, undo that merge in the history below.',
+    };
+  }
+  await lockPartsAndRegionKeys(client, [original]);
+  return null;
+}
+
+/**
+ * The part once a kind has left it: refused where it holds no point any more,
+ * since it stood at the kind's point alone and a reader would lose it from
+ * its site. With no kind of its own left it is named and placed for its line
+ * again (`followTheirPoints`, which leaves a part that still holds one alone).
+ */
+async function leaveThePartStanding(client: PoolClient, part: LockedExperience): Promise<Refusal | null> {
+  const point = await client.query(
+    // A point a reader is shown, as `partOfferedSql` asks it: a lost, missing or unread point keeps no part on the map.
+    `SELECT 1 FROM experience_locations el
+      WHERE el.experience_id = $1 AND ${shownPointSql('el')} LIMIT 1`, [part.id],
+  );
+  if (point.rows.length === 0) {
+    return {
+      status: 409,
+      error: 'This kind places the only point of this part, so separating it would take the part off its site\'s map',
+    };
+  }
+  await followTheirPoints(client, part, null);
+  return null;
+}
+
+/**
  * Separate the membership `membershipId` of place `placeId` into a place of its
  * own, as the curator `separatedBy`. Refuses what is no separation, saying why,
  * and changes nothing then: the place's only membership (that is the place
- * itself), a place merged into another, and a component part, whose point is
- * its site's.
+ * itself), unless the place is a component part, which its site's list makes
+ * a place; a place merged into another; and, on a part, a kind that stands at
+ * the point of the part's list line or that places the only point the part
+ * stands at.
  */
 export async function separateMembership(
   { placeId, membershipId, separatedBy, regionId = null }: {
@@ -191,19 +275,15 @@ export async function separateMembership(
       [membershipId],
     )).rows[0];
     if (!found || found.experience_id !== placeId) return await refuse({ status: 404, error: 'Membership not found on this place' });
-    if (found.memberships < 2) {
-      return await refuse({ status: 409, error: 'This is the place\'s only kind: there is nothing to separate it from' });
-    }
-    if (found.is_part) {
-      return await refuse({ status: 409, error: 'A component part of a serial site follows its point, and is not separated' });
-    }
+    const original = locked.lock;
+    const unfit = await claimOriginal(client, original, found, membershipId);
+    if (unfit) return await refuse(unfit);
     const identifier = identifierOf(found);
     // The value's keys, as every writer of an identifier takes them after the
     // place's row (ADR-0143 decision 3): a run about to create a place for it
     // waits, then finds the new place.
     if (identifier) await client.query('SELECT lock_place_identifiers($1, ARRAY[$2::text])', [identifier.scheme, identifier.value]);
 
-    const original = locked.lock;
     // The original keeps the pair it was first brought under, whichever
     // membership leaves (ADR-0143 decision 6: nothing reads it as a key, and
     // the pair's check reads a pair a live membership carries anywhere as in
@@ -220,6 +300,8 @@ export async function separateMembership(
     }
     separatedId = separated.id;
     const moved = await moveWhatIsItsOwn(client, original, separated, membershipId, found.source_id);
+    const lost = found.is_part ? await leaveThePartStanding(client, original) : null;
+    if (lost) return await refuse(lost);
     // The curator's word that keeps the two apart (ADR-0144 decision 4): the
     // identifier is the new place's, and only refers to the original.
     const verdictWritten = identifier !== null && await stillClaimedBy(client, original.id, identifier);
