@@ -18,6 +18,7 @@ import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { IDENTIFIER_SCHEMES, IDENTIFIER_VERDICTS, IDENTIFIER_WORDS } from '@tyr/shared/identifiers';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
+import { EXISTENCES } from '@tyr/shared/lifecycle';
 import { CONTENT_KINDS } from '../../services/sync/types.js';
 import { WEBSITE_OUTCOMES, WEBSITE_REASONS } from '../../services/websiteCheck/checkWebsite.js';
 import { PICTURE_CLASSES } from '../../services/pictureClass/classifyPicture.js';
@@ -335,7 +336,7 @@ const placement = publication.pick({ placementFailed: true, placementFailedWorld
 
 const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership)
   .describe('Whether the source still lists it: `former` once it has delisted it.');
-const Existence = z.enum(CHECK_VALUES.experiences.existence)
+const Existence = z.enum(EXISTENCES)
   .describe('Whether it is still there to visit: `lost` once it is gone.');
 
 export const ExperienceStateResult = z.strictObject({

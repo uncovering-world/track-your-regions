@@ -129,8 +129,10 @@ describe('a component the list stops giving stays shown until a curator answers'
     await answer({ existence: 'lost' });
 
     const { part_id } = await necropolis();
-    const part = await pool.query<{ existence: string }>('SELECT existence FROM experiences WHERE id = $1', [part_id]);
-    expect(part.rows[0].existence).toBe('lost');
+    const end = await pool.query<{ source_id: number; year: number | null }>(
+      `SELECT source_id, year FROM place_dates WHERE experience_id = $1 AND slot = 'ended'`, [part_id]);
+    // Its end, from Curators, with no year (ADR-0214).
+    expect(end.rows).toEqual([{ source_id: 11, year: null }]);
     expect(await necropolis()).toMatchObject({ asked: false, listing: 'present' });
     expect((await necropolis()).record_missing).not.toBeNull();
     expect(await outOfStep()).toEqual([]);
@@ -155,8 +157,8 @@ describe('a component the list stops giving stays shown until a curator answers'
     expect(taken.refusal).toBeUndefined();
     expect(taken.result?.offeredToReaders).toBe(true);
     const { part_id } = await necropolis();
-    const part = await pool.query<{ existence: string }>('SELECT existence FROM experiences WHERE id = $1', [part_id]);
-    expect(part.rows[0].existence).toBe('extant');
+    const end = await pool.query(`SELECT 1 FROM place_dates WHERE experience_id = $1 AND slot = 'ended'`, [part_id]);
+    expect(end.rowCount).toBe(0);
     // Still standing says nothing of the list, which still leaves the line out.
     expect(await necropolis()).toMatchObject({ point_missing: null, offered: true, listing: 'present', asked: true });
     expect((await necropolis()).record_missing).not.toBeNull();

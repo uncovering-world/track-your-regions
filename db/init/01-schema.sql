@@ -3005,10 +3005,12 @@ COMMENT ON COLUMN experience_sync_logs.pass_log_id IS 'The log of the first sour
 --
 -- Two independent axes, because they genuinely are: the Bamiyan Buddhas were
 -- destroyed but remain listed, while Dresden Elbe Valley is intact but was
--- delisted. Axis 2 (existence) is the one no machine ever writes. Axis 1 the
--- machine both observes, via missing_since, and writes in one direction: a sync
--- that lists a 'former' row again restores 'present'. Only that direction, so
--- an outage still cannot hide anything; 'former' itself stays curator-only. See ADR-0020.
+-- delisted. Axis 2, whether the place still stands, is its end in place_dates
+-- (ADR-0214), written by a curator or by the rule that reads a place as gone.
+-- Axis 1 the machine both observes, via missing_since, and writes in one
+-- direction: a sync that lists a 'former' row again restores 'present'. Only
+-- that direction, so an outage still cannot hide anything; 'former' itself
+-- stays curator-only. See ADR-0020.
 --
 -- Axis 1 is a statement about one source, so it is each membership's since
 -- ADR-0084 (#1251), with the run's own record of when its source first and last
@@ -3018,7 +3020,6 @@ COMMENT ON COLUMN experience_sync_logs.pass_log_id IS 'The log of the first sour
 
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present';
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS existence VARCHAR(10) NOT NULL DEFAULT 'extant';
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS state_decided_by INTEGER REFERENCES users(id);
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS state_decided_at TIMESTAMPTZ;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS state_note TEXT;
@@ -3029,19 +3030,13 @@ BEGIN
         ALTER TABLE experiences ADD CONSTRAINT experiences_source_membership_check
             CHECK (source_membership IN ('present', 'former'));
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_existence_check') THEN
-        ALTER TABLE experiences ADD CONSTRAINT experiences_existence_check
-            CHECK (existence IN ('extant', 'lost'));
-    END IF;
 END $$;
 
 COMMENT ON COLUMN experiences.missing_since IS 'Derived from the place''s memberships by derive_place_listing(): when the last of them was flagged, once every membership''s source has stopped listing the place; NULL while any source still lists it. Written only by that trigger (ADR-0084).';
 COMMENT ON COLUMN experiences.source_membership IS 'Derived from the place''s memberships by derive_place_listing(): former once every membership is former, present otherwise. Written only by that trigger (ADR-0084).';
-COMMENT ON COLUMN experiences.existence IS 'extant or lost. Whether the object still physically exists — independent of whether the source lists it.';
 
 CREATE INDEX IF NOT EXISTS idx_experiences_missing ON experiences(source_id) WHERE missing_since IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_membership ON experiences(source_membership) WHERE source_membership <> 'present';
-CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) WHERE existence <> 'extant';
 
 -- =============================================================================
 -- A place's membership in a kind (ADR-0045 decision 4; #822)
@@ -3061,8 +3056,8 @@ CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) W
 --
 --   place       name, description, location, boundary, picture, tags,
 --               what a source observes about the row (missing_since,
---               source_membership) and what the world says of it (existence),
---               the visit
+--               source_membership) and what the world says of it (its end,
+--               in place_dates), the visit
 --   membership  kind, source and the id the source knows the place by
 --               (external_id), the type within the kind, whether the source
 --               still lists the place, admission and its reason, admitted_for,
@@ -3078,7 +3073,7 @@ CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) W
 -- (`membership-source-disagrees-with-row`).
 --
 -- Four columns can take a row off a reader's screen, and they compose rather
--- than collapse (ADR-0025): `existence` answers is it still standing,
+-- than collapse (ADR-0025): the place's end answers is it still standing,
 -- `admission` does this kind accept it, `missing_since` does the source still
 -- offer this point, `curation_state` has anyone looked at it yet. The first
 -- and third stay on the place; the second and fourth are here, and a
@@ -8019,7 +8014,8 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
    WHERE d.kind_id = of_kind AND d.type IS NOT DISTINCT FROM of_type AND d.id <> of_member
      AND de.location && crowding_box(at_point, within_km)
      AND ST_DWithin(de.location::geography, at_point::geography, within_km * 1000)
-     AND d.admission <> 'refused' AND de.existence <> 'lost'
+     AND d.admission <> 'refused'
+     AND NOT EXISTS (SELECT 1 FROM place_dates gone WHERE gone.experience_id = de.id AND gone.slot = 'ended')
      AND d.crowding_pin IS DISTINCT FROM 'shadow'
      AND (d.crowding_pin = 'list' OR df.score > above_score)
      AND NOT place_shows_works(de.id)
@@ -8052,9 +8048,10 @@ $$;
 
 -- Recount the crowded-out memberships of every place within its kind's radius
 -- of `near`, or of the whole catalogue when `near` is null. A candidate is an
--- admitted membership of a kind that declares the rule, on a place that is
--- not lost and has a point, of a type the kind does not exempt;
--- db/membership.ts states the same set (membershipAdmittedSql, hideLostSql).
+-- admitted membership of a kind that declares the rule, on a place that
+-- stands today (no end in place_dates, ADR-0214) and has a point, of a type
+-- the kind does not exempt; db/membership.ts and db/readerPredicates.ts state
+-- the same set (membershipAdmittedSql, standsTodaySql).
 -- It is crowded out when a curator keeps it in the shadow, or when it has a
 -- score and crowding_better() reaches the limit, unless a curator keeps it in
 -- the list (ADR-0180).
@@ -8083,7 +8080,8 @@ BEGIN
     JOIN experiences ce ON ce.id = c.experience_id
     LEFT JOIN membership_fame cf ON cf.membership_id = c.id
     CROSS JOIN LATERAL crowding_better(c.kind_id, c.type, c.id, ce.location, k.crowding_radius_km, cf.score) n
-   WHERE c.admission <> 'refused' AND ce.existence <> 'lost' AND ce.location IS NOT NULL
+   WHERE c.admission <> 'refused' AND ce.location IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM place_dates gone WHERE gone.experience_id = ce.id AND gone.slot = 'ended')
      AND (c.type IS NULL OR c.type <> ALL(k.crowding_exempt_types))
      AND (near IS NULL
           OR (ce.location && crowding_box(near, k.crowding_radius_km)
@@ -8108,7 +8106,8 @@ BEGIN
       JOIN source_records m ON m.id = f.membership_id
       JOIN experience_kinds k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
       JOIN experiences e ON e.id = m.experience_id
-     WHERE m.admission <> 'refused' AND e.existence <> 'lost' AND e.location IS NOT NULL
+     WHERE m.admission <> 'refused' AND e.location IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM place_dates gone WHERE gone.experience_id = e.id AND gone.slot = 'ended')
        AND (m.type IS NULL OR m.type <> ALL(k.crowding_exempt_types))
   ), scored AS (
     SELECT membership_id,
@@ -8169,8 +8168,8 @@ CREATE CONSTRAINT TRIGGER crowding_follows_membership_delete
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION crowding_follows_membership();
 
--- A place is lost, found again, moved or deleted: recount where it was and
--- where it is.
+-- A place is moved or deleted: recount where it was and where it is. Its end
+-- written or taken back is crowding_follows_end's.
 CREATE OR REPLACE FUNCTION crowding_follows_place() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -8185,10 +8184,10 @@ END $$;
 
 DROP TRIGGER IF EXISTS crowding_follows_place_change ON experiences;
 CREATE CONSTRAINT TRIGGER crowding_follows_place_change
-  AFTER UPDATE OF existence, location ON experiences
+  AFTER UPDATE OF location ON experiences
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
-  WHEN (OLD.existence IS DISTINCT FROM NEW.existence OR OLD.location IS DISTINCT FROM NEW.location)
+  WHEN (OLD.location IS DISTINCT FROM NEW.location)
   EXECUTE FUNCTION crowding_follows_place();
 
 DROP TRIGGER IF EXISTS crowding_follows_place_delete ON experiences;
@@ -8212,6 +8211,32 @@ BEGIN
                   WHERE m.experience_id = e.id);
   IF point IS NOT NULL THEN PERFORM recount_crowding(point); END IF;
 END $$;
+
+-- A place's end is written or taken back (ADR-0214): it leaves or rejoins
+-- the candidates, so recount around it. Only the end: no other date of the
+-- place decides whether it stands.
+CREATE OR REPLACE FUNCTION crowding_follows_end() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP IN ('UPDATE', 'DELETE') THEN
+    IF OLD.slot = 'ended' THEN PERFORM crowding_recount_place(OLD.experience_id); END IF;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.slot = 'ended' THEN PERFORM crowding_recount_place(NEW.experience_id); END IF;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.slot = 'ended' AND (OLD.slot <> 'ended' OR OLD.experience_id <> NEW.experience_id) THEN
+      PERFORM crowding_recount_place(NEW.experience_id);
+    END IF;
+  END IF;
+  RETURN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS crowding_follows_end_change ON place_dates;
+CREATE CONSTRAINT TRIGGER crowding_follows_end_change
+  AFTER INSERT OR DELETE OR UPDATE OF slot, experience_id ON place_dates
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION crowding_follows_end();
 
 CREATE OR REPLACE FUNCTION crowding_follows_link() RETURNS trigger
 LANGUAGE plpgsql AS $$

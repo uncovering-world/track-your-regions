@@ -125,7 +125,11 @@ A place holds up to four dates, one row of `place_dates` each, keyed by the plac
 | `use_ended` | what it housed or was used for ended | Göbekli Tepe, abandoned about 7000 BC; Bath Abbey's monastery, dissolved in 1539 |
 | `ended` | the place itself stopped standing | the Arch of Reunification in Pyongyang, destroyed in January 2024 |
 
-Only `ended` says the place is gone; the end of a use never does. Each source's view of the same
+Only `ended` says the place is gone, and it takes the place off today's catalogue: every reader
+asks it through `standsTodaySql` (`db/readerPredicates.ts`), and the crowding functions spell the
+same set. The end of a use never hides anything.
+A card still reads whether the place stands as `existence`, `extant` or `lost`
+(`placeExistenceSql`). Each source's view of the same
 dates is a row of `record_dates`, keyed by its record, as its view of the name and the picture is
 its `reported_*` columns (ADR-0084).
 
@@ -148,8 +152,10 @@ year one later than an AD one, a year from 100,000 BC to this year) and `samePla
 tables are written by `db/placeDatesWriter.ts` alone (ADR-0069, `PLACE_DATE_WRITE_RULES`), under
 the place's `LockedExperience`: `writePlaceDate` and `clearPlaceDate` for the place's own dates,
 and `writeRecordDates` for a record's whole view, which replaces the slots it reports and clears
-the rest. Both are serving tables (ADR-0124). No curator screen writes them yet; the runs write
-them as § How a run writes a place's dates says.
+the rest. Both are serving tables (ADR-0124). A curator writes the end alone so far: a *lost*
+answer on a place, or on a serial site's part from its line's withdrawal card (ADR-0216), writes it
+from Curators with the year it went where the curator gives one, and taking the answer back takes
+it off (`answerPlaceEnd`). The runs write the dates as § How a run writes a place's dates says.
 
 **How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
 derives a record's dates from the statements the gone rules already read (`fetchStandingFacts`,
@@ -2076,12 +2082,16 @@ live status while a run is going (`held` on `GET /api/admin/sync/sources/:source
 Not touched by it: the default "Significant only" view of the per-object report, whose own rule is
 above.
 
-**Two lifecycle axes** on `experiences`. `existence` is curator-only. So is `former` — a
+**Two lifecycle axes** on `experiences`. `former` is curator-only — a
 source outage must never change what users see — but `present` can also be restored by the
 source itself, which is the one thing the machine may write here and is spelled out below:
 
 - `source_membership` — `present` / `former`: whether the source still lists the object
-- `existence` — `extant` / `lost`: whether the object physically survives
+- whether the place still stands: its end (`ended` in `place_dates`, ADR-0214), read as the
+  answer `extant` / `lost` (`placeExistenceSql`). A curator's *lost* writes the end, from Curators,
+  with the year it went where the curator knows it (`endedYear`), and taking it back takes the end
+  off; either claims `ended` in `curated_fields`, so no run writes it back. The gone rules write an
+  end too (§ A place's lifetime), never from a source's listing
 
 They are independent because reality is: the Bamiyan Buddhas were destroyed but remain
 inscribed; Dresden Elbe Valley is intact but was delisted in 2009.
@@ -2091,11 +2101,11 @@ run produces a row that is `former`, the upsert puts `source_membership` back to
 and the changeset records `returned`. That is the same evidence that justified `former` in
 the first place, read the other way, and it only ever moves toward more visibility — a source
 outage still cannot hide anything, which is what ADR-0020 reserves `former` to a curator for.
-`existence` is untouched by that correction: being listed says nothing about whether the
+The place's end is untouched by that correction: being listed says nothing about whether the
 thing still stands. One consequence to read carefully: `state_decided_by`, `state_decided_at` and `state_note`
 record the last decision a curator made, not necessarily the state now stored. After the
 source takes back a `former`, those fields still name whoever recorded it. They are not
-cleared, because they cover both axes at once and an `existence` verdict may still stand —
+cleared, because they cover both axes at once and a *lost* verdict may still stand —
 `experience_curation_log` is where the sequence is, and the changeset row marks the
 correction. This narrows ADR-0020 in two places, and
 [ADR-0021](../decisions/0021-source-may-restore-membership.md) records it. Decision 1 defines
@@ -4755,7 +4765,7 @@ Royal Cemetery at Ur — because following that relation is a source read of the
 and this read is built from rows the two doors already write; a spot that is a city (Rome), a
 region (Nubia) or a place of worship (the Ramesseum, a source-4 row by the same id) stays words.
 Every row of the answer is one a reader may open: the museum admitted, passed and still standing
-(`experienceOfferedToReaderSql`, `hideLostSql`), the link still placed and passed
+(`experienceOfferedToReaderSql`, `standsTodaySql`), the link still placed and passed
 (`offeredLinkSql`, `publishedContentSql`), the work passed — never widened for a curator, since a
 link is a claim a reader acts on — and a find no such museum holds is not listed. A museum in two
 kinds is two rows until #755, so the venues are one per `external_id`, the row of the site's own
@@ -4775,7 +4785,7 @@ empty list. A site that
 no longer stands is not one of them: a dig flooded by a dam or built over is shown to a reader who
 asks for what is gone, and its finds are still in a museum, so its card lists them and its row
 counts them — the museum, not the site, is what has to stand. The way back stays words: a find
-on its museum's list names a lost dig without a link (`found_at_site` keeps `hideLostSql`),
+on its museum's list names a lost dig without a link (`found_at_site` keeps `standsTodaySql`),
 because a region's list holds a lost place only for a reader who asked for what is gone, and a
 link would send everyone else to a card the list cannot open.
 
@@ -6492,7 +6502,8 @@ Maggiore, and crowds out 51 more of its churches.
 - **The schema recounts between runs.** `crowding_follows_membership()` and
   `crowding_follows_place()` call `recount_crowding(near)` within the radius of a place. They fire
   when a membership's admission, type, kind or place changes, when the membership is deleted, and
-  when a place's existence or point changes or the place is deleted. `crowding_follows_link()` and
+  when a place's point changes or the place is deleted, and `crowding_follows_end()` when its end is
+  written or taken off (ADR-0214). `crowding_follows_link()` and
   `crowding_follows_work()` recount around a place when what it holds changes: a link written,
   deleted, no longer placed, read or moved, or a work read. They go through
   `crowding_recount_place(place)`, which does nothing for a place in no kind with the rule, so a
@@ -6858,7 +6869,7 @@ whether it still exists, but whether *this kind* accepts it. The works-first mus
 importer refuses an archaeological collection, a natural history museum, a church or a painted
 wall — and Wikidata goes on listing every one of them, so neither of the other two axes can
 say it without asserting something false. The refusal's hiding is a separate question from
-`hideLostSql()` for the same reason they are separate columns, and because the two are toggled
+`standsTodaySql()` for the same reason they are separate columns, and because the two are toggled
 independently: `includeLost` is a reader asking to see what is gone, and it must leave
 admission alone. The verdict is the membership's since #822 (§ Kinds and sources), so the
 fragment asks whether *some* membership of the place is admitted (`placeAdmittedSql`,
@@ -6889,7 +6900,7 @@ list, count and map feed composes `placeShownSql`, the same less a crowded city'
 `publishedContentSql()` gates a content row — a location, a treasure link, a treasure — because
 ADR-0025's split is load-bearing: a published museum may hold newly-written, unread paintings, and
 a predicate that only checked the experience would publish them the moment a run wrote them. Both
-live beside `hideLostSql` and `offeredLocationSql` in `db/readerPredicates.ts`, unconditional everywhere a list,
+live beside `standsTodaySql` and `offeredLocationSql` in `db/readerPredicates.ts`, unconditional everywhere a list,
 count, search or map feed applies them — there is no `?includeUnread=true`, unlike `?includeLost`,
 because a reader has no legitimate reason to ask for what nobody has checked. The by-region
 **count**'s two `FILTER` expressions both need it, or a row that is both `lost` and `pending` gets
@@ -7040,12 +7051,12 @@ one.
 An object a run merely flagged looks completely ordinary. That is the point of leaving both
 verdicts to a curator: a source outage must not change what anyone sees.
 
-`hideLostSql()` and `lifecycleSelectSql()` live in `db/readerPredicates.ts`, and the
+`standsTodaySql()` and `lifecycleSelectSql()` live in `db/readerPredicates.ts`, and the
 request's ask for lost rows (`includeLost()`) in `controllers/experience/includeLost.ts`,
 rather than inline, because the predicate goes
 into a dozen queries built by string concatenation and the one that forgets it is the one that
-lies. The rule holds by construction since #791: a literal `curation_state <> 'pending'` or
-`existence <> 'lost'` in a statement anywhere but `db/readerPredicates.ts` and
+lies. The rule holds by construction since #791: a literal `curation_state <> 'pending'`,
+`existence <> 'lost'` or `slot = 'ended'` in a statement anywhere but `db/readerPredicates.ts` and
 `db/membership.ts` fails the backend lint (`READER_PREDICATE_RULES` in
 `backend/eslint.config.mjs`), the sync writers included. Two traps it has already caught: `searchExperiences` needs brackets round its two name
 alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every lost object
@@ -7053,7 +7064,7 @@ matching by trigram comes straight back), and the by-region **count** has to car
 rule as the list or the page says one number and shows another. `listKinds` carries both
 predicates in its per-kind `experience_count` for the same reason — without them it
 reported 128 experiences in *Art Museums* where the catalogue offers 101 — the 27 rows that
-kind's own rule turned down (#503). Both, though the `hideLostSql()` half changes nothing
+kind's own rule turned down (#503). Both, though the `standsTodaySql()` half changes nothing
 today: measured 2026-08-09, all three kinds hold zero `lost` rows, so the whole 128→101 gap
 is refusals. It is still the half to have, because the vision promises that what no longer exists
 leaves "the lists, the map and the counts" (`docs/vision/vision.md`, *Places that changed*), and
@@ -7092,8 +7103,8 @@ reveal, as the same `NoticeLink` (`components/shared/`) at the end of the list, 
 rather than beside the kind tags, the type chips and the name filter, which choose what the list is about where
 this only adds to it. Map mode asks the server (`includeLost`, with its `lostHidden` count).
 Discover shows one kind at a time and that count is the whole region's, so it asks for the lost
-rows with the region and holds them back itself, by the rule `hideLostSql()` states
-(`existence` is `lost`), counting the open kind's (`lostInKind` in `useDiscoverExperiences`):
+rows with the region and holds them back itself, by the rule `standsTodaySql()` states
+(the answer reads `existence: 'lost'`: the place holds an end), counting the open kind's (`lostInKind` in `useDiscoverExperiences`):
 the line never offers rows the kind's list would not gain, and showing them takes no second
 request (#609). The ask belongs to the region in both, so a curator can reveal a lost place in
 Discover and take its verdict back with *It does still exist*.
@@ -7389,7 +7400,7 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | GET | `/api/experiences/review/queue/map/names?ids=` | The names of the places a short list on the map shows (#2501), which the map's read leaves out. `ids` is a comma-separated list of place ids, each a row id, taken once, at most `QUEUE_MAP_NAMES_MAX` (100, `@tyr/shared/reviewQueue`); anything else is 400. The answer is `ReviewQueueMapNames`: `names`, `{ placeId, name }` by id, for the asked places the caller has an open question about under their scope, set-aside batches included and no chip applied. Any other id is left out, never refused. Curator only, `no-store` |
 | PUT | `/api/experiences/review/set-aside/:syncLogId` | No body. Puts a run's whole batch of open questions aside, for this curator alone ([ADR-0051](../decisions/0051-the-review-queue-is-one-list-of-dated-questions.md) decision 4) — one row in `curator_queue_set_aside`, whose `user_id` is taken from the token and never from the request, answering `{ syncLogId, setAside: true }` (`RunSetAside`, ADR-0066). `ON CONFLICT DO NOTHING`, so a second press answers what the first one did: the response states the state the caller asked for rather than whether a row moved. A run that does not exist and a **dry** run — which writes no changeset and so raises no question to put aside — are both 404, indistinguishably, rather than a second error shape for a run that was never a batch. Carries `authenticatedLimiter` |
 | DELETE | `/api/experiences/review/set-aside/:syncLogId` | No body. Brings the batch back — `{ syncLogId, setAside: false }` whether or not a row was there, because the caller is asking for a state and not for a deletion: a 404 for a batch already brought back would make the chip a one-shot. Carries `authenticatedLimiter` |
-| POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
+| POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', endedYear?, note?, expected: { membership, existence, flagged } }` (`lost` writes the place's end, with `endedYear` where known, ADR-0214) — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/locations/:locationId/state` | The same body, about one point inside the object (ADR-0026). Answers whether a point the source stopped offering is delisted, gone, or was never gone. Three things differ from the object-level verdict. Scope: a point carries none of its own, so the id is resolved to its containing experience server-side and `resolveExperienceScope` is asked about that. `missing_since`: only the false alarm (`present` + `extant`) clears it, because on a location that column is *one of the two terms* a reader-facing read carries (ADR-0026 decision 7), and each verdict is held by a different one — `former` by the flag, which is why clearing it would put back a pin for a place the source no longer lists; `lost` by its own axis, whatever the flag says, which is what makes that verdict outlive a run and also makes it the one answer here that can hide a point readers could see. Leaving the flag standing is what takes an answered row out of the queue without any read learning a filter for the queue's sake. A source that lists the point again takes the delisting back, in one direction only and wherever that point is — every arm of the writer that matches an offered row writes `source_membership = 'present'`, the one that gives a withdrawn point its place back and the one that keeps a point never withdrawn, and the fast path counts a delisted-but-listed row as unmatched so one of them is reached at all (ADR-0026 decision 6). Never the reverse, as the experience upsert has it (ADR-0021); `existence` is untouched, because a listing says nothing about whether the thing still stands. Without that the point would come back visible while recorded as delisted, and its next departure would raise no card at all, since the queue reads the axes as "nobody has answered". The one answer with no transition to name is the false alarm, and it is the *only* one: re-sending a verdict a row already carries answers 409 rather than writing a dismissal into the trail beside a flag nothing dismissed. And the audit row hangs off the *experience*, with the point named in `details.locationId`, so a serial site's seven components cannot record seven indistinguishable verdicts. The response says `offeredToReaders`, rather than leaving a client to infer visibility from two axes — and, where the answer changed what a reader sees and re-placing the point failed, `placementFailed`/`placementFailedWorldViews`, named as the sibling endpoints name them: a verdict is a placement event in either direction, because a withdrawn point holds no `auto` region rows and a `lost` one must hold none, so a curator has to be told when the regions are out of date. Needs migration 024 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | PATCH | `/api/experiences/locations/:locationId/edit` | `{ name?, latitude?, longitude?, imageUrl?, description? }` — a curator's *correction* to one point (the picture and the description only on a serial site's part's point), as against the verdict above about its standing. The coordinate arrives as a pair or not at all: half a move is not a place, and on a single-point object it is where the object itself would go. Each value written also writes a claim on that column (`experience_locations.curated_fields`, migration 027), which is what makes the correction survive the next run — every arm of `locationWriter` otherwise writes the source's name and coordinate over whatever is stored. The claim set is re-read under the write lock and *added to*; the one path that takes a key back off a point's claims is `accept-source` on the object's `location`, which releases the coordinate on the point and the object together, since the two are one fact and releasing half of it puts the object's coordinate on the source's pin and its only visible point on the curator's (ADR-0029 § Consequences); and `external_ref` and `ordinal` are never claimable, because the pairing reads both to decide whether a point moved or was replaced. **The object's anchor follows the point where the object holds exactly one point a reader is positioned over — offered, published, and this one**, claimed there too: ADR-0028 positions a reader at the place nearest the object's own coordinate, so with one place the reader already follows the edit while the object's published coordinate stays behind — the disagreement #550 is about, 106 objects and 191 km at its worst. Both the count and the edited row's own membership are inside the statement's own `WHERE` rather than a read before it: a second point arriving in between cannot leave the anchor moved for a reason that stopped being true, and counting the visible points without asking whether *this* is one of them would move the object onto a coordinate no reader is ever sent to — by correcting a withdrawn, `lost` or unread sibling. A gated arrival's only point is `pending`, so correcting it moves nothing until publication, which is the same rule read consistently rather than an omission. Scope is resolved through the containing experience, as the verdict above does. A move re-places the experience into regions after the commit — answering `placementFailed`/`placementFailedWorldViews` where that failed, as the sibling `/state` route does and for the same reason: the remedy is admin-only, so a curator has to be told which world view is out of date rather than that something is. A rename places nothing, since region rows are computed from coordinates. **A part's own picture and description** (#1270) are corrected the way a work's picture is: `imageUrl` is `safeImageUrlSchema`, `creditForOneImage` resolves its photographer before the transaction opens and `writePartFields` writes `image_url` and `metadata.imageCredit` on the part's row with the description as its `subtitle` (ADR-0156 decision 3), `''` takes the picture off with its credit — the point then shows its object's picture — and `''` clears the description; each claims its field on the part (`image_url`, `subtitle`), which the run's point content writer then never writes, and the reply carries `imageCredit` where the picture changed. A point of any other place holds neither (#2117): an edit that names either is refused with 400 before Commons is asked or anything is locked. The form offers the two fields only for a part's point, where the surface that opened it knows the stored values — the object screen's `CurationPlaces`, whose read carries both and says which points are parts (`is_part`) — since a field opened empty over a stored value would read as none. **A point with no picture of its own is offered the Commons files geotagged near it** (#1341): *Pick a picture from Commons nearby* asks `GET /api/experiences/locations/:locationId/nearby-pictures` (`nearbyPicturesController.ts`, in this edit's scope, `authenticatedLimiter`), which asks Commons once — the `geosearch` generator in the File namespace within `NEARBY_RADIUS_M` (300 m) of the point's stored coordinate, never one the client names, with each file's distance and `extmetadata` credit in the same answer (`commonsPicturesNear`, `services/sync/commonsNearby.ts`) — and answers up to `NEARBY_SHOWN` (12) picture files, nearest first, as the catalogue stores a picture (`commonsFilePath`). The form draws them as tiles, each with its distance and its credit under it (`CommonsNearbyPicker`); a tile picked fills the Picture field and the preview shows Commons' credit for it, and nothing is written until Save sends it as `imageUrl` through this edit, which claims it, resolves its credit and logs it like any picture a curator names. A geotag is where the camera stood, not what it shows — Paimio Sanatorium's nearest files are of its dining room and lobby — so the offer is read, never applied. Records `location_edited` naming both sides of what changed and whether the anchor moved — needs migration 028, or the audit insert violates the `action` CHECK and the whole call 500s. **Its screen is one dialog, offered wherever a curator whose scope reaches the place is looking at it** (#583, #613): `PointPreviewDialog` (`components/shared/`) opens on `PointCorrection` wherever a caller offers a correction — the map already on the place, the source's own position left as a faded pin, the pin draggable, Save asleep until something changed — and the form sends only what changed and reads the outcome off the reply — `anchorMoved` is never promised, since a pending or withdrawn place moves nothing whatever the count. It opens from every row that shows a place: the review page's unread points, held location parts, withdrawn and answered points; `CurationPlaces` on the object screen, which is the only row a single-place object's place has anywhere (1178 of 1671 objects, every museum and monument among them); and a place's row on an open card in Map mode and in Discover. A corrected row says so through `claimLabel` (`utils/placeClaims.ts`) off the `curated_fields` every one of those reads now carries. The take-back is not on this screen: `accept-source` needs a live conflict proposal and is offered where one exists, the conflict card |
 | PATCH | `/api/experiences/:id/works/:treasureId/edit` | `{ name?, artists?, year?, imageUrl? }` — `''` for `imageUrl` takes the picture off and its credit with it — a curator's correction to one work, the same act the point's route above is for and the answer the gate has no button for: its two are "take the source's" and "keep what is here", and neither says *this instead*. The museum is in the path because a work hangs in more than one and carries no scope of its own; the link is what proves it hangs in this one, and its absence is a 404 rather than a 403 — the caller may well curate this museum, it simply holds no such work. Scope is resolved through that museum, the object is locked before the work (`OBJECT_LOCK`), and each value written also writes a claim on its column (`treasures.curated_fields`), which is what makes the correction survive the next run. The claim set is re-read under the write lock and added to. An **empty** `artists` is a value a curator can mean — *Salvator Mundi* reading "Leonardeschi" is worse than reading nothing — so it is not folded into absence, and the statement carries a boolean per column saying which of the two the request was. Sending `artists` *unchanged* is also a request, and the common one: the stored order is a query planner's (ADR-0040), so claiming the column is usually a curator vouching for an order that was already right, which is what `work-makers-unconfirmed` counts. `year`'s floor is −200000, a bound the stored rows set rather than a guess about art history — −4000 refused nine works the museum run had already written, the oldest the Lion man of the Hohlenstein Stadel at 38000 BC in Museum Ulm, and a curator cannot be refused a value the screen is showing them (#731). `imageUrl` **is** writable, and only because the credit is written with it (ADR-0049, narrowing ADR-0040 decision 6): `creditForOneImage` resolves the photographer from Commons *before* the transaction opens — a lock held across somebody else's server is held for as long as they take — and `image_url` and `metadata.imageCredit` move in one statement, so no row holds one photograph under another photographer's name (ADR-0043). `''` takes the picture off and drops the credit with it. One claim, not two: `treasureWriter` keeps the row's own `metadata` whenever `image_url` is claimed, so a credit key would be one nothing reads. The reach is ADR-0025 decision 2's rather than this endpoint's — a work is passed once, globally, so the row a correction changes is the row every museum holding the work carries, and the screen says so before Save from the `venue_count` its rows carry. That count is of museums the work *hangs* in and deliberately not of museums a reader can reach today: a refused or still-gated museum holds the work all the same and carries the corrected row the moment it is shown, so `venueCountSql` applies the withdrawn-link term alone and its docblock says why. Records `work_edited` naming only the fields the edit touched, under their column names — needs migration 040, or the audit insert violates the `action` CHECK and the whole call 500s. **Its screen is one dialog, offered wherever a curator whose scope reaches its place is looking at a work** (#731, #613): `WorkPreviewDialog` (`components/shared/`) opens on `WorkCorrection` — the makers as rows to drag or step through with arrows (`MakerList`), the year as digits plus AD/BC (`YearField`), the picture with the credit that belongs to the file that is stored, and Save asleep until something changed. It opens from the works waiting to publish on the review page, from a held work part (`PartPreviewDialog`), and from a work's row on an open card in Map mode (`ArtworksList`) and in Discover (`ContentTile`). A corrected row says so through `claimLabel` (`utils/workClaims.ts`) off the `curated_fields` those reads now carry |
@@ -8149,8 +8160,8 @@ false alarm. All three clear `missing_since`, including the false alarm — leav
 would put the object back in the queue after every run, which is how a queue stops being
 read. Clearing the flag is necessary but not sufficient for *lost*: the source will go on
 not listing the object, so detection would stamp it again on the next clean run and the only
-exit would be answering a different question. Detection therefore skips `existence = 'lost'`
-rows — a judged object is not asked about again — and drops them from the coverage ratio on
+exit would be answering a different question. Detection therefore skips a place that holds an
+end (`standsTodaySql`) — a judged object is not asked about again — and drops them from the coverage ratio on
 both sides, since a row that can never be seen would otherwise drag the source toward the
 90 % floor that switches detection off. That the two axes stay independent is the point: a
 *lost* verdict says nothing about whether the source still lists it, and coupling them would
@@ -8175,7 +8186,7 @@ predicate (`source_membership = 'present'`, asked alike by `countActiveExperienc
 
 Comparing state rather than refusing every decided row is what keeps a verdict correctable.
 Refusing them wholesale would make `former` and `lost` terminal: `missing_since = NOW()` has
-one writer, and its predicate wants `present` and `existence <> 'lost'`, so detection
+one writer, and its predicate wants `present` and a place that stands (`standsTodaySql`), so detection
 re-flags neither. One mis-click would remove an object from the product with no remedy short
 of SQL — and `state_restored` would be an action nothing could emit, with the schema, the
 migration and this document all claiming otherwise.

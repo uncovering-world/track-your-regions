@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { membershipShownSql } from '../../db/membership.js';
-import { hideLostSql } from '../../db/readerPredicates.js';
+import { standsTodaySql } from '../../db/readerPredicates.js';
 import {
   countedMembershipSql, countedMembershipsSql, countedPlacesSql, kindCountSql,
 } from './experienceCounts.js';
@@ -24,10 +24,10 @@ describe('a kind counts its memberships', () => {
     // The questions every list under a kind's header asks, so the number
     // labels the list it sits above: the membership's admission, gate and
     // crowding (ADR-0172), and the place's existence.
-    expect(countedMembershipSql('m', 'e')).toBe(`${membershipShownSql('m')} AND ${hideLostSql('e')}`);
+    expect(countedMembershipSql('m', 'e')).toBe(`${membershipShownSql('m')} AND ${standsTodaySql('e')}`);
     expect(countedMembershipSql('x', 'y')).toContain('NOT EXISTS (SELECT 1 FROM membership_crowding crowded WHERE crowded.membership_id = x.id)');
     expect(countedMembershipSql('x', 'y')).toContain("x.admission <> 'refused'");
-    expect(countedMembershipSql('x', 'y')).toContain("y.existence <> 'lost'");
+    expect(countedMembershipSql('x', 'y')).toContain(standsTodaySql('y'));
   });
 
   it('spells the whole count as one subquery over the membership table', () => {

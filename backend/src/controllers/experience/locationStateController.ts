@@ -23,10 +23,11 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience, setLifecycleVerdict, type LockedExperience } from '../../db/experienceWriter.js';
+import { answerPlaceEnd } from '../../db/placeDatesWriter.js';
 import { setPointVerdict } from './experienceLocationWriter.js';
 import { setPartRecordListingVerdict } from './membershipWriter.js';
 import { MEMBERSHIPS, partRecordSql, partRecordWithdrawnSql } from '../../db/membership.js';
-import { hideLostSql, partOfferedSql } from '../../db/readerPredicates.js';
+import { partOfferedSql, placeExistenceSql, standsTodaySql } from '../../db/readerPredicates.js';
 import { answeringPlaceSql } from '../../db/placePoints.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
@@ -186,7 +187,7 @@ interface PartLine {
 async function partLineOf(client: PoolClient, locationId: number): Promise<PartLine | null> {
   const found = await client.query<PartLine>(
     `SELECT rec.id, rec.experience_id AS part, rec.missing_since, rec.source_membership,
-            ${partRecordWithdrawnSql('rec')} AS withdrawn, part.existence AS part_existence
+            ${partRecordWithdrawnSql('rec')} AS withdrawn, ${placeExistenceSql('part')} AS part_existence
        FROM ${MEMBERSHIPS} rec
        JOIN experiences part ON part.id = rec.experience_id
        JOIN experience_locations el ON el.id = $1 AND el.experience_id = rec.experience_id
@@ -201,7 +202,7 @@ async function partLineOf(client: PoolClient, locationId: number): Promise<PartL
 /** Whether a reader is shown the part `part` (`partOfferedSql`), as the transaction sees it now. */
 async function partShown(client: PoolClient, part: number): Promise<boolean> {
   const shown = await client.query<{ shown: boolean }>(
-    `SELECT ${partOfferedSql('e')} AND ${hideLostSql('e')} AS shown FROM experiences e WHERE e.id = $1`, [part],
+    `SELECT ${partOfferedSql('e')} AND ${standsTodaySql('e')} AS shown FROM experiences e WHERE e.id = $1`, [part],
   );
   return shown.rows[0]?.shown === true;
 }
@@ -216,7 +217,8 @@ async function partShown(client: PoolClient, part: number): Promise<boolean> {
  * the record keeps its mark, and the site's card asks again. A verdict on a
  * point the list moved is the point's.
  * *Lost*, and taking it back, are written on the part, under its own lock
- * taken after its site's (a whole before its parts, `db/locks.ts`).
+ * taken after its site's (a whole before its parts, `db/locks.ts`): its end,
+ * with no year, or the end taken off (ADR-0214).
  */
 async function answerPartLine(
   client: PoolClient,
@@ -238,7 +240,8 @@ async function answerPartLine(
   if (!lostNow && !backNow) return;
   const part = await lockExperience(client, line.part);
   if (part) {
-    await setLifecycleVerdict(client, part.lock, { existence: verdict.nextExistence, decidedBy: verdict.userId, note: verdict.note });
+    await answerPlaceEnd(client, part.lock, { gone: lostNow, year: null, decidedBy: verdict.userId });
+    await setLifecycleVerdict(client, part.lock, { claimEnd: true, decidedBy: verdict.userId, note: verdict.note });
   }
 }
 

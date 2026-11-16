@@ -20,7 +20,7 @@ import { MEMBERSHIPS, membershipOfferedSql, rowKindJoinSql } from '../../db/memb
 import { WORLD_HERITAGE_KIND_ID } from '../../db/inscription.js';
 import { ARCHAEOLOGY_KIND_ID } from '../../services/sync/findSiteProposals.js';
 import {
-  experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql,
+  experienceOfferedToReaderSql, standsTodaySql, offeredLinkSql, publishedContentSql,
 } from '../../db/readerPredicates.js';
 
 /**
@@ -40,7 +40,7 @@ export function venuesShowingSql(find: string): string {
              AND ${publishedContentSql('sl')}
              -- The museum: accepted by a kind, passed, and still standing.
              AND ${experienceOfferedToReaderSql('sv')}
-             AND ${hideLostSql('sv')}`;
+             AND ${standsTodaySql('sv')}`;
 }
 
 /**

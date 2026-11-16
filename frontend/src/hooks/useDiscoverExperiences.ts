@@ -237,7 +237,7 @@ export function useDiscoverExperiences() {
 
   // Places that no longer exist come with the answer and are held back here,
   // by the rule the server applies when asked to hide them (`existence` is
-  // `lost`, `hideLostSql`). Discover shows one kind at a time, and the server's
+  // `lost`, `standsTodaySql`). Discover shows one kind at a time, and the server's
   // `lostHidden` counts the whole region, so a line offering "3 no longer exist"
   // under World Heritage Sites could reveal none of them; counted here, it says
   // what this kind's list would gain. They are few — almost no region holds

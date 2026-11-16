@@ -66,6 +66,7 @@ import type { ReviewAnswerDid } from '../../api/responses/reviewQueue.js';
 import type { QueueKind as AnswerKind, ReviewAnswer as Answer } from './reviewQueueVocabulary.js';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 import { shownBySql } from '../../db/placePoints.js';
+import { placeExistenceSql } from '../../db/readerPredicates.js';
 
 export type { AnswerKind, Answer };
 
@@ -406,7 +407,7 @@ async function answerMissing(who: Answerer, answer: Answer): Promise<Outcome> {
   const { experienceId, userId, logRegionId, membershipId } = who;
   if (membershipId !== null) return answerKindMissing(who, answer, membershipId);
   const open = await pool.query(
-    `SELECT e.source_membership, e.existence, e.missing_since
+    `SELECT e.source_membership, ${placeExistenceSql('e')} AS existence, e.missing_since
        FROM experiences e
       WHERE e.id = $1 AND ${missingOpenSql('e')}`,
     [experienceId],
@@ -430,7 +431,7 @@ async function answerKindMissing(who: Answerer, answer: Answer, membershipId: nu
     return refused(409, 'Other sources still list this place, so it is not answered as lost here');
   }
   const open = await pool.query(
-    `SELECT m.source_membership, e.existence, m.missing_since
+    `SELECT m.source_membership, ${placeExistenceSql('e')} AS existence, m.missing_since
        FROM experiences e JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
       WHERE e.id = $1 AND m.id = $2 AND ${membershipMissingOpenSql('m', 'e')}`,
     [experienceId, membershipId],

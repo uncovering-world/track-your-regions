@@ -18,9 +18,12 @@
 
 import type { PoolClient } from 'pg';
 import {
-  isValidPlaceDate, LIFETIME_SLOTS, type LifetimeSlot, type PlaceDate, type PlaceEnding,
+  isValidPlaceDate, LIFETIME_SLOTS, PLACE_END, type LifetimeSlot, type PlaceDate, type PlaceEnding,
 } from '@tyr/shared/lifetime';
 import type { LockedExperience } from './experienceWriter.js';
+import type { Existence } from '@tyr/shared/lifecycle';
+import { CURATOR_SOURCE_ID } from './membership.js';
+import { placeExistenceSql } from './readerPredicates.js';
 
 /** What a source says of one date: the date, how a place ended where it did, and the statement it was read from. */
 export interface SourcedDate extends PlaceDate {
@@ -80,6 +83,40 @@ export async function writePlaceDate(
 export async function clearPlaceDate(client: PoolClient, lock: LockedExperience, slot: LifetimeSlot): Promise<boolean> {
   const result = await client.query('DELETE FROM place_dates WHERE experience_id = $1 AND slot = $2', [lock.id, slot]);
   return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Whether the locked place still stands, in a verdict's words
+ * (`placeExistenceSql`): read in its own statement after the lock, since a
+ * statement's snapshot is taken before it waits for the lock and every writer
+ * of the end holds it (`db/locks.ts`).
+ */
+export async function placeExistenceOf(client: Pick<PoolClient, 'query'>, lock: LockedExperience): Promise<Existence> {
+  const result = await client.query<{ existence: Existence }>(
+    `SELECT ${placeExistenceSql('e')} AS existence FROM experiences e WHERE e.id = $1`, [lock.id],
+  );
+  return result.rows[0]?.existence ?? 'extant';
+}
+
+/**
+ * A curator's answer on whether the place still stands (ADR-0214 decision 3):
+ * gone writes its end, from Curators, with the year where the curator knows it
+ * and none where they do not; still standing takes the end off. Claiming the
+ * slot, so no run writes it back, is the caller's (`setLifecycleVerdict`).
+ */
+export async function answerPlaceEnd(
+  client: PoolClient,
+  lock: LockedExperience,
+  answer: { gone: boolean; year: number | null; decidedBy: number },
+): Promise<void> {
+  if (!answer.gone) {
+    await clearPlaceDate(client, lock, PLACE_END);
+    return;
+  }
+  await writePlaceDate(client, lock, PLACE_END, {
+    year: answer.year, month: null, day: null, span: null, circa: false, ending: null,
+    property: null, statement: null, sourceId: CURATOR_SOURCE_ID, decidedBy: answer.decidedBy,
+  });
 }
 
 /**

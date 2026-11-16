@@ -14,6 +14,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { placeOfferedSql, placeShownSql } from './membership.js';
+import { lockExperience } from './experienceWriter.js';
+import { answerPlaceEnd } from './placeDatesWriter.js';
 
 const WORSHIP = 4;
 const BASE = 9_201_000;
@@ -60,6 +62,20 @@ async function hang(placeId: number, name: string): Promise<number> {
     'INSERT INTO experience_treasures (experience_id, treasure_id) VALUES ($1, $2) RETURNING id',
     [placeId, work.rows[0].id]);
   return link.rows[0].id;
+}
+
+/** A curator's answer on whether the place stands, under its lock, as the answer commits. */
+async function answerEnd(placeId: number, gone: boolean): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = await lockExperience(client, placeId);
+    const curator = (await client.query<{ id: number }>('SELECT min(id) AS id FROM users')).rows[0].id;
+    await answerPlaceEnd(client, locked!.lock, { gone, year: gone ? 1966 : null, decidedBy: curator });
+    await client.query('COMMIT');
+  } finally {
+    client.release();
+  }
 }
 
 beforeAll(clear);
@@ -124,10 +140,11 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     expect(await crowded()).toEqual([]);
   });
 
-  it('recounts where a place was once it is lost or moved', async () => {
-    await pool.query("UPDATE experiences SET existence = 'lost' WHERE id = $1", [BASE + 2]);
+  it('recounts where a place was once it ends, its end is taken off, or it moves (ADR-0214)', async () => {
+    await answerEnd(BASE + 2, true);
     expect(await crowded()).toEqual([BASE + 12]);
-    await pool.query("UPDATE experiences SET existence = 'extant' WHERE id = $1", [BASE + 2]);
+    await answerEnd(BASE + 2, false);
+    expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
     await pool.query('UPDATE experiences SET location = ST_SetSRID(ST_MakePoint(13.5, 42.5), 4326) WHERE id = $1', [BASE + 3]);
     expect(await crowded()).toEqual([BASE + 12]);
   });

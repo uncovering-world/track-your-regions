@@ -380,25 +380,30 @@ export async function recordDecisionOnExperience(
 }
 
 /**
- * A lifecycle verdict on the place (ADR-0020, ADR-0021): whether it still
- * stands, with who decided. Whether its sources still list it is its
- * memberships' (ADR-0084) and is written beside this by `setListingVerdict`
- * (`membershipWriter.ts`), under the same lock.
+ * A lifecycle verdict on the place (ADR-0020, ADR-0021): who decided whether
+ * it still stands, and the claim on its end (`ended` in `curated_fields`), so
+ * no run writes the end back over a curator who said it stands, nor takes off
+ * one they wrote. The end itself is `answerPlaceEnd` (`placeDatesWriter.ts`,
+ * ADR-0214), and whether its sources still list it is its memberships'
+ * (`setListingVerdict`, `membershipWriter.ts`, ADR-0084), both written beside
+ * this under the same lock.
  */
 export async function setLifecycleVerdict(
   client: PoolClient,
   lock: LockedExperience,
-  verdict: { existence: string; decidedBy: number; note: string | null },
+  verdict: { claimEnd: boolean; decidedBy: number; note: string | null },
 ): Promise<void> {
   await client.query(`
     UPDATE experiences
-    SET existence = $2,
-        state_decided_by = $3,
+    SET curated_fields = CASE WHEN NOT $4::boolean OR COALESCE(curated_fields, '[]'::jsonb) ? 'ended'
+                              THEN curated_fields
+                              ELSE COALESCE(curated_fields, '[]'::jsonb) || '["ended"]'::jsonb END,
+        state_decided_by = $2,
         state_decided_at = NOW(),
-        state_note = $4,
+        state_note = $3,
         updated_at = NOW()
     WHERE id = $1
-  `, [lock.id, verdict.existence, verdict.decidedBy, verdict.note]);
+  `, [lock.id, verdict.decidedBy, verdict.note, verdict.claimEnd]);
 }
 
 /**

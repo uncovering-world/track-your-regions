@@ -145,7 +145,7 @@ export function partRecordListedSql(rec = 'rec'): string {
  * A part nobody has read, by its record (ADR-0213): its record in its whole is
  * pending, not turned down, and its line is still listed. `rec` is a part's
  * record (`partRecordSql`). Whether the part is still in the world is the
- * part's own (`hideLostSql` on its row), which a caller asks beside this.
+ * part's own (`standsTodaySql` on its row), which a caller asks beside this.
  */
 export function partRecordUnreadSql(rec = 'rec'): string {
   return `${rec}.curation_state = 'pending' AND ${membershipAdmittedSql(rec)} AND ${rec}.missing_since IS NULL`;
@@ -194,7 +194,7 @@ export function membershipOfferedSql(alias = 'm'): string {
  * #2201); a place holding such a work never is (ADR-0173).
  * The schema keeps the answer (`membership_crowding`, recounted by
  * `recount_crowding()` over the candidates `membershipAdmittedSql` and
- * `hideLostSql` name); absent means shown. `alias` is the membership alias.
+ * `standsTodaySql` name); absent means shown. `alias` is the membership alias.
  */
 export function membershipCrowdedSql(alias = 'm'): string {
   return `EXISTS (SELECT 1 FROM ${CROWDING} crowded WHERE crowded.membership_id = ${alias}.id)`;

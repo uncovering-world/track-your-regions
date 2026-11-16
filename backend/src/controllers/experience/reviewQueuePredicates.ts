@@ -26,7 +26,7 @@ import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   experienceOfferedToReaderSql,
-  hideLostSql,
+  standsTodaySql,
   offeredLocationSql,
   placeOrPartOfferedSql,
   publishedContentSql,
@@ -181,7 +181,7 @@ function withdrawnPartLinePointsSql(): string {
   return `SELECT wpl.id FROM ${MEMBERSHIPS} wpr
             JOIN experience_locations wpl ON wpl.experience_id = wpr.experience_id
             JOIN experiences wpp ON wpp.id = wpr.experience_id
-           WHERE ${partRecordSql('wpr')} AND ${partRecordWithdrawnSql('wpr')} AND ${hideLostSql('wpp')}
+           WHERE ${partRecordSql('wpr')} AND ${partRecordWithdrawnSql('wpr')} AND ${standsTodaySql('wpp')}
              AND is_part_line_point(wpl.id, wpr.whole_id)`;
 }
 

@@ -15,6 +15,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
+import { standsTodaySql } from '../../db/readerPredicates.js';
 import { placeLockOrderSql } from '../../db/locks.js';
 import {
   missingDetectionSkipReason,
@@ -111,7 +112,7 @@ describe('countSeenAmongActive', () => {
     expect(sql).toContain("source_membership = 'present'");
     expect(sql).toContain('missing_since IS NULL');
     expect(sql).toContain('is_manual = FALSE');
-    expect(sql).toContain("existence <> 'lost'");
+    expect(sql).toContain(standsTodaySql('e'));
     expect(sql).toContain('external_id = ANY');
   });
 
@@ -127,7 +128,7 @@ describe('countSeenAmongActive', () => {
 
     // A term on one side only makes the ratio something other than coverage
     for (const term of ["source_membership = 'present'", 'missing_since IS NULL',
-                        'is_manual = FALSE', "existence <> 'lost'"]) {
+                        'is_manual = FALSE', standsTodaySql('e')]) {
       expect(denominator).toContain(term);
       expect(numerator).toContain(term);
     }
@@ -147,7 +148,7 @@ describe('flagMissingExperiences', () => {
     // Re-stamping missing_since would return it to the review queue after every
     // run, and the only way out would be answering a different question
     const mark = sent().find(sql => /^UPDATE/.test(sql.trim()));
-    expect(mark).toContain("existence <> 'lost'");
+    expect(mark).toContain(standsTodaySql('e'));
   });
 
   it('stamps missing_since on the membership and returns one record per row', async () => {

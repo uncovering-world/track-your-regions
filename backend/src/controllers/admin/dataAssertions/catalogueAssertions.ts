@@ -55,7 +55,7 @@
 import {
   claimablePlaceSql,
   experienceOfferedToReaderSql,
-  hideLostSql,
+  standsTodaySql,
   offeredLocationSql,
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
@@ -278,7 +278,7 @@ const listedWithNowhereToGo: CatalogueAssertion = {
                e.external_id AS external_id,
                (SELECT count(*) FROM ${pointsShownSql('e.id', 'el')}) AS places_held
           FROM experiences e
-         WHERE ${hideLostSql()}
+         WHERE ${standsTodaySql()}
            AND ${experienceOfferedToReaderSql()}
            AND NOT EXISTS (SELECT 1 FROM ${pointsShownSql('e.id', 'el')}
                             WHERE ${offeredLocationSql()}

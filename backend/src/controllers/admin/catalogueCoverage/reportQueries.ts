@@ -15,7 +15,7 @@ import { pool } from '../../../db/index.js';
 import {
   MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, kindRecordSql, siteLineRecordSql,
 } from '../../../db/membership.js';
-import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import { standsTodaySql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
   CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationKindsRow, CoverageExpectationsRow, CoverageJudgementsRow,
   CoverageKindsRow,
@@ -234,7 +234,7 @@ const MATCHES_SQL = `
   )
   SELECT DISTINCT ids.region_slug, ids.slug, e.name AS catalogue_name, m.kind_id,
          (${countedMembershipSql('m', 'e')}) AS offered,
-         (${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${kindRecordSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed
+         (${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${kindRecordSql('m')} AND ${standsTodaySql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed
     FROM ids
     JOIN known_as k ON k.id = ids.id
     JOIN experiences e ON e.id = k.experience_id

@@ -6008,6 +6008,11 @@ export type LifecycleStateBodyExpected = {
 export interface LifecycleStateBody {
   membership?: LifecycleStateBodyMembership;
   existence?: LifecycleStateBodyExistence;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  endedYear?: number;
   /** @maxLength 1000 */
   note?: string;
   expected: LifecycleStateBodyExpected;

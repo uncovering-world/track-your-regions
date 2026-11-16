@@ -72,7 +72,6 @@ describe('the vocabularies both sides import', () => {
 
   it('name exactly the lifecycle states the schema allows, on every table that carries each (#794)', () => {
     expectTypeOf<Admission>().toEqualTypeOf<CheckValue<'source_records', 'admission'>>();
-    expectTypeOf<Existence>().toEqualTypeOf<CheckValue<'experiences', 'existence'>>();
     expectTypeOf<Existence>().toEqualTypeOf<CheckValue<'experience_locations', 'existence'>>();
     expectTypeOf<SourceMembership>().toEqualTypeOf<CheckValue<'experiences', 'source_membership'>>();
     expectTypeOf<SourceMembership>().toEqualTypeOf<CheckValue<'experience_locations', 'source_membership'>>();
@@ -81,7 +80,7 @@ describe('the vocabularies both sides import', () => {
     }
     expectTypeOf<CurationState>().toEqualTypeOf<CheckValue<'source_records', 'curation_state'>>();
     expect([...ADMISSIONS]).toEqual([...CHECK_VALUES.source_records.admission]);
-    expect([...EXISTENCES]).toEqual([...CHECK_VALUES.experiences.existence]);
+    expect([...EXISTENCES]).toEqual([...CHECK_VALUES.experience_locations.existence]);
     expect([...SOURCE_MEMBERSHIPS]).toEqual([...CHECK_VALUES.experiences.source_membership]);
   });
 

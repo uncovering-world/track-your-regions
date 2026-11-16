@@ -237,7 +237,7 @@ beforeAll(async () => {
   await place(PLACES.pending, QID.pending, AT.lon + 1, dig, 'admitted', 'pending');
   await place(PLACES.refused, QID.refused, AT.lon + 2, dig, 'refused', 'verified');
   await place(PLACES.lost, QID.lost, AT.lon + 3, dig, 'admitted', 'verified');
-  await pool.query(`UPDATE experiences SET existence = 'lost' WHERE id = $1`, [PLACES.lost]);
+  await pool.query(`INSERT INTO place_dates (experience_id, slot, source_id) VALUES ($1, 'ended', 11)`, [PLACES.lost]);
   await place(PLACES.otherItem, QID.otherItem, AT.lon + 4, dig, 'admitted', 'verified');
   // Far from every region's reach, so only the calibration list sees it.
   await place(PLACES.pendingMissing, TOPS.pendingMissing, AT.lon + 30, dig, 'admitted', 'pending');

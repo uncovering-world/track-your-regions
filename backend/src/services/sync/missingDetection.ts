@@ -19,7 +19,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK, placeLockOrderSql } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipAdmittedSql, sourcePlacesSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
-import { hideLostSql } from '../../db/readerPredicates.js';
+import { standsTodaySql } from '../../db/readerPredicates.js';
 
 /**
  * The places a run is expected to see again, as `e` with the run's membership
@@ -47,7 +47,7 @@ const EXPECTED = `sm.source_id = $1
        AND sm.source_membership = 'present'
        AND sm.missing_since IS NULL
        AND e.is_manual = FALSE
-       AND ${hideLostSql('e')}
+       AND ${standsTodaySql('e')}
        AND ${membershipAdmittedSql('sm')}`;
 
 export type SourceCompleteness = 'authoritative' | 'ranked';

@@ -19,6 +19,7 @@ import type { ImageCredit } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { QueueItemKind } from './reviewQueueVocabulary.js';
 import type { TextSource } from '@tyr/shared/textCredits';
+import type { Existence } from '@tyr/shared/lifecycle';
 
 /**
  * A queue row as the driver hands it over, after `withDangerFields`: the
@@ -36,7 +37,7 @@ export interface QueueRow {
   kind_type?: string | null;
   missing_since: Date | null;
   source_membership: CheckValue<'experiences', 'source_membership'>;
-  existence: CheckValue<'experiences', 'existence'>;
+  existence: Existence;
   kind: QueueItemKind;
   /** Selected by the four membership cards (#1264). */
   membership_id?: number | null;

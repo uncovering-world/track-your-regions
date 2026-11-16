@@ -82,14 +82,12 @@ function makeClient(state?: Record<string, unknown>) {
       // that override to whatever columns the default happens to carry.
       query: vi.fn(async (sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => {
         queries.push({ sql, params: params ?? [] });
+        const row = { source_membership: 'present', existence: 'extant', missing_since: new Date('2026-08-03T10:00:00Z'), ...(state ?? {}) };
         if (sql.includes(OBJECT_LOCK)) {
-          return { rows: [{
-            source_membership: 'present',
-            existence: 'extant',
-            missing_since: new Date('2026-08-03T10:00:00Z'),
-            ...(state ?? {}),
-          }] };
+          return { rows: [{ source_membership: row.source_membership, missing_since: row.missing_since }] };
         }
+        // Whether it stands is its end (ADR-0214), read after the lock.
+        if (sql.includes('AS existence FROM experiences e')) return { rows: [{ existence: row.existence }] };
         if (sql.includes('array_agg(el.id)')) return { rows: [{ points: [21, 22], works: [31] }] };
         return { rows: [] };
       }),
@@ -175,6 +173,59 @@ describe('setExperienceState', () => {
     expect(update?.params).toEqual([5, 'present', true]);
     expect(update?.sql).toContain("NOT $3 OR source_membership = 'present'");
     expect(queries.find(q => q.sql.includes('UPDATE experiences'))?.sql).not.toContain('missing_since');
+  });
+
+  it('writes a lost answer as the place\'s end, from Curators, with the year it went, and claims it (ADR-0214)', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    const { client, queries } = makeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await answerRoute(postState,
+      { user: ADMIN, params: { id: '5' }, body: { existence: 'lost', endedYear: 1966, expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      makeRes() as never,
+    );
+
+    const end = queries.find(q => q.sql.includes('INSERT INTO place_dates'));
+    expect(end?.params.slice(0, 3)).toEqual([5, 'ended', 1966]);
+    // The source and who decided: Curators (11), the admin.
+    expect(end?.params.slice(8, 9)).toEqual([11]);
+    expect(end?.params[11]).toBe(1);
+    const verdict = queries.find(q => q.sql.includes('UPDATE experiences') && q.sql.includes('state_decided_by'));
+    expect(collapse(verdict!.sql)).toContain(`'["ended"]'::jsonb`);
+    expect(verdict!.params[3]).toBe(true);
+    const log = queries.find(q => q.sql.includes('experience_curation_log'));
+    expect(JSON.parse(log!.params[4] as string)).toMatchObject({ existence: { old: 'extant', new: 'lost' }, endedYear: 1966 });
+  });
+
+  it('takes the end off when a lost answer is taken back, and writes no end for a listing answer', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'lost' }] });
+    const back = makeClient({ existence: 'lost', missing_since: null });
+    mockedConnect.mockResolvedValue(back.client);
+    await answerRoute(postState,
+      { user: ADMIN, params: { id: '5' }, body: { existence: 'extant', expected: { membership: 'present', existence: 'lost', flagged: false } } } as never,
+      makeRes() as never,
+    );
+    expect(back.queries.some(q => q.sql.includes('DELETE FROM place_dates') && q.params[1] === 'ended')).toBe(true);
+    expect(back.queries.some(q => q.sql.includes('INSERT INTO place_dates'))).toBe(false);
+
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    const listing = makeClient();
+    mockedConnect.mockResolvedValue(listing.client);
+    await answerRoute(postState,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      makeRes() as never,
+    );
+    expect(listing.queries.some(q => q.sql.includes('place_dates') && !q.sql.includes('AS existence'))).toBe(false);
+  });
+
+  it('refuses a year it went beside any answer but lost, and a year 0', async () => {
+    for (const body of [
+      { membership: 'former', endedYear: 1966, expected: { membership: 'present', existence: 'extant', flagged: true } },
+      { existence: 'lost', endedYear: 0, expected: { membership: 'present', existence: 'extant', flagged: true } },
+    ]) {
+      await expect(answerRoute(postState, { user: ADMIN, params: { id: '5' }, body } as never, makeRes() as never)).rejects.toThrow();
+    }
+    expect(mockedConnect).not.toHaveBeenCalled();
   });
 
   it('records both decisions when one call carries both axes', async () => {

@@ -33,7 +33,7 @@ import { pool } from '../../db/index.js';
 import {
   FAME, KINDS, kindRecordSql, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql,
 } from '../../db/membership.js';
-import { hideLostSql } from '../../db/readerPredicates.js';
+import { standsTodaySql } from '../../db/readerPredicates.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import { notFound, Refusal } from '../../middleware/errorHandler.js';
 import type {
@@ -109,7 +109,7 @@ export function aroundSql(isAdmin: boolean, at: AroundAt = { kind: '$2', point: 
   return `m.kind_id = ${at.kind}
      AND e.location && crowding_box(${at.point}, ${at.radiusKm})
      AND ST_DWithin(e.location::geography, ${at.point}::geography, ${at.radiusKm} * 1000)
-     AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')}
+     AND ${membershipAdmittedSql('m')} AND ${standsTodaySql('e')}
      AND ${listedSql(isAdmin)}`;
 }
 
@@ -337,7 +337,7 @@ export async function getCrowdingGroup(
       ${joins}
       ${leaf}
      WHERE m.kind_id = $2 AND m.type IS NOT DISTINCT FROM $3::text AND e.location IS NOT NULL
-       AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${listedSql(isAdmin)}
+       AND ${membershipAdmittedSql('m')} AND ${standsTodaySql('e')} AND ${listedSql(isAdmin)}
        AND ${inRegion}
      ORDER BY f.score DESC NULLS LAST, e.name, m.id
      LIMIT ${GROUP_PLACES_MAX + 1}`,
@@ -401,7 +401,7 @@ export async function getCrowdingPlace(
         JOIN experiences e ON e.id = m.experience_id
         ${joins}
         ${groupLeafSql({ isAdmin: '$3', worldView: '$5', within: false })}
-       WHERE m.id = $2 AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${listedSql(isAdmin)}`,
+       WHERE m.id = $2 AND ${membershipAdmittedSql('m')} AND ${standsTodaySql('e')} AND ${listedSql(isAdmin)}`,
     [caller.id, membershipId, isAdmin, kind.crowding_radius_km, query.worldViewId ?? null]),
     // $1 the caller, $2 the kind, $3 the place, $4 the radius, $5 the type, $6 the membership.
     pool.query<Signals & {
@@ -495,7 +495,7 @@ export async function listShadowedArrivals(
       JOIN ${KINDS} k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
       ${groupLeafSql({ isAdmin: '$3', worldView: '$2', within })}
      WHERE m.curation_state = 'pending' AND ${membershipAdmittedSql('m')} AND e.missing_since IS NULL
-       AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}
+       AND ${standsTodaySql('e')} AND ${membershipCrowdedSql('m')}
        AND ${queueScopeSql(isAdmin, 'm.source_id')} AND ${regionKept}
        AND (leaf.region_id IS NULL OR ${notRejectedInSql('leaf.region_id')})
      GROUP BY leaf.region_id, leaf.region_name, leaf.world_view_id, m.kind_id, k.name, k.display_priority, m.type

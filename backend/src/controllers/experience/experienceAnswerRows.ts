@@ -16,10 +16,10 @@ import type {
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { TextSource } from '@tyr/shared/textCredits';
+import type { Existence } from '@tyr/shared/lifecycle';
 import { commemoratesOf, depictsOf, type CommemoratedSubject as StoredSubject } from '@tyr/shared/commemorates';
 
 type Membership = CheckValue<'experiences', 'source_membership'>;
-type Existence = CheckValue<'experiences', 'existence'>;
 
 function iso(value: Date | null): string | null {
   return value === null ? null : value.toISOString();

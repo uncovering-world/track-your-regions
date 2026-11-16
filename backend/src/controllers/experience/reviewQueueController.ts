@@ -20,7 +20,7 @@ import {
 } from '../../db/membership.js';
 import type { reviewQueueMapQuerySchema, reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists } from '../../middleware/auth.js';
-import { lifecycleSelectSql } from '../../db/readerPredicates.js';
+import { lifecycleSelectSql, placeExistenceSql } from '../../db/readerPredicates.js';
 import {
   objectContextSelectSql, countedWorksSelectSql,
 } from './reviewQueueContext.js';
@@ -317,7 +317,7 @@ export async function getReviewQueue(
   `, [...params, missingIds]);
     const kinds = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
-           m.source_membership, e.existence, m.missing_since, ${seenInSql()} AS seen_in,
+           m.source_membership, ${placeExistenceSql('e')} AS existence, m.missing_since, ${seenInSql()} AS seen_in,
            ${keptAsFormerSql('m')} AS kept_as_former, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e

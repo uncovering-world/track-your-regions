@@ -50,7 +50,7 @@ import { dugUpAtSql, findOfSiteSql, venuesShowingSql } from './siteFinds.js';
  *
  * The way back stays closed on purpose: a find on its museum's list names a
  * lost dig as words, not a link (`found_at_site` in
- * `experienceTreasureController.ts` keeps `hideLostSql`). A region's list
+ * `experienceTreasureController.ts` keeps `standsTodaySql`). A region's list
  * holds a lost place only for a reader who asked for what is gone
  * (`includeLost`), so a link from a museum would send everyone else to an
  * address whose card the list cannot open — while a lost dig's own card is

@@ -33,15 +33,18 @@ import { answerKindListingUnderLock } from './kindListingController.js';
 import {
   lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
 } from '../../db/experienceWriter.js';
+import { answerPlaceEnd, placeExistenceOf } from '../../db/placeDatesWriter.js';
+import type { Existence } from '@tyr/shared/lifecycle';
 
-/** The object's two axes, as the columns' CHECK lists spell them. */
+/** The object's listing axis, as the column's CHECK list spells it; whether it stands is its end (ADR-0214). */
 type Membership = CheckValue<'experiences', 'source_membership'>;
-type Existence = CheckValue<'experiences', 'existence'>;
 
 /** What a curator sends about an object's lifecycle, and the row they were looking at. */
 export interface StateAnswer {
   membership?: Membership;
   existence?: Existence;
+  /** With `lost`: the year the place went, where the curator knows it (ADR-0214). */
+  endedYear?: number;
   note?: string;
   expected: { membership: Membership; existence: Existence; flagged: boolean };
   /** One kind whose source stopped listing the place (#1264); the place as a whole where absent. */
@@ -62,8 +65,12 @@ export interface AnswerRefusal {
 /**
  * Record what a curator decided about an object's lifecycle.
  * POST /api/experiences/:id/state
- * Body: { membership?: 'present'|'former', existence?: 'extant'|'lost', note?: string,
- *         expected: { membership, existence, flagged } }
+ * Body: { membership?: 'present'|'former', existence?: 'extant'|'lost', endedYear?: number,
+ *         note?: string, expected: { membership, existence, flagged } }
+ *
+ * `lost` writes the place's end (ADR-0214), with `endedYear` where the curator
+ * knows when it went, and `extant` takes it off; either claims the end, so no
+ * run writes it back or takes it off.
  *
  * `expected` is required — the row as the caller was looking at it. Compared
  * under the write lock; see the comment on that comparison for why nothing
@@ -120,7 +127,7 @@ export async function answerStateUnderLock(
   if (answer.membershipId !== undefined) {
     return answerKindListingUnderLock(experienceId, userId, logRegionId, { ...answer, membershipId: answer.membershipId });
   }
-  const { membership, existence, note, expected } = answer;
+  const { membership, existence, endedYear, note, expected } = answer;
   // One client, not pool.query('BEGIN') — see the note in curationEditController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections.
@@ -148,16 +155,19 @@ export async function answerStateUnderLock(
     // unlocked read, a verdict on one axis silently reverts a verdict on the
     // other, and the log would then assert `former` beside a column saying
     // `present`. Reverting `lost` costs more still: it puts the row back inside
-    // missing detection's `hideLostSql` predicate, so the next clean
+    // missing detection's `standsTodaySql` predicate, so the next clean
     // run re-flags it and the item returns to the queue for good.
-    const locked = await lockExperience<typeof before>(
-      client, experienceId, 'source_membership, existence, missing_since',
+    const locked = await lockExperience<{ source_membership: string; missing_since: Date | null }>(
+      client, experienceId, 'source_membership, missing_since',
     );
     // The existence check ran on the pool, on another connection and earlier
     // in time. A row deleted in that window leaves nothing to lock, and the
     // true answer is 404 — `setExperienceAdmission` guards the same gap.
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
-    before = locked.row;
+    // Whether it stands is its end (ADR-0214), read in a statement after the
+    // lock: a statement's snapshot is taken before it waits for the lock, and
+    // every writer of the end holds the same lock (`db/locks.ts`).
+    before = { ...locked.row, existence: await placeExistenceOf(client, locked.lock) };
     nextMembership = membership ?? (before.source_membership as Membership);
     nextExistence = existence ?? (before.existence as Existence);
 
@@ -207,9 +217,11 @@ export async function answerStateUnderLock(
       actions.push('missing_dismissed');
     }
 
-    await setLifecycleVerdict(client, locked.lock, {
-      existence: nextExistence, decidedBy: userId, note: note ?? null,
-    });
+    const endChanges = nextExistence !== before.existence;
+    if (endChanges) {
+      await answerPlaceEnd(client, locked.lock, { gone: nextExistence === 'lost', year: endedYear ?? null, decidedBy: userId });
+    }
+    await setLifecycleVerdict(client, locked.lock, { claimEnd: endChanges, decidedBy: userId, note: note ?? null });
     await setListingVerdict(client, locked.lock, nextMembership);
 
     for (const action of actions) {
@@ -219,6 +231,7 @@ export async function answerStateUnderLock(
       `, [experienceId, userId, action, logRegionId, JSON.stringify({
         membership: { old: before.source_membership, new: nextMembership },
         existence: { old: before.existence, new: nextExistence },
+        ...(endChanges && nextExistence === 'lost' ? { endedYear: endedYear ?? null } : {}),
         note: note ?? null,
       })]);
     }

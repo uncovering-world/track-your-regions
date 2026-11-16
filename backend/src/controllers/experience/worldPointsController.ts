@@ -58,7 +58,7 @@ import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
 import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeShownSql, shownKindsByPlaceSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
-import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { standsTodaySql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { overPlacePoints, pointNameSql, type PlacePointArm } from '../../db/placePoints.js';
 
 /**
@@ -176,7 +176,7 @@ function selectSql(detail: PointsDetail, arm: number, placeId: string, kindsJoin
 function readerGuardsSql(): string {
   return `${offeredLocationSql('el')}
         AND ${publishedContentSql('el')}
-        AND ${hideLostSql('e')}
+        AND ${standsTodaySql('e')}
         AND ${placeShownSql('e')}`;
 }
 

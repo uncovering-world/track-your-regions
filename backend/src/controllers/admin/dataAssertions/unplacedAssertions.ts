@@ -22,7 +22,7 @@
  * distance are what say which of the two a row is.
  */
 
-import { experienceOfferedToReaderSql, hideLostSql, offeredLocationSql } from '../../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, standsTodaySql, offeredLocationSql } from '../../../db/readerPredicates.js';
 import { answeringPlaceSql } from '../../../db/placePoints.js';
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
@@ -129,7 +129,7 @@ const heldByNoRegion: CatalogueAssertion = {
                near.suggestions
           FROM experiences e
           LEFT JOIN LATERAL (${nearestLeavesSql}) near ON true
-         WHERE ${hideLostSql()}
+         WHERE ${standsTodaySql()}
            AND ${experienceOfferedToReaderSql()}
            AND NOT EXISTS (SELECT 1 FROM experience_regions er
                             WHERE er.experience_id = e.id)

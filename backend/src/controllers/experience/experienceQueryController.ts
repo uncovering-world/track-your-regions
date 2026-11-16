@@ -12,7 +12,7 @@ import type {
 import { pool } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
 import {
-  hideLostSql,
+  standsTodaySql,
   experienceOfferedToReaderSql,
   readableByIdSql,
   placeOrPartOfferedSql,
@@ -400,7 +400,7 @@ export async function searchExperiences(
       -- lifecycle filter: without the brackets, OR would re-admit every lost
       -- object whose name happens to match by trigram.
       WHERE (e.name ILIKE $2 OR e.name % $1)
-        AND ${hideLostSql()}
+        AND ${standsTodaySql()}
         AND ${experienceOfferedToReaderSql()}
       -- A name that contains the query outranks one the trigram index merely
       -- thought similar; name_contains is never null, so DESC puts those

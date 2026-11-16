@@ -11,6 +11,7 @@
 
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
+import { EXISTENCES } from '@tyr/shared/lifecycle';
 import { TEXT_SOURCES } from '@tyr/shared/textCredits';
 
 /** Whose text the description is, which the reader is shown beside it (ADR-0149). */
@@ -175,7 +176,7 @@ export const RegionExperienceLocationsResponse = z.strictObject({
 export type RegionExperienceLocationsResponse = z.infer<typeof RegionExperienceLocationsResponse>;
 
 const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership);
-const Existence = z.enum(CHECK_VALUES.experiences.existence);
+const Existence = z.enum(EXISTENCES);
 
 export const ExperienceRegionRef = z.strictObject({
   id: z.number().int(),

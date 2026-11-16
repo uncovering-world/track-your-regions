@@ -12,7 +12,7 @@ import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.gener
 import { MEMBERSHIPS, linkKindsSql, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql,
-  hideLostSql,
+  standsTodaySql,
   readableByIdSql,
   linkedForReaderSql,
   offeredLinkSql,
@@ -100,7 +100,7 @@ export async function getExperienceTreasures(
                          AND site_member.external_id = t.metadata->'foundAt'->>'qid'
                          AND ${membershipOfferedSql('site_member')})
           AND ${experienceOfferedToReaderSql('site')}
-          AND ${hideLostSql('site')}
+          AND ${standsTodaySql('site')}
         ORDER BY site.id
         LIMIT 1) AS found_at_site,
       -- The site a curator confirmed the work comes from, where its item names
@@ -118,7 +118,7 @@ export async function getExperienceTreasures(
           -- off the item is the row's own claim, and the link stands behind it.
           AND t.metadata->'foundAt' IS NULL
           AND ${experienceOfferedToReaderSql('site')}
-          AND ${hideLostSql('site')}
+          AND ${standsTodaySql('site')}
         ORDER BY site.id
         LIMIT 1) AS from_site
     FROM treasures t

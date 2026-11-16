@@ -19,6 +19,7 @@
 
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { placeExistenceOf } from '../../db/placeDatesWriter.js';
 import { MEMBERSHIPS, keptAsFormerSql } from '../../db/membership.js';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 import { refuseOnMembership, setMembershipListingVerdict } from './membershipWriter.js';
@@ -72,9 +73,7 @@ export async function answerKindListingUnderLock(
       return { refusal };
     };
 
-    const locked = await lockExperience<{ existence: Existence; missing_since: Date | null }>(
-      client, experienceId, 'existence, missing_since',
-    );
+    const locked = await lockExperience<{ missing_since: Date | null }>(client, experienceId, 'missing_since');
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     // Every source dropped the place since the card was drawn: whether it still
     // stands is the place's own question now, and its card asks it.
@@ -124,7 +123,7 @@ export async function answerKindListingUnderLock(
       JSON.stringify({ membershipId, takenOutOfKind: takesOut, note: note ?? null })]);
 
     await client.query('COMMIT');
-    return { result: { experienceId, sourceMembership: membership, existence: locked.row.existence } };
+    return { result: { experienceId, sourceMembership: membership, existence: await placeExistenceOf(client, locked.lock) } };
   } catch (error) {
     unusable = await rollbackQuietly(client);
     throw error;

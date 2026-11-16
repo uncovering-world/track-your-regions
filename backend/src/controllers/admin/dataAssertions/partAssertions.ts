@@ -9,7 +9,7 @@
 import {
   MEMBERSHIPS, membershipAdmittedSql, partRecordSql, partRecordUnreadSql, partRecordWithdrawnSql, placeOfferedSql,
 } from '../../../db/membership.js';
-import { hideLostSql, offeredLocationSql, partRecordShownSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import { pointStandsSql, standsTodaySql, offeredLocationSql, partRecordShownSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { MOST_LEVELS } from '../../experience/partRecordController.js';
 import { withdrawnPointOpenSql } from '../../experience/reviewQueuePredicates.js';
 import { unreadPointSql } from '../../experience/waitingCounts.js';
@@ -29,7 +29,7 @@ const FAR_APART_M = 1000;
 const standingPointSql = (part: string) => `EXISTS (
   SELECT 1 FROM experience_locations el
    WHERE el.experience_id = ${part}.id AND el.merged_into_id IS NULL
-     AND ${hideLostSql('el')} AND el.refused_at IS NULL)`;
+     AND ${pointStandsSql('el')} AND el.refused_at IS NULL)`;
 
 /**
  * Two parts of one whole under one reference, standing at one spot.
@@ -308,9 +308,9 @@ const partGateOutOfStep: CatalogueAssertion = {
                AND is_part_line_point(el.id, rec.whole_id)) pts
           CROSS JOIN LATERAL (
             SELECT CASE WHEN ${partRecordShownSql('rec', 'part')} THEN 'shown'
-                        WHEN ${partRecordUnreadSql('rec')} AND ${hideLostSql('part')} THEN 'unread'
+                        WHEN ${partRecordUnreadSql('rec')} AND ${standsTodaySql('part')} THEN 'unread'
                         WHEN NOT ${membershipAdmittedSql('rec')} THEN 'turned down'
-                        WHEN ${partRecordWithdrawnSql('rec')} AND ${hideLostSql('part')} THEN 'withdrawn'
+                        WHEN ${partRecordWithdrawnSql('rec')} AND ${standsTodaySql('part')} THEN 'withdrawn'
                         ELSE 'hidden' END AS state) recd
          WHERE ${partRecordSql('rec')}
            AND pts.state <> recd.state

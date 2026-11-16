@@ -11,7 +11,7 @@
 
 import { canCurateExperienceSql } from '../../middleware/auth.js';
 import {
-  hideLostSql,
+  standsTodaySql,
   experienceOfferedToReaderSql,
   experienceShownToReaderSql,
   lifecycleSelectSql,
@@ -192,19 +192,19 @@ export function buildRegionQueries(opts: {
   // listed under and the pin the map draws — and not crowded out of a crowded
   // city (`experienceShownToReaderSql`, ADR-0172).
   const lifecycleFilter = ` AND ${experienceShownToReaderSql()}`
-    + (includeLostRows ? '' : ` AND ${hideLostSql()}`);
+    + (includeLostRows ? '' : ` AND ${standsTodaySql()}`);
   // The same rule as an expression, for the count: one aggregate answers how
   // many the list is showing and another how many it is holding back, so the
   // page can offer the toggle only where there is something behind it.
   const lifecyclePredicate = includeLostRows
     ? experienceShownToReaderSql()
-    : `${experienceShownToReaderSql()} AND ${hideLostSql()}`;
+    : `${experienceShownToReaderSql()} AND ${standsTodaySql()}`;
   // Refused rows are excluded here too. This number is an offer to reveal, and
   // revealing would not bring back a row the other predicate still hides.
   // Pending rows are excluded for the same reason: showing lost rows again
   // would not un-hide one that is also unread, so it must not be counted as
   // something the toggle would reveal.
-  const lostHiddenPredicate = `e.existence = 'lost' AND ${experienceOfferedToReaderSql()}`;
+  const lostHiddenPredicate = `NOT ${standsTodaySql()} AND ${experienceOfferedToReaderSql()}`;
   // What puts an object in this region: a point a reader may see, as its row
   // says (#521, ADR-0197) — `readerRegionMembershipSql` says why a row alone
   // is not enough without that mark. It goes on the WHERE of all four

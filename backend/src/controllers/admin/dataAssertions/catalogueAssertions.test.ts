@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import {
   claimablePlaceSql,
   experienceOfferedToReaderSql,
-  hideLostSql,
+  standsTodaySql,
   offeredLocationSql,
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
@@ -191,7 +191,7 @@ describe('an object offered to readers with no place a reader can see', () => {
     // as a subset of itself six times on one branch, and each time the missing
     // term was a different one.
     expect(sql).toContain(collapse(experienceOfferedToReaderSql()));
-    expect(sql).toContain(collapse(hideLostSql()));
+    expect(sql).toContain(collapse(standsTodaySql()));
     expect(sql).toContain(collapse(offeredLocationSql()));
     expect(sql).toContain(collapse(publishedContentSql('el')));
   });

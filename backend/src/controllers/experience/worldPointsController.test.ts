@@ -29,7 +29,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { standsTodaySql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { placeKindsSql, placeShownSql, shownKindsByPlaceSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
@@ -66,7 +66,7 @@ describe('getWorldPoints', () => {
     it.each([
       ['the source still offers the point, and it stands', () => offeredLocationSql('el')],
       ['a curator has looked at the point', () => publishedContentSql('el')],
-      ['the object still stands', () => hideLostSql('e')],
+      ['the object still stands', () => standsTodaySql('e')],
       ['some membership of it is admitted and passed and not crowded out', () => placeShownSql('e')],
     ])('asks whether %s', async (_question, fragment) => {
       const { sql } = await ask();

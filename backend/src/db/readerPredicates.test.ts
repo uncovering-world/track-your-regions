@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from './membership.js';
 import {
   claimablePlaceSql,
-  hideLostSql,
+  standsTodaySql,
   lifecycleSelectSql,
   offeredLocationSql,
   offeredLinkSql,
@@ -50,16 +50,19 @@ describe('offeredLocationSql', () => {
     // `former` says the source stopped listing it, and a curator's reading of a list
     // must not remove a place that is still standing — what keeps such a point off the
     // map is its `missing_since`, which the verdict leaves standing. Same split an
-    // experience has: `hideLostSql` exists, and there is no `hideFormerSql`.
+    // experience has: `standsTodaySql` exists, and there is no `hideFormerSql`.
     expect(offeredLocationSql()).not.toContain('source_membership');
   });
 });
 
-describe('hideLostSql', () => {
-  it('hides only what no longer exists', () => {
-    const sql = hideLostSql();
+describe('standsTodaySql', () => {
+  it('hides only what no longer exists: a place that holds its own end (ADR-0214)', () => {
+    const sql = standsTodaySql();
 
-    expect(sql).toContain("existence <> 'lost'");
+    expect(sql).toContain("NOT EXISTS (SELECT 1 FROM place_dates");
+    expect(sql).toContain("slot = 'ended'");
+    // The end of a use never hides a place: Göbekli Tepe stands.
+    expect(sql).not.toContain('use_ended');
     // `former` is a claim about the source's catalogue, not about the world:
     // the place is still there and still worth going to
     expect(sql).not.toContain('source_membership');
@@ -69,11 +72,11 @@ describe('hideLostSql', () => {
   });
 
   it('qualifies the column, so it can join a query with more than one table', () => {
-    expect(hideLostSql('ex')).toContain("ex.existence <> 'lost'");
+    expect(standsTodaySql('ex')).toContain('place_end.experience_id = ex.id');
   });
 
   it('comes bare, since some callers push it into a conditions array', () => {
-    expect(hideLostSql().trimStart()).not.toMatch(/^AND/);
+    expect(standsTodaySql().trimStart()).not.toMatch(/^AND/);
   });
 });
 

@@ -6,7 +6,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, placeOfferedSql, placeShownSql } from '../../db/membership.js';
-import { experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql, standsTodaySql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -252,6 +252,14 @@ describe('getExperience curation relaxation', () => {
  * array rather than in this paragraph, so `filtersLost` states it per path and
  * both loops below assert what that path actually promises.
  */
+/**
+ * The place's end asked as a filter (`AND` before it), on an `experiences`
+ * alias ending in `e`: a card's own answer to whether the place stands
+ * (`lifecycleSelectSql`) carries the same fragment inside a CASE and filters
+ * nothing.
+ */
+const STANDS_TODAY_FILTER = /AND NOT EXISTS \(SELECT 1 FROM place_dates place_end WHERE place_end\.experience_id = \w*e\.id/;
+
 describe('lifecycle visibility across the read paths', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
@@ -332,13 +340,13 @@ describe('lifecycle visibility across the read paths', () => {
       // filter sits inside the `experience_count` subquery and not in the outer
       // WHERE is Postgres's answer, not a mock's.
       if (filtersLost) {
-        expect(all).toMatch(/e\.existence <> 'lost'/);
+        expect(all).toMatch(STANDS_TODAY_FILTER);
       } else {
         // Pinned so this path stays in step with the sibling by-id reads in
         // experienceLocationController.test.ts, not because leaving `lost`
         // reachable here is settled — the handler's own comment flags closing
         // it as a separate decision about a different question.
-        expect(all).not.toMatch(/e\.existence <> 'lost'/);
+        expect(all).not.toMatch(STANDS_TODAY_FILTER);
       }
       // `former` is a claim about the source's catalogue, not about the world.
       // Left unanchored on purpose: a negative is strongest when it names no
@@ -421,7 +429,7 @@ describe('lifecycle visibility across the read paths', () => {
     // Aliased: `readerPositionSql` filters *locations* on existence, so that a
     // row is never positioned at a place this same caller cannot see. The claim
     // here is about the experience.
-    expect(sql).not.toContain("e.existence <> 'lost'");
+    expect(sql).not.toMatch(STANDS_TODAY_FILTER);
     expect(sql).toContain("admission <> 'refused'");
   });
 
@@ -430,8 +438,8 @@ describe('lifecycle visibility across the read paths', () => {
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     const [list, count] = mockedQuery.mock.calls.map(c => String(c[0]));
-    expect(list).toContain("existence <> 'lost'");
-    expect(count).toContain("existence <> 'lost'");
+    expect(list).toContain(standsTodaySql('e'));
+    expect(count).toContain(standsTodaySql('e'));
   });
 
   it('gates the same rows it lists, or the tree would disagree with itself', async () => {
@@ -474,7 +482,7 @@ describe('lifecycle visibility across the read paths', () => {
     // map — `offeredLocationSql` carries `el.existence <> 'lost'` beside the
     // withdrawal flag (ADR-0026). Unanchored, this would read that as the reader's
     // request being ignored.
-    expect(all).not.toContain("e.existence <> 'lost'");
+    expect(all).not.toMatch(STANDS_TODAY_FILTER);
   });
 
   it('says how many it is holding back, so the page can offer to show them', async () => {
@@ -485,14 +493,14 @@ describe('lifecycle visibility across the read paths', () => {
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
     expect(count).toContain(
-      `FILTER (WHERE e.existence = 'lost' AND ${experienceOfferedToReaderSql('e')})`);
+      `FILTER (WHERE NOT ${standsTodaySql('e')} AND ${experienceOfferedToReaderSql('e')})`);
     expect(count).toContain('lost_hidden');
     // A refused row is not something the reader is being offered a look at:
     // revealing the lost would not bring it back (ADR-0024). Same for a
     // pending one: `curation_state` has no toggle here, unlike `existence`
     // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
     expect(count).toContain(
-      `FILTER (WHERE ${experienceShownToReaderSql('e')} AND e.existence <> 'lost')`);
+      `FILTER (WHERE ${experienceShownToReaderSql('e')} AND ${standsTodaySql('e')})`);
   });
 
   it('counts everything as shown once the caller asked for them', async () => {

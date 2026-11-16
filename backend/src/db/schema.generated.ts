@@ -766,7 +766,6 @@ export interface ExperiencesRow {
   path_updated_at: Date | null;
   missing_since: Date | null;
   source_membership: string;
-  existence: string;
   state_decided_by: number | null;
   state_decided_at: Date | null;
   state_note: string | null;
@@ -1811,7 +1810,6 @@ export const COLUMN_WIDTHS = {
     image_url: 1000,
     status: 20,
     source_membership: 10,
-    existence: 10,
     whole_shape: 10,
   },
   geometry_computations: {
@@ -2009,7 +2007,6 @@ export const CHECK_VALUES = {
     reading: ["visit", "part", "object", "nothing", "not-a-place", "other-kind"],
   },
   experiences: {
-    existence: ["extant", "lost"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
     whole_shape: ["dispersed", "container"],

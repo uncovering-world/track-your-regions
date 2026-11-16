@@ -14,7 +14,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, standsTodaySql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { membershipOfferedSql } from '../../db/membership.js';
@@ -61,7 +61,7 @@ describe('getSiteFinds', () => {
     expect(sql).not.toMatch(/::boolean OR/);
     // The museum admitted, passed and still standing; the work passed.
     expect(sql).toContain(experienceOfferedToReaderSql('sv'));
-    expect(sql).toContain(hideLostSql('sv'));
+    expect(sql).toContain(standsTodaySql('sv'));
     // Anchored on the AND, since `publishedContentSql('t')` could be a
     // substring of another alias's and would match with the work's gone.
     expect(sql).toMatch(new RegExp(`AND ${publishedContentSql('t')}`));
@@ -70,7 +70,7 @@ describe('getSiteFinds', () => {
     expect(sql).toContain(experienceOfferedToReaderSql('e'));
     // But not whether it still stands: a flooded dig's finds are still on
     // view, and the count on its row says so too.
-    expect(sql).not.toContain(hideLostSql('e'));
+    expect(sql).not.toContain(standsTodaySql('e'));
     // A find no visible museum holds is not a find anybody can go and see —
     // asked of the same rows the list of museums is built from.
     expect(sql).toMatch(/AND EXISTS \(SELECT 1 FROM experience_treasures sl/);

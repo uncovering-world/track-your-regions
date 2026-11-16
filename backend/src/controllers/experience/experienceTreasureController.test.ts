@@ -23,7 +23,7 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import {
   experienceOfferedToReaderSql,
-  hideLostSql,
+  standsTodaySql,
   linkedForReaderSql,
   readableByIdSql,
   venuesSql,
@@ -184,7 +184,7 @@ describe('getExperienceTreasures gate', () => {
     expect(sql).toMatch(/site_member\.experience_id = site\.id\s+AND site_member\.type = 'site'\s+AND site_member\.external_id = t\.metadata->'foundAt'->>'qid'/);
     expect(sql).toContain(`AND ${membershipOfferedSql('site_member')})`);
     expect(sql).toContain(experienceOfferedToReaderSql('site'));
-    expect(sql).toContain(hideLostSql('site'));
+    expect(sql).toContain(standsTodaySql('site'));
     expect(sql).toMatch(/WHERE er\.experience_id = site\.id/);
     expect(sql).toMatch(/ORDER BY r\.geom_area_km2 ASC NULLS LAST, r\.id/);
     // The alias too, since the row below is the mock's: a projection renamed

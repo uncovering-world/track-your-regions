@@ -27,6 +27,8 @@ import { DUMP_KEYS } from '../services/dumps/catalog.js';
 export * from './worldViewImportSchemas.js';
 // The names the review queue map's short list asks for (#2501), beside the map's own query below.
 export * from './reviewQueueMapNamesSchema.js';
+// A lifecycle verdict's body, for a place and for one of its points.
+export * from './lifecycleStateSchema.js';
 
 // =============================================================================
 // API query params
@@ -692,52 +694,6 @@ export const reviewQueueMapQuerySchema = reviewQueueQuerySchema.pick({
 });
 
 /**
- * A lifecycle verdict, for an object or for one point inside it.
- *
- * One schema for both endpoints because it is one question — delisted, gone, or
- * never gone — asked about two rows that carry the same two axes in the same words
- * (ADR-0026). What the two verdicts *do* differs, and that difference lives in the
- * controllers rather than in the body: on an experience every answer clears
- * `missing_since`, on a location only the false alarm does, because there the flag
- * is one of the two terms that keep a point off the map — `former` is held by the
- * flag, `lost` by its own axis whatever the flag says (ADR-0026 decision 7). So the
- * false alarm is the only answer that clears the flag, though not the only one that
- * can reveal a point: taking a `lost` verdict back on a row whose flag is already
- * clear reveals it too.
- */
-export const lifecycleStateBodySchema = z.object({
-  membership: z.enum(CHECK_VALUES.experiences.source_membership).optional(),
-  existence: z.enum(CHECK_VALUES.experiences.existence).optional(),
-  note: z.string().max(1000).optional(),
-  /**
-   * The row as the curator was looking at it: both axes and whether it was
-   * flagged. Required, and compared under the write lock — it is the only
-   * thing that distinguishes a card drawn before the question was answered
-   * from a deliberate correction made with the current state in view.
-   *
-   * `flagged` is not redundant with the axes. A run that finds the object
-   * again clears `missing_since` and touches neither axis, so a queue card
-   * still matches on both while the question it was asking has been withdrawn
-   * — and answering "former" then records as delisted an object the source
-   * currently lists.
-   */
-  expected: z.object({
-    membership: z.enum(CHECK_VALUES.experiences.source_membership),
-    existence: z.enum(CHECK_VALUES.experiences.existence),
-    flagged: z.boolean(),
-  }),
-  /**
-   * One kind whose source stopped listing the place while another still lists
-   * it (#1264): the verdict is that membership's, and `expected` is its own
-   * listing and flag beside the place's existence. Absent, the verdict is the
-   * place's.
-   */
-  membershipId: bodyRowIdSchema.optional(),
-}).refine(b => b.membership !== undefined || b.existence !== undefined, {
-  message: 'Pass membership, existence, or both',
-});
-
-/**
  * The membership a curator's answer is about (#1264, ADR-0084): a place in two
  * kinds can have an arrival in one and a refusal or a held proposal in the
  * other, and the card the curator answered names which. Optional — absent, the
@@ -972,7 +928,6 @@ export const declineSourceBodySchema = z.object({
   fields: z.array(z.string().min(1)).min(1).max(20),
   expectedSyncLogId: bodyRowIdSchema,
 });
-
 
 /**
  * One part of a held proposal, as a request names it (#722).

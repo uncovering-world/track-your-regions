@@ -19,7 +19,7 @@ import {
 } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
-  hideLostSql,
+  standsTodaySql,
   experienceShownToReaderSql,
   readableByIdSql,
   offeredLocationSql,
@@ -132,7 +132,7 @@ export async function getRegionExperienceLocations(
   // the memberships, as the list asks it (`experienceShownToReaderSql`, #1275),
   // a crowded city's tail left out as the list leaves it (ADR-0172).
   const lifecycleFilter = `AND ${experienceShownToReaderSql()} `
-    + (includeLost(q) ? '' : `AND ${hideLostSql()}`);
+    + (includeLost(q) ? '' : `AND ${standsTodaySql()}`);
 
   let query: string;
   const params: number[] = [regionId];

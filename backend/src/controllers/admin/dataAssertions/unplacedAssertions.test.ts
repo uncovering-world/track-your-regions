@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { experienceOfferedToReaderSql, hideLostSql, offeredLocationSql } from '../../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, standsTodaySql, offeredLocationSql } from '../../../db/readerPredicates.js';
 import { unplacedAssertions } from './unplacedAssertions.js';
 
 const byId = (id: string) => {
@@ -22,7 +22,7 @@ describe('an object no region holds', () => {
 
   it('asks about the reader-facing object, whole', () => {
     expect(sql).toContain(collapse(experienceOfferedToReaderSql()));
-    expect(sql).toContain(collapse(hideLostSql()));
+    expect(sql).toContain(collapse(standsTodaySql()));
   });
 
   it('asks whether any row places the object, not whether a reader may see it there', () => {

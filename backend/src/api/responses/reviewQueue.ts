@@ -19,6 +19,7 @@ import { VIEW_FIELDS } from '../../db/sourceViews.js';
 import { GATE_PASSES } from '../../services/sync/changeSet.js';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
+import { EXISTENCES } from '@tyr/shared/lifecycle';
 import { WITNESSES } from '../../services/sync/visit/witnesses.js';
 import {
   QUEUE_ITEM_KINDS, QUEUE_KINDS, REVIEW_ANSWERS, WAITING_SUBS,
@@ -37,7 +38,7 @@ export type RegionCrossing = z.infer<typeof RegionCrossing>;
 const timestamp = z.iso.datetime({ offset: true });
 
 const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership);
-const Existence = z.enum(CHECK_VALUES.experiences.existence);
+const Existence = z.enum(EXISTENCES);
 
 export const QueueKind = z.enum(QUEUE_KINDS)
   .describe('The class of an open question, which a batch answer names a row by.');
