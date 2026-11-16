@@ -110,6 +110,7 @@ The inventory this section held — every reader of `category_id` on both stacks
 - `experience_kinds`: what a traveller browses by (ADR-0045 decision 1); five rows under the sources' ids
 - `source_records`: a place's membership in a kind (ADR-0045 decision 4, #822) — the source that brought it, the admission verdict and its reason, `admitted_for`, the must-see badge, the curator's pins on those, and the gate state of the arrival
 - `place_dates` and `record_dates`: a place's lifetime and each source's view of it (§ A place's lifetime)
+- `place_periods` and `record_periods`: a place's time as periods and each source's view of it (§ A place's periods)
 - `experience_regions`: the regions a place is in, its parts included, one row per region (`assignment_type = auto | manual`; `listing`, whether a reader finds it there, ADR-0197)
 - `user_visited_experiences`: per-user visit state
 - `experience_sync_logs`: sync audit log by source (`source_id`)
@@ -220,6 +221,60 @@ The upsert then writes, under the place's lock, the run's view on its own record
 
 A date written onto the place is filed on the run's change set beside its other fields, so an
 object whose only write is a date reads as updated; a preview files the same without writing.
+
+### A place's periods (#2578, [ADR-0217](../decisions/0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md))
+
+A period says that something was so from one date until another. A place holds its periods in
+`place_periods`, one row each, keyed by the place, what the period says and its number in time
+order:
+
+| `says` | what was so | example |
+|---|---|---|
+| `stood` | the place itself stood | the Cathedral of Christ the Saviour in Moscow: 1883 → 5 December 1931, destroyed; 2000 → open |
+| `used` | what it housed or was used for | Göbekli Tepe: in use until about 7000 BC |
+| `closed` | it could not be visited | the Pergamon Museum: October 2023 → 2027 |
+| `held` | an event took place there | Holy Week in Seville: 21 → 28 March 2027 |
+
+Each end of a period is a date as § A place's lifetime describes it (`from_*`, `until_*`), or is not
+known (no year). `ended` says whether the period has ended: an open period still holds and has no
+end date, and an ended one may have none either, for a place known gone with no date. A `stood`
+period that ended may say how (`ending`), and a use or a closure may carry a curator's words
+(`what`). Each end names the Wikidata property and statement it was read from, and the row the
+source its view was taken from (`source_id`, Curators with `decided_by` for a curator's). Each
+source's view of the same periods is in `record_periods`, keyed by its record (ADR-0084).
+
+Beside its ends a period keeps the outer days it may cover: `from_first`, the first day its start
+may be, and `until_last`, the last day its end may be, in the count of days `periodOf` orders dates
+by. The writer writes them from `outerDaysOf` (`@tyr/shared/lifetime`), which has no twin in SQL,
+and a read as of a date compares them: a trip of 1980 falls after the `until_last` of the
+cathedral's first period and before the `from_first` of its second.
+
+**The shape is held three times, each by what it can say.**
+
+- The schema: `period_ok()` is the one CHECK of a period on both tables (each end a date by
+  `approx_date_ok()`, an end date only on an ended period, an outer day exactly where its end has a
+  year, the start's first day never after the end's last), beside the CHECK lists of `says`, the
+  spans and the endings, and `idx_place_periods_standing`, which lets a place hold one open
+  standing period at most.
+- The shared rule, `periodsFault` in `@tyr/shared/lifetime`, checks a list of periods that say one
+  thing: the days a month has, the list in time order, standing periods that do not overlap and
+  of which only the last may be open, and no standing period or use in the future
+  (`latestDayOnEarth`); a closure and an occurrence may lie ahead. `PERIOD_SAYS` is the vocabulary,
+  which `curationLogActions.test.ts` holds to the schema's.
+- The writer, `db/placePeriodsWriter.ts`, the only module that writes the two tables (ADR-0069,
+  `PLACE_PERIOD_WRITE_RULES`), under the place's `LockedExperience`: `writePlacePeriods` replaces
+  the place's whole list of periods that say one thing, and `writeRecordPeriods` a record's whole
+  view. Both ask `periodsFault` first, number the list in the order given, and rewrite no row
+  that is written as it stands.
+
+**A place is gone when it has standing periods and none is open** (ADR-0217 decision 5).
+`experiences.stands_today` is that statement as a column: `derive_stands_today()` keeps it equal to
+`place_stands()` after every write to a `stood` period, and `stands_today_is_derived()` refuses any
+other write of it, so the trigger is its one writer. Nelson's Pillar in Dublin (1809 → 8 March
+1966) reads false; a place with no period, or with only a use that ended, stands. No reader reads
+the column yet: `existence` still hides a lost place.
+
+Both tables are serving tables (ADR-0124). No run or curator writes them yet.
 
 ### Location model
 
