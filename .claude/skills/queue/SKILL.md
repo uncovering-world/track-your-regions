@@ -272,6 +272,21 @@ hides the merges before it.
   breaks the third rule; name both items.
 - **A detour whose end condition holds** but which is still open.
 - **An owner that has not touched the queue in seven days.**
+- **An item and an ADR where only one names the other.** Run the check over the queue's open
+  items:
+
+  ```bash
+  scripts/adr-issues.sh check '#<item>' '#<item>'
+  ```
+
+  Each line it prints is an item nobody has compared with that ADR yet. Report it as one drift
+  line and propose the comparison, before the item starts: where the two agree the link is
+  added, and where they disagree it is the maintainer's question, proposed as a `change` in the `check` entry with
+  both sentences and the verdict of the four steps in `docs/decisions/README.md` § An ADR names
+  the issues built to it. Exit 2
+  means GitHub was not read: say the line was not checked. The check reads only the links
+  that exist, so an item that names no ADR and is in no ADR's field prints nothing: whether it
+  is built to one is found by reading it, as `/feature` does before it starts.
 
 ### `change`
 

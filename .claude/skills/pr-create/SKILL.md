@@ -134,6 +134,24 @@ Also confirm the gates this branch asks for ran on it. **A gate runs when, and o
 
 Run `npm run gates -- --base main` on the branch, on a clean tree, to get that list as the reviewer's CI will compute it, and say in the PR what ran. (`--rev HEAD`, the default, reads the working tree and the untracked files too, which CI never sees; on a clean tree the two agree.) A job reported green because its inputs were untouched is not a job that found nothing wrong — it is a job that had nothing to read.
 
+### 2.7 A branch that touches an ADR compares it with its issues (mandatory gate)
+
+Skip this when `git diff --name-only main...<branch> -- docs/decisions/` prints no ADR file. Otherwise the branch adds, amends or accepts a decision, and that is the moment an ADR and an issue come apart (`docs/decisions/README.md` § An ADR names the issues built to it). For each ADR the branch touches:
+
+1. Its `**Built by:**` field names every issue built to it. Fill the field when the ADR is new or has none yet.
+2. Read each open issue in the field against the ADR's decisions. Neither outranks the other.
+   - **They agree:** put `**Built to:** ADR-NNNN decisions …` at the top of the issue's Description. That is a link and needs no discussion.
+   - **They disagree:** do not rewrite the issue, and do not rewrite the ADR. Analyse it in the four steps of `docs/decisions/README.md` § An ADR names the issues built to it (a named case, what decides it, the roles, one verdict with its confidence and the strongest argument against), then put it to the user, in the chat and in a comment on the issue, with both sentences quoted. After the decision, change the side it names and record the decision and its reason on the issue and, where the ADR changed, in the ADR.
+3. Run the check on the branch, naming the ADRs it touches:
+
+   ```bash
+   scripts/adr-issues.sh check ADR-NNNN ADR-MMMM
+   ```
+
+   It checks the links in both directions. A link it reports missing is an issue step 2 has not read yet: read it, never paste the line to make the check pass.
+
+**The PR is not opened while the check exits 1 or a disagreement is undecided.** Exit 2 means it could not read GitHub and nothing was checked: fix the access and run it again, since a PR cannot be opened without that access either.
+
 ### 3. For each branch, analyze the changes
 
 Switch context to the branch (without checking it out) and gather info:
@@ -164,6 +182,8 @@ Write a clear summary of what the branch does and why. Derive this from the comm
 When the branch gives a rule a new owner (a shared module, a route declaration, a writer module, a generated type, a trigger — every slice of #788), the Description names what the branch **deleted** as part of the result, beside what it added: the parity test, duplicated constant or type, handwritten adapter, lint rule or review-bot twin line the owner made obsolete (`/refactor-check` drafts the paragraph). A guard kept on purpose is named with the follow-up issue that owns its removal and the dependency that blocks it now. If the branch establishes an owner and the Description can name neither a deletion nor such an issue, stop and tell the user before opening — the development guide rejects a new layer beside copies that stay authoritative (`docs/tech/development-guide.md` § A migration deletes what its owner replaced).
 
 When the branch shows a reader a new field of a place (a line, a chip, a link or a list on its card), the Description says how a curator corrects it: the dialog field or the editor it ships, stored as the curator's and kept from the next run. A field the guide says needs none of its own (one worked out from another field, corrected through that field; a fact the World Heritage List states) needs neither, and the Description says which it is. Where the branch does not build a correction a field needs, the Description names the issue that will. If it can name neither, stop and tell the user before opening (`docs/tech/development-guide.md` § A field a reader is shown is a field a curator corrects).
+
+When the branch touches an ADR (§ 2.7), the Description lists the issues found in disagreement with it and how each was settled: the issue, the two sentences in short, which side changed and why ("#2009 asked for a virtual kind; ADR-0217 decision 7 makes it a section of each list; the maintainer kept the ADR, body corrected"). It then names the issues that only gained their `**Built to:**` line. "None in disagreement" is written only after every issue in the field was read.
 
 #### Related Issues
 - If commit messages reference issues, include them with `Closes #N` / `Fixes #N` (the merge closes the issue) or `Part of #N` (partial progress — the issue stays open). Use `Relates to #N` only for a loose association that should not drive the issue's board status.
