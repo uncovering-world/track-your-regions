@@ -486,7 +486,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `database` | `/^db\/(?!catalogue-coverage\/.*\.jsonl$)/` | The schema, the migrations and the loaders: what a database is built from. The backend unit lane reads db/ through repoFile() — schema parity, the migration ledger, the trigger guards — and the stack lanes stand on it. No lint, typecheck or web gate reads it. |
 | `tiles` | `martin/` | Martin's configuration. The backend unit lane asserts on the tile sources it publishes, and the smoke and Lighthouse lanes draw them. |
 | `scripts` | `scripts/` | The repository's own scripts and their specs, whole: the tooling specs run in the backend unit lane, and two of its specs scan the tree for anything that switches the geometry triggers off. |
-| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-screen-allowance\.mjs\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|gates-base\.mjs\|gates-run\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|migrate-on-rows\.mjs\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh\|test-migrate-on-rows\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
+| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:adr-issues\.sh\|affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-screen-allowance\.mjs\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|gates-base\.mjs\|gates-run\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|migrate-on-rows\.mjs\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh\|test-migrate-on-rows\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
 | `compose` | `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | What the containers are: the dev and test stacks, the unit lanes' container shape and the variables they read. Every lane that runs in a container reads it; no lint or typecheck does. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/: the Python test lane runs their tests, check:py and Bandit read them with db/’s own configuration (#1736), and pip-audit reads the versions their image carries (#1782, db/requirements.txt). |
@@ -1154,6 +1154,14 @@ outside the map like `test:db-migrate`, since each case stands a database up.
   (`check_image_versions.py`, run by `db/Dockerfile`), which CI does not do:
   a base-image bump that leaves the pins behind passes the audit and fails at
   the next `npm run db:load-gadm`.
+- **Whether an ADR and the issues built to it name each other.** One end of that
+  link is an issue's body, which lives on GitHub and in no file a change
+  touches, so no input class can name it and a gate would answer differently
+  with the network down. `scripts/adr-issues.sh check` (`npm run adr:issues`)
+  reads both ends and is run by `/pr-create` on a branch that touches
+  `docs/decisions/`, by `/queue check` and by `/docs-sweep`
+  (`development-guide.md` § An ADR and the issues built to it agree). Its
+  parsing is held by `scripts/adr-issues.test.mjs` in the backend unit lane.
 - **No gate covers the backend ↔ cv-python HTTP contract.**
   `backend/src/services/cv/pythonCvClient.ts` calls the FastAPI service over
   HTTP; no backend spec exercises it, and `scripts/test-stack.sh` starts `db`,
