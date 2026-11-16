@@ -3882,6 +3882,7 @@ export const ProposedFieldPassedTheGate = {
   unseen: 'unseen',
   typography: 'typography',
   'short-move': 'short-move',
+  'first-date': 'first-date',
 } as const;
 
 /**
@@ -3996,6 +3997,7 @@ export const ChangedFieldPassedTheGate = {
   unseen: 'unseen',
   typography: 'typography',
   'short-move': 'short-move',
+  'first-date': 'first-date',
 } as const;
 
 /**

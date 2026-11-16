@@ -189,7 +189,7 @@ export interface SyncLogStats {
   unchanged: number;
   missing: number;
   curatedConflicts: number;
-  /** Rows the gate held whole; a subset of `unchanged`, counted again (#523). */
+  /** Rows holding a change the gate kept out, counted beside their own bucket, `unchanged` or `updated` (#523, #1719). */
   held: number;
   filtered: number;
   errors: number;

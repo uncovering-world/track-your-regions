@@ -102,11 +102,13 @@ export type FieldSignificance = 'major' | 'minor';
  * (`unseen`, ADR-0139: its mark in `@tyr/shared/placeFields`), and a text
  * rewritten only in its typesetting (`typography`, ADR-0139: `sameTypography`)
  * pass too, and so does a coordinate moved a short way (`short-move`, ADR-0140).
+ * A date of the place's lifetime filled where the place held none passes as
+ * well (`first-date`, ADR-0214 decision 4), decided by `lifetimeWrites.ts`.
  * Every other rewrite is held as before (ADR-0099).
  */
 export const GATE_PASSES = [
   'qualifier', 'same-file-credit', 'remeasured', 'own-item', 'first-subtitle', 'type-outside-vocabulary',
-  'type-within-vocabulary', 'unseen', 'typography', 'short-move',
+  'type-within-vocabulary', 'unseen', 'typography', 'short-move', 'first-date',
 ] as const;
 export type GatePass = (typeof GATE_PASSES)[number];
 
