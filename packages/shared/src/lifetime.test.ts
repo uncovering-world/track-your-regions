@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isValidPlaceDate, julianToGregorian, samePlaceDate, type PlaceDate } from './lifetime.js';
+import { compareApproximate } from './approximateDates.js';
+import { comparePlaceDates, isValidPlaceDate, julianToGregorian, samePlaceDate, type PlaceDate } from './lifetime.js';
 
 const date = (year: number | null, rest: Partial<Omit<PlaceDate, 'year'>> = {}): PlaceDate =>
   ({ year, month: null, day: null, span: null, circa: false, ...rest });
@@ -88,5 +89,31 @@ describe('a day of the Julian calendar, as the Gregorian day it is (#1719)', () 
     // 1300 leaps in the Julian calendar, not in the Gregorian; 1 BC leaps in both.
     expect(julianToGregorian(1300, 2, 29)).toEqual({ year: 1300, month: 3, day: 8 });
     expect(julianToGregorian(-1, 2, 29)).toEqual({ year: -1, month: 2, day: 27 });
+  });
+});
+
+describe('the one order of dates (#1719, #2008)', () => {
+  it('orders two dates only where the periods they may be do not overlap', () => {
+    // 1859 and 6 September 1859; the 1950s and 1955; the 1600s century and 1550.
+    expect(comparePlaceDates(date(1859), date(1859, { month: 9, day: 6 }))).toBe(0);
+    expect(comparePlaceDates(date(1950, { span: 'decade' }), date(1955))).toBe(0);
+    expect(comparePlaceDates(date(1600, { span: 'century' }), date(1550))).toBe(0);
+    expect(comparePlaceDates(date(1808), date(1809, { month: 10, day: 21 }))).toBe(-1);
+    expect(comparePlaceDates(date(-7000, { span: 'millennium' }), date(-9999, { span: 'millennium' }))).toBe(1);
+    expect(comparePlaceDates(date(null), date(1966))).toBe(0);
+  });
+
+  it('agrees in sign with a trip\'s order on every date a trip can hold', () => {
+    const trips = [
+      { year: 2015, month: null, day: null }, { year: 2015, month: 5, day: null }, { year: 2015, month: 5, day: 12 },
+      { year: 2022, month: 3, day: null }, { year: 2022, month: 3, day: 1 }, { year: 2022, month: 3, day: 2 },
+      { year: 1999, month: 12, day: 31 }, { year: null, month: null, day: null },
+    ];
+    for (const a of trips) {
+      for (const b of trips) {
+        const asPlace = (t: typeof a): PlaceDate => ({ ...t, span: null, circa: false });
+        expect(Math.sign(compareApproximate(a, b))).toBe(comparePlaceDates(asPlace(a), asPlace(b)));
+      }
+    }
   });
 });
