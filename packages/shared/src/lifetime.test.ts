@@ -168,6 +168,18 @@ describe('a period of a place (#2578, ADR-0217)', () => {
     expect(periodsFault('used', [open(date(537)), ended(date(1453), date(1931))], TODAY)).toBeNull();
   });
 
+  it('refuses dates stated the wrong way round even where the span of one may hold the other (#2578)', () => {
+    // The Church of St. Jaume in Alcúdia: an inception to the century of 1900, a destruction on 18 February 1870.
+    const century = date(1900, { span: 'century' });
+    const destroyed = date(1870, { month: 2, day: 18 });
+    expect(periodsFault('stood', [ended(century, destroyed), open(date(1893))], TODAY)).toBe('it ends before it starts');
+    expect(periodsFault('stood', [ended(null, date(1955)), open(date(1950, { span: 'decade' }))], TODAY)).toBe('two periods overlap');
+    expect(periodsFault('used', [ended(date(1900, { span: 'century' }), null), open(date(1870))], TODAY)).toBe('the periods are not in time order');
+    // The same year, however precisely either is stated, is neither way round.
+    expect(periodsFault('stood', [ended(date(2019), date(2019, { month: 6, day: 14 }))], TODAY)).toBeNull();
+    expect(periodsFault('stood', [ended(date(1800, { span: 'century' }), destroyed), open(date(1893))], TODAY)).toBeNull();
+  });
+
   it('refuses a period that ends before it starts, an end date on an open period and a date no calendar has', () => {
     expect(periodsFault('stood', [ended(date(2000), date(1931))], TODAY)).toBe('it ends before it starts');
     expect(periodsFault('stood', [{ from: date(1883), ended: false, until: date(1931) }], TODAY)).toBe('it has an end date and has not ended');
