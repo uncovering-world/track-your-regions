@@ -8506,6 +8506,28 @@ export interface GuideArticles {
   truncated: boolean;
 }
 
+export type ReviewArticleLeadsLeadsItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  placeId: number;
+  /** The article's title as a reader reads it, spaces and not underscores. */
+  title: string;
+  /** The article, as the place holds it. */
+  url: string;
+  /** The first sentence of the article's lead, as Wikipedia's extract gives it in plain text. */
+  sentence: string;
+};
+
+/**
+ * The first sentence of the Wikipedia article of each place a page of review cards shows (#2185).
+ */
+export interface ReviewArticleLeads {
+  /** The asked places this curator has an open question about, with an English article whose lead was read. A place outside the scope, one with no English article, or one whose article Wikipedia did not answer for is left out. */
+  leads: ReviewArticleLeadsLeadsItem[];
+}
+
 /**
  * One place found by name.
  */
@@ -9189,6 +9211,14 @@ export const GetExperiencesByIdPartCandidatesRole = {
   whole: 'whole',
   line: 'line',
 } as const;
+
+export type GetExperiencesReviewArticleLeadsParams = {
+  /**
+   * @maxLength 1100
+   * @pattern ^[1-9]\d{0,8}(?:,[1-9]\d{0,8}){0,99}$
+   */
+  ids: string;
+};
 
 export type GetGeocodeSearchParams = {
   /**
@@ -15073,6 +15103,38 @@ export const getGetExperiencesReviewGuideArticlesByMembershipIdUrl = (membership
 export const getExperiencesReviewGuideArticlesByMembershipId = async (membershipId: number, options?: Parameters<typeof apiFetch>[1]): Promise<GuideArticles> => {
 
   return apiFetch<GuideArticles>(getGetExperiencesReviewGuideArticlesByMembershipIdUrl(membershipId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewArticleLeadsUrl = (params: GetExperiencesReviewArticleLeadsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/article-leads?${stringifiedParams}` : `/api/experiences/review/article-leads`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary The first sentence of the English Wikipedia article of each asked place a page of review cards shows
+ */
+export const getExperiencesReviewArticleLeads = async (params: GetExperiencesReviewArticleLeadsParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewArticleLeads> => {
+
+  return apiFetch<ReviewArticleLeads>(getGetExperiencesReviewArticleLeadsUrl(params),
   {
     ...options,
     method: 'GET'

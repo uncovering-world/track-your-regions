@@ -1,5 +1,5 @@
 /**
- * The form behind an arrival's "Belongs in another kind…" (#2213), loaded when
+ * The form behind an arrival's "Another kind…" (#2213), loaded when
  * the curator opens it: `ArrivalKindChoice` says what it answers.
  *
  * The kinds offered are the ones the place is not in yet, World Heritage Sites

@@ -67,7 +67,7 @@ describe('an arrival answered with another kind', () => {
       arrivalMembershipId: 501, fromKind: 'Public art', stays: false, arrivalPublished: false, arrivalWaits: null,
     });
     const onDone = renderChoice();
-    fireEvent.click(screen.getByRole('button', { name: 'Belongs in another kind…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Another kind…' }));
     await kindsRead();
     await choose('Kind', 'Monuments & memorials');
     // The kind's vocabulary: no move until a type is chosen.
@@ -93,7 +93,7 @@ describe('an arrival answered with another kind', () => {
       arrivalMembershipId: 501, fromKind: 'Public art', stays: true, arrivalPublished: true, arrivalWaits: null,
     });
     renderChoice();
-    fireEvent.click(screen.getByRole('button', { name: 'Belongs in another kind…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Another kind…' }));
     await kindsRead();
     await choose('Kind', 'Monuments & memorials');
     await choose('Type', 'Monument');
@@ -113,7 +113,7 @@ describe("the form opened from Jev's reading (#2342)", () => {
     expect(screen.getByRole('combobox', { name: 'Kind' })).toHaveTextContent('Towers');
     expect(screen.getByRole('button', { name: 'Move to Towers' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByRole('button', { name: 'Belongs in another kind…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Another kind…' })).toBeInTheDocument();
   });
 
   it('chooses nothing where the place cannot be put into the kind Jev named', async () => {

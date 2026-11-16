@@ -73,7 +73,7 @@ describe('a place two kinds ask about', () => {
     renderCard();
 
     expect(screen.getAllByText('Capitoline Museums')).toHaveLength(1);
-    expect(screen.getByText('Archaeology asks')).toBeInTheDocument();
+    expect(screen.getByText('Is this an archaeological site or museum?')).toBeInTheDocument();
     expect(screen.getByText('Art Museums asks')).toBeInTheDocument();
     // The header is the object; a button opening it again repeated it (#1780).
     expect(screen.queryByRole('button', { name: 'Look at the object' })).toBeNull();
@@ -82,17 +82,17 @@ describe('a place two kinds ask about', () => {
   it('says readers see the place under its other kind, not that nobody can see it', () => {
     renderCard();
 
-    const archaeology = within(sectionOf('Archaeology asks'));
+    const archaeology = within(sectionOf('Is this an archaeological site or museum?'));
     expect(archaeology.getByText(/Readers already see this place under Art Museums\. Nobody has passed it under Archaeology yet/))
       .toBeInTheDocument();
-    expect(archaeology.getByText('Until you publish it, readers see it only under Art Museums.')).toBeInTheDocument();
+    expect(archaeology.getByText('Until you keep it, readers see it only under Art Museums.')).toBeInTheDocument();
     expect(screen.queryByText(/readers see nothing at its address/)).toBeNull();
   });
 
   it('answers each section under its own kind\'s membership', async () => {
     renderCard();
 
-    fireEvent.click(within(sectionOf('Archaeology asks')).getByRole('button', { name: 'Publish — list it under Archaeology' }));
+    fireEvent.click(within(sectionOf('Is this an archaeological site or museum?')).getByRole('button', { name: 'Keep' }));
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6214, { membershipId: 21 }));
 
     fireEvent.click(within(sectionOf('Art Museums asks')).getByRole('button', { name: 'Publish everything Art Museums asks' }));

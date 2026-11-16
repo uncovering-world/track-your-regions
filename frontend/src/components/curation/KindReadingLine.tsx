@@ -7,7 +7,7 @@
  * Shown only where Jev names something other than the kind the place is
  * arriving in, as the visit reading is (#1926): an echo of the card is a line
  * a curator learns to skip. The line is words alone. A live kind is chosen
- * when the curator opens the arrival's own "Belongs in another kind…"
+ * when the curator opens the arrival's own "Another kind…"
  * (`suggestedKindOf`), so one control moves a place; the line promises
  * nothing of it, since the form offers only the kinds the curator's scope
  * reaches, and opens with nothing chosen otherwise. Where the place has a
@@ -57,7 +57,7 @@ function kindReadingWords(reading: Reading): string {
 /**
  * The stored reading of a place, asked of Jev the first time (the server
  * answers for the place as it stands): one query the line and the card's
- * "Belongs in another kind…" share, keyed by the place's name as well as its
+ * "Another kind…" share, keyed by the place's name as well as its
  * id, so a card showing it renamed asks again.
  */
 export function useKindReading(experienceId: number, name: string, enabled = true): Reading | null {
@@ -72,7 +72,7 @@ export function useKindReading(experienceId: number, name: string, enabled = tru
 }
 
 /**
- * The live kind "Belongs in another kind…" opens with: the one Jev names,
+ * The live kind "Another kind…" opens with: the one Jev names,
  * unless it is the kind the place arrives in or one the place is in already,
  * which the form cannot offer.
  */

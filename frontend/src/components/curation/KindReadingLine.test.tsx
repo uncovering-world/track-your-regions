@@ -108,7 +108,7 @@ describe("Jev's reading of an arriving place's kind", () => {
   });
 });
 
-describe('the kind "Belongs in another kind…" opens with', () => {
+describe('the kind "Another kind…" opens with', () => {
   const live = (id: number, held: 'offered' | 'arriving' | 'kept_out' | null) =>
     ({ reading: 'live' as const, kind: { id, name: 'Towers', held }, plannedKind: null, confidence: 0.82 });
 

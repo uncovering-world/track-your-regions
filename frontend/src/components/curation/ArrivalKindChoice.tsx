@@ -40,7 +40,7 @@ export function ArrivalKindChoice({ disabled, open, onOpen, onClose, ...form }: 
   if (!open) {
     return (
       <Button variant="outlined" color="inherit" disabled={disabled} onClick={onOpen}>
-        Belongs in another kind…
+        Another kind…
       </Button>
     );
   }

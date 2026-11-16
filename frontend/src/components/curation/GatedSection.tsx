@@ -28,7 +28,7 @@ import type { HeldPart, ReviewQueueItem } from '../../api/reviewQueue';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
-import { ANSWER_WORDS, CHANGE_ANSWERS, CHANGE_COLUMNS } from './selection/answerWords';
+import { CHANGE_ANSWERS, CHANGE_COLUMNS } from './selection/answerWords';
 import { GatedRow, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { askedSince } from './askedSince';
@@ -42,6 +42,7 @@ import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
 import { VisitReadingLine } from './VisitReadingLine';
 import { KindReadingLine, suggestedKindOf, useKindReading } from './KindReadingLine';
 import { ArrivalKindChoice } from './ArrivalKindChoice';
+import { notOfKind, typeOptionsFor, typeWordFor } from '../../utils/experienceTypes';
 import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
 /**
@@ -87,7 +88,7 @@ export function GatedSection({ group, heading, onDone }: {
   // the next waiting row remounts it, and a part of one object is never
   // corrected under the next object's name or id.
   const [openPart, setOpenPart] = useState<HeldPart | null>(null);
-  // Whether the arrival's "Belongs in another kind…" is open, and the kind it
+  // Whether the arrival's "Another kind…" is open, and the kind it
   // opened with: the live kind Jev's reading names (#2342), where it named one
   // the form can offer.
   const [kindChoice, setKindChoice] = useState<{ kindId?: number } | null>(null);
@@ -340,6 +341,13 @@ export function GatedSection({ group, heading, onDone }: {
         )}
       </Stack>
 
+      {/* The arrival's type, under the place, where its kind files places under types (#2185). */}
+      {arrival && typeOptionsFor(arrival.kind_id).length > 0 && (
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          Type: {arrival.kind_type ? typeWordFor(arrival.kind_id, arrival.kind_type) : 'not set'}
+        </Typography>
+      )}
+
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Button
           variant="outlined"
@@ -373,7 +381,7 @@ export function GatedSection({ group, heading, onDone }: {
             disabled={answering}
             onClick={() => keepOut.mutate()}
           >
-            {ANSWER_WORDS.arrival.reject}
+            {notOfKind(arrival.kind_id, arrival.kind_name)}
           </Button>
         )}
         {/* The arrival's third answer (#2213): the kind it belongs in instead. */}
@@ -529,8 +537,8 @@ function runNote({ arrival }: GatedGroup): string {
  * a row's own answer (#524), so the button says it takes everything.
  */
 function publishLabel(group: GatedGroup, sectioned: boolean, changesOnly: boolean): string {
-  if (group.arrival && seenIn(group.arrival).length > 0) return `Publish — list it under ${group.arrival.kind_name}`;
-  if (group.arrival) return 'Publish — readers may see it';
+  // The arrival's yes answers the card's question, "Is this a tower?" (#2185).
+  if (group.arrival) return 'Keep';
   // On a card two kinds ask on, the button reaches its own section alone.
   if (sectioned && group.sharedBy) {
     return group.sharedBy.filter(run => run.proposesAll).length > 1
@@ -605,15 +613,15 @@ function arrivalNote(arrival: ReviewQueueItem): string {
       + 'proposal — there is no earlier version to compare it against.';
   }
   return `Readers already see this place under ${kindList(seen)}. Nobody has passed it under `
-    + `${arrival.kind_name} yet, so it is in no ${arrival.kind_name} list or count until you publish it.`;
+    + `${arrival.kind_name} yet, so it is in no ${arrival.kind_name} list or count until you keep it.`;
 }
 
 /** What doing nothing means here — the answer that needs no call. */
 function holdingNote(group: GatedGroup): string {
   if (group.arrival && seenIn(group.arrival).length > 0) {
-    return `Until you publish it, readers see it only under ${kindList(seenIn(group.arrival))}.`;
+    return `Until you keep it, readers see it only under ${kindList(seenIn(group.arrival))}.`;
   }
-  if (group.arrival) return 'Until you publish it, nobody but a curator can see this at all.';
+  if (group.arrival) return 'Until you keep it, nobody but a curator can see this at all.';
   if (group.held) {
     return 'Readers keep the version they can see until you publish, and the run will go on '
       + 'proposing this one. A field you have already claimed is a different question and keeps '

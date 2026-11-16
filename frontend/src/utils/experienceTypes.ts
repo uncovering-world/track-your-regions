@@ -229,3 +229,32 @@ export function typePluralWord(kindId: number, kindName: string, type: string | 
   const noun = type === null ? kindName : typeNoun(kindId, type, 2);
   return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
+
+/**
+ * What each kind holds, as the one noun its arrival's card asks about (#2185):
+ * "Is this a tower?". Keyed by the kind's row id, as `experience_kinds` seeds
+ * them. A kind with no noun here is asked about by its name.
+ */
+const KIND_NOUNS: Readonly<Record<number, string>> = {
+  1: 'a World Heritage site',
+  2: 'an art museum',
+  3: 'a work of public art',
+  4: 'a place of worship',
+  5: 'an archaeological site or museum',
+  6: 'a monument or memorial',
+  7: 'a tower',
+  8: 'a bridge or engineering marvel',
+  9: 'a square or street',
+};
+
+/** The question an arrival's card opens with: "Is this a tower?". */
+export function kindQuestion(kindId: number | null | undefined, kindName: string): string {
+  const noun = kindId != null ? KIND_NOUNS[kindId] : undefined;
+  return noun ? `Is this ${noun}?` : `Does it belong in ${kindName}?`;
+}
+
+/** The arrival's no, in the question's words: "Not a tower". */
+export function notOfKind(kindId: number | null | undefined, kindName: string): string {
+  const noun = kindId != null ? KIND_NOUNS[kindId] : undefined;
+  return noun ? `Not ${noun}` : `Not in ${kindName}`;
+}

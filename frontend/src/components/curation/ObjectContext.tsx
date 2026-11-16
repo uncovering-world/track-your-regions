@@ -32,6 +32,7 @@ import { worldHeritagePartsHref } from './SourceId';
 import { PictureClassMark } from './PictureClassMark';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { ReaderEditionBeside } from '../shared/WikipediaArticleLink';
+import type { ArticleLead } from '../../api/articleLeads';
 
 /**
  * Up to this many regions are read at a glance and shown whole. Past it the card
@@ -74,7 +75,15 @@ export function madeOfLabel(
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-export function ObjectContext({ item }: { item: ReviewQueueItem }) {
+export function ObjectContext({ item, lead = null }: {
+  item: ReviewQueueItem;
+  /**
+   * The first sentence of the place's English article, where the card has read it (#2185): drawn in
+   * the description's place, with the article named by its title, so an arrival's card says what the
+   * place is in its article's words. Without it the card shows the source's description.
+   */
+  lead?: ArticleLead | null;
+}) {
   const [showMap, setShowMap] = useState(false);
   const [showImage, setShowImage] = useState(false);
   // Two, because they are two requests: the card asks for 120 px and the dialog
@@ -186,7 +195,8 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         {thumbnail && <ImageCreditLine credit={item.image_credit} surface="line" />}
         {/* What the picture is, where it is no photograph (#2192): Banqiao Dam's is a map. */}
         {thumbnail && <PictureClassMark experienceId={item.id} url={image} />}
-        {description && (
+        {lead && <LeadSentence lead={lead} />}
+        {!lead && description && (
           // What the object is, in the source's words: "museum in Saint Petersburg,
           // Russia". One line, so a UNESCO site's paragraph does not push the card's
           // question down; cut with an ellipsis and whole on hover (#1780).
@@ -227,7 +237,8 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
           // link: these open a source's own site, and `noopener` is what keeps that
           // page from reaching back into this one.
           <Stack direction="row" spacing={1} sx={{ mt: 0.25 }}>
-            {wikipediaHref && (
+            {/* With its first sentence drawn above, the article is linked there by its title. */}
+            {wikipediaHref && !lead && (
               <Link href={wikipediaHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
                 Wikipedia
               </Link>
@@ -310,5 +321,25 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         />
       )}
     </Stack>
+  );
+}
+
+/**
+ * What the place is, in its article's first sentence, and the article named by
+ * its title (#2185, interface-writing rule 10): "The Dormition Cathedral is an
+ * Orthodox cathedral in Kharkiv. Dormition Cathedral, Kharkiv ↗".
+ */
+function LeadSentence({ lead }: { lead: ArticleLead }) {
+  const href = safeHref(lead.url);
+  return (
+    <Typography variant="body2" color="text.secondary">
+      {lead.sentence}
+      {href && (
+        <>
+          {' '}
+          <Link href={href} target="_blank" rel="noopener noreferrer" underline="hover">{lead.title} ↗</Link>
+        </>
+      )}
+    </Typography>
   );
 }
