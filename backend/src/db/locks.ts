@@ -138,7 +138,9 @@
  *   keys of the site, its parts and every whole above any of them, before its
  *   first point write (`lockPartsAndRegionKeys`, `db/experienceWriter.ts`). A
  *   merge or its undo takes the same pair for both places, after both object
- *   locks, since its undo names their parts after moving their points. A
+ *   locks, since its undo names their parts after moving their points, and
+ *   a separation of a kind off a part takes it for the part, which it names
+ *   for its line once its last kind has left (`membershipSeparation.ts`). A
  *   merge never takes a whole (ADR-0203), and it cannot cycle with a site's
  *   run: asked to merge a site with its own part, it locks the site first, as
  *   the run does, and refuses; merging a part with another place, it waits

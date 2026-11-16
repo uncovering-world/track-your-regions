@@ -2,7 +2,6 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
 import { suggestKind } from '../controllers/experience/kindSuggestionController.js';
-import { separateMembership } from '../controllers/experience/membershipSeparation.js';
 import {
   getExperience, getExperienceRegionCounts, getExperiencesByRegion,
 } from '../controllers/experience/experienceQueryController.js';
@@ -21,7 +20,10 @@ import { experienceRegionCountsQuerySchema, experiencesByRegionQuerySchema } fro
  * the place's kinds asks `kindRecordSql`; one that forgets it counted a site's
  * record of itself as a second kind (#2481). No lint tells the two kinds of
  * read apart, so this spec holds every such reader to it: `READERS` lists
- * them, and **a reader added later is added to the list**.
+ * them, and **a reader added later is added to the list**. The separation's
+ * only-kind guard is outside it: a part's record in its whole changes its
+ * answer on purpose (ADR-0213 decision 6), and `membershipSeparation.db.test.ts`
+ * holds that rule.
  *
  * The fixture is Ancient Thebes with its Necropolis as one site of World
  * Heritage, and the Temple of Karnak as a place of Archaeology of its own, a
@@ -45,7 +47,7 @@ const TEMPLE = 92485;
 const PLACES = [SITE, TEMPLE];
 /** A World Heritage site that holds no kind: what the catalogue checks list, which a record of its own line must not hide. */
 const BARE = 92486;
-/** In every fixture place's name, so a place a broken reader separates off is found and deleted too. */
+/** In every fixture place's name, which the queue's search and the cleanup find the fixture by. */
 const TAG = '(record kind fixture)';
 const WORLD_VIEW = 92483;
 const ROOT = 92483;
@@ -59,13 +61,11 @@ const reference = (place: number) => `${SITE}-${String(place % 1000).padStart(3,
 const TEMPLE_ITEM = `Q${TEMPLE}001`;
 
 let adminId = 0;
-const memberships: Record<number, number> = {};
 
 async function clear(): Promise<void> {
   const places = [...new Set([...PLACES, ...(await pool.query<{ id: number }>(
     'SELECT id FROM experiences WHERE name LIKE $1', [`%${TAG}%`],
   )).rows.map(row => row.id)])];
-  await pool.query('DELETE FROM experience_separations WHERE original_id = ANY($1) OR separated_id = ANY($1)', [places]);
   await pool.query('DELETE FROM place_identifier_verdicts WHERE experience_id = ANY($1)', [places]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1)', [places]);
   await pool.query('DELETE FROM experience_parts WHERE whole_id = ANY($1) OR part_id = ANY($1)', [places]);
@@ -83,11 +83,11 @@ async function place(id: number, name: string, source: string, key: string, lon:
      SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326) FROM experience_sources s WHERE s.name = $6`,
     [id, key, `${name} ${TAG}`, lon, lat, source],
   );
-  memberships[id] = (await pool.query<{ id: number }>(
+  await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3 RETURNING id`,
+     SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3`,
     [id, key, source],
-  )).rows[0].id;
+  );
 }
 
 /** A point of the place: published, under the list line's reference, or unread and placed by nothing yet. */
@@ -190,14 +190,6 @@ const READERS: Reader[] = [
     // gets, after the whole read has run.
     name: 'the kind suggestion (kindSuggestionController.ts)',
     read: placeId => suggestKind({ params: { id: placeId }, caller: { id: adminId, role: 'admin' } as Express.User }),
-  },
-  {
-    // Each place holds one kind, so separating it is refused as its only kind.
-    name: 'the membership separation\'s "only kind" guard (membershipSeparation.ts)',
-    read: async placeId => {
-      const outcome = await separateMembership({ placeId, membershipId: memberships[placeId], separatedBy: adminId });
-      return { refusal: outcome.refusal ?? null, separated: outcome.result !== undefined };
-    },
   },
   {
     // The card's own read; `updated_at` is the row's clock, not an answer.

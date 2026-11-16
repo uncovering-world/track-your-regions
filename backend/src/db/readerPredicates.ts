@@ -257,7 +257,7 @@ function partOfSql(alias: string, whole: (w: string) => string, point: (el: stri
 }
 
 /** A point a reader is shown: offered, and read or published unread. */
-const shownPointSql = (el: string): string => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`;
+export const shownPointSql = (el: string): string => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`;
 
 /**
  * A part of a serial site a reader may be sent to (ADR-0100 decision 2): it

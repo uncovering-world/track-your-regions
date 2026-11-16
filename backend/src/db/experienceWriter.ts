@@ -114,7 +114,8 @@ export async function lockPlaces(
  * The parts' object locks, then the region keys, for a writer that holds the
  * places `wholes` and will write their points and then their parts' rows in one
  * transaction (`db/locks.ts`): the site's run, which names each part for its
- * point (`followTheirPoints`), and a merge or its undo. A point write takes
+ * point (`followTheirPoints`), a merge or its undo, and a separation of a kind
+ * off a part. A point write takes
  * region keys through its triggers, and a curator holding a part and writing
  * its point asks for the same keys, so a part's row written after them would
  * close a cycle. Taken before the first such write instead: the parts in the
