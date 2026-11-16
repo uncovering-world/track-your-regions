@@ -190,8 +190,8 @@ day becomes the Gregorian day
 only where the item states no inception, opening, end or closure at all, whether or not its date
 could be read. The new live reader turns a BC year back into the item's numbering with `itemYearOf`
 (`services/sync/wikidataYears.ts`), and the service has already written a Julian day as the
-Gregorian one. The live works and public-art queries #2564 names still store `YEAR(?inception)`
-unshifted, so a BC year they write is one year late until #2564 moves them onto `itemYearOf`.
+Gregorian one. The live works and public-art queries read their inception's year the same way
+(§ Reading Wikidata from the local subset, the paragraph on a year before the common era).
 
 ### Location model
 
@@ -1096,11 +1096,16 @@ holds the item, a curator's own year aside, so that a works kind's first run
 on the subset offers no one-year change (#1531). Every Wikidata kind stores a
 year from an inception: Public Art its places' `year`, on its membership, and Art
 Museums, Archaeology and Places of worship their works' year, through the
-shared works collector. A live run of any of them after the migration writes
-the late year back, or, gated, offers each corrected row to a curator as a
-change. So 106 is run again by hand right before each kind still on the live
-service switches to the subset; it is re-runnable, and corrects only what is
-still one year late.
+shared works collector. A live run reads the year in the item's numbering too
+(#2564): the works pool, the venue side's works by id and the public-art pool
+bind the best-ranked inception with its `wikibase:timePrecision`, and
+`inceptionYearOf` (`services/sync/wikidataYears.ts`) turns a year given to the
+year or finer back with `itemYearOf`, the one shift every live reader shares,
+so the Lion Capital of Ashoka reads 250 BCE live as from the subset. Before
+#2564 a live run wrote the late year back, or, gated, offered each corrected
+row to a curator as a change, and 106 was run again by hand before a kind
+switched to the subset; it is re-runnable, and corrects only what is still
+one year late.
 
 **Which Wikidata a source's runs read** is `experience_sources.wikidata_reader`
 (`live` or `subset`), switched on the source's card in the sync panel
