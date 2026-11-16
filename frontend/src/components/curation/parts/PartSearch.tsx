@@ -12,18 +12,19 @@ import { useState } from 'react';
 import { Alert, Box, Button, Chip, InputAdornment, Stack, TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { useQuery } from '@tanstack/react-query';
-import { findPartCandidates, type PartCandidate } from '../../../api/parts';
+import { findPartCandidates, type PartCandidate, type PartSearchRole } from '../../../api/parts';
 import { queryKeys } from '../../../api/queryKeys';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { DenseThumbnail } from '../../shared/DenseThumbnail';
 import { FAR_M, nearLine, placeLine, takenLine } from './partWords';
 
-function Candidate({ candidate, role, selfName, pending, onChoose }: {
+function Candidate({ candidate, role, selfName, pending, onChoose, chooseLabel }: {
   candidate: PartCandidate;
-  role: 'part' | 'whole';
+  role: PartSearchRole;
   selfName: string;
   pending: boolean;
   onChoose: (candidate: PartCandidate) => void;
+  chooseLabel?: string;
 }) {
   const taken = takenLine(candidate, role, selfName);
   const refused = candidate.taken === 'self' || candidate.taken === 'loop' || candidate.taken === 'scope';
@@ -54,7 +55,7 @@ function Candidate({ candidate, role, selfName, pending, onChoose }: {
         </Box>
         {!candidate.taken && (
           <Button size="small" variant="outlined" disabled={pending} onClick={() => onChoose(candidate)} sx={{ flexShrink: 0 }}>
-            {candidate.kept_out ? 'Put it back' : 'Add'}
+            {chooseLabel ?? (candidate.kept_out ? 'Put it back' : 'Add')}
           </Button>
         )}
       </Stack>
@@ -62,14 +63,18 @@ function Candidate({ candidate, role, selfName, pending, onChoose }: {
   );
 }
 
-export function PartSearch({ experienceId, selfName, role, pending, onChoose }: {
+export function PartSearch({ experienceId, selfName, role, pending, onChoose, chooseLabel, prompt }: {
   experienceId: number;
   /** The place the card is about, as a refusal names it. */
   selfName: string;
   /** `part`: places to add as its parts; `whole`: wholes to add it to. */
-  role: 'part' | 'whole';
+  role: PartSearchRole;
   pending: boolean;
   onChoose: (candidate: PartCandidate) => void;
+  /** What a candidate's button says, where choosing it is not an add: *Move the line here* (#2527). */
+  chooseLabel?: string;
+  /** The search box's prompt, where it is not an add. */
+  prompt?: string;
 }) {
   const [q, setQ] = useState('');
   const asked = useDebouncedValue(q.trim(), 300);
@@ -79,9 +84,9 @@ export function PartSearch({ experienceId, selfName, role, pending, onChoose }: 
     queryFn: () => findPartCandidates(experienceId, role, named),
   });
   const candidates = found.data?.candidates ?? [];
-  const placeholder = role === 'part' ? 'Add a part: find a place by name' : 'Add it to a whole: find the whole by name';
+  const placeholder = prompt ?? (role === 'part' ? 'Add a part: find a place by name' : 'Add it to a whole: find the whole by name');
   let heading: string | null = null;
-  if (!named && candidates.length > 0) heading = role === 'part' ? 'Near it' : 'Wholes near it';
+  if (!named && candidates.length > 0) heading = role === 'whole' ? 'Wholes near it' : 'Near it';
 
   return (
     <Box>
@@ -111,6 +116,7 @@ export function PartSearch({ experienceId, selfName, role, pending, onChoose }: 
           selfName={selfName}
           pending={pending}
           onChoose={onChoose}
+          chooseLabel={chooseLabel}
         />
       ))}
     </Box>

@@ -16,15 +16,17 @@ vi.mock('../../../api/parts', () => ({
   findPartCandidates: vi.fn(),
   addPart: vi.fn(),
   takeOutPart: vi.fn(),
+  replacePartLine: vi.fn(),
 }));
 
-import { addPart, fetchPlaceParts, findPartCandidates, takeOutPart } from '../../../api/parts';
+import { addPart, fetchPlaceParts, findPartCandidates, replacePartLine, takeOutPart } from '../../../api/parts';
 import { PlaceParts } from './PlaceParts';
 
 const mockedParts = vi.mocked(fetchPlaceParts);
 const mockedFind = vi.mocked(findPartCandidates);
 const mockedAdd = vi.mocked(addPart);
 const mockedTakeOut = vi.mocked(takeOutPart);
+const mockedReplace = vi.mocked(replacePartLine);
 
 const place = (id: number, name: string, kind: string | null): PartRow['place'] => ({
   id, name, subtitle: null, kind_name: kind, waiting: false, image_url: null, image_credit: null, longitude: 0, latitude: 0,
@@ -172,5 +174,72 @@ describe('an empty whole and a part', () => {
     expect(screen.getByText(SITE.name)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add a part to it…' }));
     expect(screen.getByText(/Another place was merged into Seville Cathedral/)).toBeInTheDocument();
+  });
+});
+
+describe('moving a list line to the place it names (#2527)', () => {
+  // Thessaloniki's site: the list's line 456-002 "Rotunda" is held by the Arch of Galerius and Rotunda.
+  const THESSALONIKI = 146;
+  const ARCH = row(place(15409, 'Arch of Galerius and Rotunda', 'Archaeology'), { list: { reference: '456-002', name: 'Rotunda' } });
+  const SOPHIA = row(place(13723, 'Hagia Sophia', 'Places of worship'));
+  const ROTUNDA: PartCandidate = {
+    place: place(44213, 'Rotunda', 'Places of worship'), distance_m: 151, near_name: 'Arch of Galerius and Rotunda',
+    taken: null, kept_out: false, also_part_of: null,
+  };
+  const moved = (fromId: number, toId: number, points = 1, logId = 7001) => ({
+    wholeId: THESSALONIKI, fromId, toId, reference: '456-002', keptOut: false, points, logId,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedParts.mockResolvedValue({
+      experienceId: THESSALONIKI, name: 'Paleochristian and Byzantine Monuments of Thessalonika', in_kind: true, merged_onto: false,
+      parts: [ARCH, SOPHIA], wholes: [],
+    });
+    mockedFind.mockResolvedValue({ experienceId: THESSALONIKI, role: 'line', near: true, candidates: [ROTUNDA] });
+  });
+
+  it('offers Replace with… only on a part that holds a line of the list', async () => {
+    show(THESSALONIKI);
+    expect(await screen.findAllByRole('button', { name: 'Take out…' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Replace with…' })).toHaveLength(1);
+  });
+
+  it('moves the line to the place chosen in one act, and Undo moves it back', async () => {
+    mockedReplace.mockResolvedValueOnce(moved(15409, 44213)).mockResolvedValueOnce(moved(44213, 15409));
+    show(THESSALONIKI);
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace with…' }));
+    expect(screen.getByText(/UNESCO’s list names the line 456-002 “Rotunda” here/)).toBeInTheDocument();
+    // The line's search, which offers a part that holds no line of the list.
+    await waitFor(() => expect(mockedFind).toHaveBeenCalledWith(THESSALONIKI, 'line', ''));
+    fireEvent.click(await screen.findByRole('button', { name: 'Move the line here' }));
+    await waitFor(() => expect(mockedReplace).toHaveBeenCalledWith(THESSALONIKI, {
+      partId: 15409, withId: 44213, reference: '456-002', undoes: undefined, note: undefined,
+    }));
+    expect(await screen.findByText('The line 456-002 moved from Arch of Galerius and Rotunda to Rotunda.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    // The Undo names the line and the move it reverses.
+    await waitFor(() => expect(mockedReplace).toHaveBeenLastCalledWith(THESSALONIKI, {
+      partId: 44213, withId: 15409, reference: '456-002', undoes: 7001, note: undefined,
+    }));
+  });
+
+  it('says a place that holds a line already cannot take this one', async () => {
+    mockedFind.mockResolvedValue({
+      experienceId: THESSALONIKI, role: 'line', near: false,
+      candidates: [{ ...ROTUNDA, place: place(13723, 'Hagia Sophia', 'Places of worship'), taken: 'already' }],
+    });
+    show(THESSALONIKI);
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace with…' }));
+    expect(await screen.findByText('Holds a line of the list already')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Move the line here' })).not.toBeInTheDocument();
+  });
+
+  it('says so when the line\'s point stayed where it was', async () => {
+    mockedReplace.mockResolvedValue(moved(15409, 44213, 0));
+    show(THESSALONIKI);
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace with…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Move the line here' }));
+    expect(await screen.findByText(/Its point stayed where it was\./)).toBeInTheDocument();
   });
 });

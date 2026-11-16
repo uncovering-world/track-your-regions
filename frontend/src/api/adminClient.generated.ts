@@ -2147,6 +2147,7 @@ export const CuratorActivityEntryAction = {
   part_added: 'part_added',
   part_taken_out: 'part_taken_out',
   part_put_back: 'part_put_back',
+  part_replaced: 'part_replaced',
 } as const;
 
 /**
@@ -6175,6 +6176,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   part_added: 'part_added',
   part_taken_out: 'part_taken_out',
   part_put_back: 'part_put_back',
+  part_replaced: 'part_replaced',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -6252,6 +6254,7 @@ export const GetAdminCurationActivityAction = {
   part_added: 'part_added',
   part_taken_out: 'part_taken_out',
   part_put_back: 'part_put_back',
+  part_replaced: 'part_replaced',
 } as const;
 
 export type GetAdminUsersSearchParams = {

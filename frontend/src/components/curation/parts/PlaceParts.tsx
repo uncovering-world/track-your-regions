@@ -11,7 +11,9 @@
  * place in a kind of its own makes it a place made of parts, never merged and
  * found by no item, so the card says so before the search, and the add says
  * it knew (`makesWhole`). Every word is a record of the Curators source that
- * no run undoes (`partRecordController.ts`).
+ * no run undoes (`partRecordController.ts`). A part that holds a list line can
+ * hand it to the place it names in one act, *Replace with…* (#2527,
+ * `partLineController.ts`), and the Undo moves it back.
  */
 
 import { useState } from 'react';
@@ -20,7 +22,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../../api/fetchUtils';
 import {
-  addPart, fetchPlaceParts, takeOutPart, type PartCandidate, type PartRow as Row, type PartWordAnswered,
+  addPart, fetchPlaceParts, replacePartLine, takeOutPart,
+  type PartCandidate, type PartLineMoved, type PartRow as Row, type PartWordAnswered,
 } from '../../../api/parts';
 import { queryKeys } from '../../../api/queryKeys';
 import { plural } from '../../../utils/plural';
@@ -28,14 +31,31 @@ import { invalidateExperiences } from '../../../utils/queryInvalidation';
 import { PartFailure, PartRow } from './PartRow';
 import { PartSearch } from './PartSearch';
 
-/** One word on a pair: the whole, the place, and what the curator was told. */
-interface Word { wholeId: number; partId: number; partName: string; note?: string; makesWhole?: boolean }
+/**
+ * One word on a pair: the whole, the place, and what the curator was told; for
+ * a moved list line, the place it moves to as well.
+ */
+interface Word {
+  wholeId: number;
+  partId: number;
+  partName: string;
+  note?: string;
+  makesWhole?: boolean;
+  withId?: number;
+  withName?: string;
+  /** The list line a replace moves, by its reference ("456-002"). */
+  reference?: string;
+  /** The move an Undo reverses: its history row on the whole. */
+  undoes?: number;
+}
+
+type Act = 'add' | 'take-out' | 'replace';
 
 /** How many standing parts a card shows before *Show N more parts*: Wudang's site has 45. */
 const FIRST_PARTS = 5;
 
 /** What the snackbar says, and the act its Undo takes. */
-interface Said { message: string; undo?: Word & { act: 'add' | 'take-out' } }
+interface Said { message: string; undo?: Word & { act: Act } }
 
 function useParts(experienceId: number) {
   return useQuery({
@@ -81,32 +101,52 @@ export function PlaceParts({ experienceId, regionId, isSite }: {
 
   // A word moves two cards: this place's and the other end's, whose "Part of"
   // line or list of places changes with it.
-  const settled = ({ wholeId, partId }: Word) => {
+  const settled = ({ wholeId, partId, withId }: Word) => {
     queryClient.invalidateQueries({ queryKey: queryKeys.curation.placePartsAll });
     queryClient.invalidateQueries({ queryKey: queryKeys.curation.partCandidatesAll });
     queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
     invalidateExperiences(queryClient, { regionId, experienceId });
-    const other = wholeId === experienceId ? partId : wholeId;
-    queryClient.invalidateQueries({ queryKey: queryKeys.experience.one(other) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.experience.locations(other) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.experience.contents(other) });
+    const others = [wholeId === experienceId ? partId : wholeId, ...(withId === undefined ? [] : [withId])];
+    for (const other of others) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.one(other) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.locations(other) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.contents(other) });
+    }
     // Which of a place's points the traveller has visited is read per place too,
     // and a word adds or removes a part's points from both places' lists.
     queryClient.invalidateQueries({ queryKey: queryKeys.visited.statusAll });
     queryClient.invalidateQueries({ queryKey: queryKeys.visited.locationsAll });
   };
   const word = useMutation({
-    mutationFn: ({ act, ...w }: Word & { act: 'add' | 'take-out' }): Promise<PartWordAnswered> => act === 'add'
-      ? addPart(w.wholeId, { partId: w.partId, note: w.note || undefined, makesWhole: w.makesWhole })
-      : takeOutPart(w.wholeId, { partId: w.partId, note: w.note || undefined }),
+    mutationFn: ({ act, ...w }: Word & { act: Act }): Promise<PartWordAnswered | PartLineMoved> => {
+      if (act === 'replace') {
+        return replacePartLine(w.wholeId, {
+          partId: w.partId, withId: w.withId!, reference: w.reference!, undoes: w.undoes, note: w.note || undefined,
+        });
+      }
+      return act === 'add'
+        ? addPart(w.wholeId, { partId: w.partId, note: w.note || undefined, makesWhole: w.makesWhole })
+        : takeOutPart(w.wholeId, { partId: w.partId, note: w.note || undefined });
+    },
     onSuccess: (answer, { act, ...w }) => {
       settled(w);
       setNeedsWhole(null);
-      if (act === 'take-out') {
+      if (act === 'replace') {
+        // Undone, the line moves back, naming this move: its points and both places' words come back as they were.
+        const moved = answer as PartLineMoved;
+        setSaid({
+          message: `The line ${moved.reference} moved from ${w.partName} to ${w.withName}.`
+            + (moved.points === 0 ? ' Its point stayed where it was.' : ''),
+          undo: {
+            wholeId: w.wholeId, partId: w.withId!, partName: w.withName!, withId: w.partId, withName: w.partName,
+            reference: moved.reference, undoes: moved.logId, act: 'replace',
+          },
+        });
+      } else if (act === 'take-out') {
         // Undone, the place had the part: its first part asks nothing again.
         setSaid({ message: `${w.partName} taken out.`, undo: { ...w, note: undefined, makesWhole: true, act: 'add' } });
       } else {
-        const message = answer.act === 'put_back' ? `${w.partName} put back.` : `${w.partName} added as a part.`;
+        const message = (answer as PartWordAnswered).act === 'put_back' ? `${w.partName} put back.` : `${w.partName} added as a part.`;
         setSaid({ message, undo: { ...w, note: undefined, act: 'take-out' } });
       }
     },
@@ -125,7 +165,7 @@ export function PlaceParts({ experienceId, regionId, isSite }: {
     );
   }
   if (!data) return null;
-  const say = (w: Word, act: 'add' | 'take-out') => { setSaid(null); word.mutate({ ...w, act }); };
+  const say = (w: Word, act: Act) => { setSaid(null); word.mutate({ ...w, act }); };
   const standing = data.parts.filter(row => row.standing);
   const shownParts = allParts ? standing : standing.slice(0, FIRST_PARTS);
   const hiddenParts = standing.length - shownParts.length;
@@ -143,10 +183,14 @@ export function PlaceParts({ experienceId, regionId, isSite }: {
         key={`${side}-${row.place.id}`}
         row={row}
         side={side}
+        wholeId={pair.wholeId}
         wholeName={side === 'parts' ? data.name : row.place.name}
         pending={word.isPending}
         onTakeOut={note => say({ ...pair, note }, 'take-out')}
         onPutBack={() => say(pair, 'add')}
+        onReplace={side === 'parts' && row.list
+          ? (to) => say({ ...pair, withId: to.place.id, withName: to.place.name, reference: row.list!.reference }, 'replace')
+          : undefined}
       />
     );
   });

@@ -154,6 +154,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   part_added: { label: 'Part added', color: GREEN },
   part_taken_out: { label: 'Part taken out', color: RED },
   part_put_back: { label: 'Part put back', color: GREEN },
+  // A list line moved from the place that held it to the place it names
+  // (#2527), on all three places' histories: a correction, blue like an edit.
+  part_replaced: { label: 'List line moved', color: BLUE },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -561,6 +564,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   part_added: d => formatPartWord(d),
   part_taken_out: d => formatPartWord(d),
   part_put_back: d => formatPartWord(d),
+  part_replaced: d => formatLineMoved(d),
 };
 
 /**
@@ -573,6 +577,16 @@ function formatPartWord(d: Record<string, unknown>): string | null {
   const parts = [`${d.partName} in ${d.wholeName}`];
   if (d.keptOut === true) parts.push('kept out while a source still names it');
   if (d.becameWhole === true) parts.push(`${d.wholeName} became a place made of parts`);
+  if (typeof d.note === 'string' && d.note.trim()) parts.push(`"${d.note.trim()}"`);
+  return parts.join(' · ');
+}
+
+/** "Rotunda (456-011) in Paleochristian … · from Arch of Galerius and Rotunda to Rotunda". */
+function formatLineMoved(d: Record<string, unknown>): string | null {
+  if (typeof d.fromName !== 'string' || typeof d.toName !== 'string' || typeof d.wholeName !== 'string') return null;
+  const line = typeof d.lineName === 'string' && d.lineName ? `${d.lineName} (${d.reference})` : String(d.reference);
+  const parts = [`${line} in ${d.wholeName}`, `from ${d.fromName} to ${d.toName}`];
+  if (d.keptOut === true) parts.push(`${d.fromName} kept out while a source still names it`);
   if (typeof d.note === 'string' && d.note.trim()) parts.push(`"${d.note.trim()}"`);
   return parts.join(' · ');
 }
