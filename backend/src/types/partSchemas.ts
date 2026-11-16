@@ -25,12 +25,31 @@ export const partWordBodySchema = z.object({
 
 /**
  * The search of the curator's part sections (#2118): `part` looks for places
- * to add to `:id` as its parts, `whole` for wholes to add `:id` to; with no
- * `q`, the places near it.
+ * to add to `:id` as its parts, `whole` for wholes to add `:id` to, and `line`
+ * for the place a list line of `:id` moves to (#2527), which may be a part
+ * already so long as it holds no line of the list; with no `q`, the places
+ * near it.
  */
 export const partCandidatesQuerySchema = z.object({
-  role: z.enum(['part', 'whole']),
+  role: z.enum(['part', 'whole', 'line']),
   q: searchText(2, 100).regex(TWO_SEARCHED).transform(v => v.trim()).pipe(z.string().min(2)).optional(),
+});
+
+/**
+ * A list line of the whole `:id` moved from the place that holds it to the
+ * place it names (#2527): both places and why, kept in all three histories.
+ */
+export const replacePartBodySchema = z.object({
+  partId: bodyRowIdSchema.describe('The place that holds the line now.'),
+  withId: bodyRowIdSchema.describe('The place the line names, which takes it.'),
+  reference: z.string().trim().min(1).max(40).describe(
+    'The reference the list gives the line ("456-002"): the move is refused unless partId holds that line.',
+  ),
+  undoes: bodyRowIdSchema.optional().describe(
+    'The history row of the move this one undoes, on the whole: the line\'s latest move. Its points and both places\' '
+    + 'curator words are restored as they were before it, instead of the rules of a new move.',
+  ),
+  note: z.string().max(1000).optional(),
 });
 
 /** A place taken out of the whole `:id` (#2118): the place and why, kept in both places' histories. */

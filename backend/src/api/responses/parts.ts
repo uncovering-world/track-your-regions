@@ -57,14 +57,15 @@ export type PlaceParts = z.infer<typeof PlaceParts>;
 
 export const PartCandidates = z.strictObject({
   experienceId: z.number().int(),
-  role: z.enum(['part', 'whole']),
+  role: z.enum(['part', 'whole', 'line']),
   near: z.boolean().describe('No name was asked: the places nearest the anchor, within a kilometre for parts.'),
   candidates: z.array(z.strictObject({
     place: PartPlace,
     distance_m: z.number().nullable().describe('Metres from the nearest of the whole\'s parts, or from the place itself.'),
     near_name: z.string().nullable().describe('The part the distance is measured from; null where it is the place itself.'),
     taken: z.enum(['self', 'already', 'loop', 'scope']).nullable().describe(
-      'Why it cannot be chosen: the place itself, a part (or whole) already, a whole of the place at some level, '
+      'Why it cannot be chosen: the place itself, a part (or whole) already (for a list line, a place that holds a line '
+      + 'of the list already), a whole of the place at some level, '
       + 'or a place readers are offered outside the caller\'s scope. A place no reader is offered is listed only in scope.',
     ),
     kept_out: z.boolean().describe('A curator keeps it out of the whole: choosing it puts it back.'),
@@ -89,3 +90,16 @@ export const PartWordAnswered = z.strictObject({
   becameWhole: z.boolean().describe('The place was the whole\'s first part: the whole is now a place made of parts.'),
 }).describe("A curator's word that a place is a part of a whole, or is taken out of it, from either place's card (#2118).");
 export type PartWordAnswered = z.infer<typeof PartWordAnswered>;
+
+export const PartLineMoved = z.strictObject({
+  wholeId: z.number().int(),
+  fromId: z.number().int().describe('The place the line left, now out of the whole.'),
+  toId: z.number().int().describe('The place that holds the line now.'),
+  reference: z.string().describe('The reference the World Heritage list gives the line ("456-011").'),
+  keptOut: z.boolean().describe(
+    'Another source still names the place the line left, so a curator\'s refusal keeps it out.',
+  ),
+  points: z.number().int().describe('How many of the line\'s points moved with it.'),
+  logId: z.number().int().describe('The move\'s history row on the whole, which an Undo names (undoes).'),
+}).describe("A World Heritage list line moved from the place that held it to the place it names, in one act (#2527).");
+export type PartLineMoved = z.infer<typeof PartLineMoved>;

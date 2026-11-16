@@ -486,6 +486,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // A curator's word on a place in a whole (#2118): a part added, taken
     // out, or put back after it was kept out, on both places' histories.
     'part_added', 'part_taken_out', 'part_put_back',
+    // A list line moved from the place that held it to the place it names
+    // (#2527), on all three places' histories.
+    'part_replaced',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

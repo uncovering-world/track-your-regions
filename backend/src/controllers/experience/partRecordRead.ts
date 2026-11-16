@@ -30,7 +30,7 @@ import type { z } from 'zod/v4';
 import type { PartCandidates, PlaceParts } from '../../api/responses/parts.js';
 import { pool } from '../../db/index.js';
 import {
-  COMPONENT_SOURCE_ID, CURATOR_SOURCE_ID, KINDS, MEMBERSHIPS, kindRecordSql, placeHoldsKindSql, placeOfferedSql,
+  COMPONENT_SOURCE_ID, CURATOR_SOURCE_ID, KINDS, MEMBERSHIPS, componentRecordSql, kindRecordSql, placeHoldsKindSql, placeOfferedSql,
 } from '../../db/membership.js';
 import { CURATOR_PLACE_SCOPE_EXISTS, CURATOR_SCOPED_REGIONS_CTE, canCurateExperienceSql } from '../../middleware/auth.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
@@ -192,8 +192,12 @@ export async function listPlaceParts(
                 ($3::boolean OR ${CURATOR_PLACE_SCOPE_EXISTS} OR l.region_id IS NULL
                  OR l.region_id IN (SELECT id FROM curator_scoped_regions)) AS visible
            FROM experience_curation_log l
-          WHERE l.experience_id = $2 AND l.action IN ('part_added', 'part_taken_out', 'part_put_back')
-            AND l.details->>'wholeId' = p.whole_id::text AND l.details->>'partId' = p.part_id::text
+          WHERE l.experience_id = $2 AND l.action IN ('part_added', 'part_taken_out', 'part_put_back', 'part_replaced')
+            AND l.details->>'wholeId' = p.whole_id::text
+            -- A moved list line's word is written on the place the line left (#2527),
+            -- and an Undo's restored word on the place the line comes back to.
+            AND p.part_id::text IN (l.details->>'partId', l.details->>'fromId',
+                                    CASE WHEN l.details->>'undoes' IS NOT NULL THEN l.details->>'toId' END)
           ORDER BY l.id DESC LIMIT 1) said_last ON word.id IS NOT NULL
       WHERE ${shownToCallerSql('other', asked)}
       ORDER BY p.side, standing DESC, other.name, other.id`,
@@ -239,10 +243,16 @@ export async function findPartCandidates(
   },
 ): Promise<PartCandidates> {
   await requirePlaceScope(id, caller);
-  const asPart = role === 'part';
+  const asPart = role !== 'whole';
   // The whole and the part of each candidate pair, as SQL over the place ($1)
   // and the candidate (c.id).
   const [whole, part] = asPart ? ['$1::int', 'c.id'] : ['c.id', '$1::int'];
+  // What makes a candidate taken already: the pair stands; for a list line's
+  // new place (#2527), the candidate holds a line of the list, since a part
+  // that holds none (a part by a statement or a curator's word) may take one.
+  const already = role === 'line'
+    ? `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ln WHERE ln.whole_id = $1 AND ln.experience_id = c.id AND ${componentRecordSql('ln')})`
+    : `EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = ${whole} AND prt.part_id = ${part})`;
   // $4 is the caller, $6 whether the caller is an admin.
   const asked: CallerParams = { user: '$4', admin: '$6::boolean' };
   const result = await pool.query<CandidateRow>(
@@ -296,8 +306,7 @@ export async function findPartCandidates(
           AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held WHERE held.experience_id = c.id)
           AND CASE WHEN $3::text IS NOT NULL THEN c.name ILIKE $3
                    ELSE c.id <> $1
-                        AND NOT EXISTS (SELECT 1 FROM experience_parts prt
-                                         WHERE prt.whole_id = ${whole} AND prt.part_id = ${part})
+                        AND NOT ${already}
                         -- Driven from the anchors through the location index: a whole of 420
                         -- parts would otherwise test every place against every part.
                         AND c.id IN (SELECT near_c.id FROM anchors a JOIN experiences near_c
@@ -324,8 +333,7 @@ export async function findPartCandidates(
      SELECT ${partPlaceSql('c')} AS place,
             round(f.distance_m)::int AS distance_m, f.near_name,
             CASE WHEN c.id = $1 THEN 'self'
-                 WHEN EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = ${whole} AND prt.part_id = ${part})
-                   THEN 'already'
+                 WHEN ${already} THEN 'already'
                  WHEN c.id IN (SELECT id FROM related) THEN 'loop'
                  -- Offered to readers but outside the caller's scope: the write
                  -- asks the caller's scope over both places, so it cannot be chosen.
