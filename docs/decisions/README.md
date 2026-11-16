@@ -233,6 +233,7 @@ and accepted by it.
 | [0212](0212-the-openstreetmap-layer-keeps-whole-the-objects-of-a-bridges-item-and-its-line-places-it.md) | The OpenStreetMap layer keeps whole the objects of a bridge's item, and its line places it | Accepted | 2026-11-15 |
 | [0213](0213-a-parts-gate-is-its-record-in-its-whole.md) | A part's gate is its record in its whole, by the rules of its whole's source | Accepted | 2026-11-15 |
 | [0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md) | A place carries its lifetime, and only the place's own end hides it | Draft | 2026-11-15 |
+| [0215](0215-a-password-is-digested-whole-before-bcrypt.md) | A password is digested whole before bcrypt | Accepted | 2026-11-16 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
