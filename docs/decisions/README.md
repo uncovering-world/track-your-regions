@@ -2,7 +2,8 @@
 
 This directory contains all architectural decisions for the Track Your Regions project.
 
-ADRs are **immutable once Accepted**. From then on only `Status` can change. To revise a
+ADRs are **immutable once Accepted**. From then on only `Status` can change, and the `Built by`
+pointer (§ An ADR names the issues built to it). To revise a
 decision, create a new ADR and mark the old one as `Superseded by ADR-XXXX` — or, when a new
 ADR narrows only part of an older one and the rest stands, `Accepted — decision N narrowed by
 ADR-XXXX`. Superseding a multi-decision ADR to revise one of them would retire the decisions
@@ -15,6 +16,71 @@ is in force; a draft that could never be corrected before it binds anything woul
 authors to write ADRs after the fact. ADR-0058 decision 4 is the precedent — written as Draft
 by #888 as the rule to be decided from a measurement, finished from that measurement by #892,
 and accepted by it.
+
+## An ADR names the issues built to it
+
+An ADR and the issues built to it name each other, each in one line a script reads:
+
+- **the ADR** carries a header field `**Built by:**` that lists, as `#N`, every issue whose
+  work is built to its decisions: the issue that asked for it, its slices, and every issue it
+  hands an interface to. An issue the ADR only mentions is not in the field;
+- **each of those issues** has, at the top of its Description, `**Built to:** ADR-NNNN decisions
+  …`, one line that names every ADR it is built to (the check reads the first such line anywhere
+  in the body).
+
+Neither end outranks the other. An ADR records a decision and its reason; an issue may hold an
+argument, a measurement or a named case the ADR's author never saw, or one that came later.
+Either may be the one that is right, and something may have been forgotten on both sides.
+
+**A disagreement is analysed, put to the maintainer, and settled by a decision.** Whoever finds
+that an issue and an ADR say different things, agent or person, says so at once, in the chat
+and in a comment on the issue. Quoting the two sentences is not enough: the finder brings a
+judgement with them. This holds for any mismatch between two records of intent (an issue and
+an ADR, two issues, an ADR and the vision, a finding of an audit), and it is four steps:
+
+1. **Walk it on a real named case.** Take one place, visit or screen the two differ on, and say
+   what each side would show the person.
+2. **Look for what decides it:** the code, the linked issues, the ADR's alternatives, the
+   vision, and a read-only measurement where a number settles it.
+3. **Judge it from each role that bears on it:** at least the seasoned traveller, the product
+   manager and the engineer (`CLAUDE.md` § Three Chairs), and the curator or privacy where they
+   matter.
+4. **Give one verdict,** with its confidence and the strongest argument against it.
+
+The maintainer then decides, and only then one side changes:
+
+- the issue's body is corrected; or
+- the ADR is amended, a Draft in place with its amendment note, an Accepted one by an ADR that
+  narrows or supersedes it.
+
+The decision and its reason are written on the issue, and in the ADR where the ADR changed.
+Nobody rewrites an issue's requirements to match an ADR, or an ADR to match an issue, without
+that decision. Adding the `**Built to:**` line, or the issue to the field, where the two already
+agree is a link and needs no discussion.
+
+**The pull request that adds, amends or accepts an ADR compares it with every issue in its
+field before it merges.** It fills the field, reads each open issue's body and every comment on it
+against the decisions, adds the line where they agree, and raises each disagreement as above. Its
+description lists the issues found in disagreement and how each was settled. "None" is an
+answer only after the bodies were read.
+
+The field is a pointer and not a decision, so it is edited on an ADR of any Status, an Accepted
+one included, with no amendment note: an issue filed later to an Accepted ADR is added to the
+field, by the pull request that next touches `docs/decisions/` or, when a design session is
+open, at once. Nothing else of an Accepted ADR changes that way.
+
+`scripts/adr-issues.sh check` (`npm run adr:issues`) reads both ends and fails on an open issue
+the field names whose body does not name the ADR, and on an issue whose line names an ADR that
+does not name it back. It checks links: a missing one means the two have not been compared yet,
+and comparing them is the answer. It reads GitHub, so it is no gate of the map
+(`docs/tech/gates.md`): `/pr-create` runs it on a branch that touches this directory, and
+`/queue check` and `/docs-sweep` run it over what they look at. `scripts/adr-issues.sh for
+<issue>` prints the ADRs an issue is built to, each with its Status, and needs no network.
+
+The rule starts with ADR-0217, ADR-0218 and ADR-0219. An older ADR gains the field when it is
+next amended or narrowed, or when the check names it because an issue's line points at it; until
+then its issues are found by searching this directory for their numbers, which also finds every
+ADR that only mentions them.
 
 ## Index
 

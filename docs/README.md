@@ -119,7 +119,7 @@ the one statement of the rule; `CLAUDE.md`, the development guide and the comman
 | **The order of the work toward a goal**: its items, their reasons, who holds it, what it claims, and how the order changed | a queue: one issue labelled `queue`, with its journal in the comments ([ADR-0114](decisions/0114-work-is-held-in-queues-one-issue-per-goal.md), `/queue`) | until its *Done when* holds |
 | **What exists** | `docs/tech/`, `docs/security/`, `docs/sources/` | updated with the code that changes it |
 | **The product, as it is and where it is heading** | `docs/vision/` (the direction in words; each step of it is an issue) | updated with every user-facing change |
-| **Decisions** | `docs/decisions/` (an ADR is a Draft inside its pull request, then Accepted) | immutable once Accepted |
+| **Decisions** | `docs/decisions/` (an ADR is a Draft inside its pull request, then Accepted). An ADR names the issues built to it and each names it back, so intent and decision are read together ([README](decisions/README.md) § An ADR names the issues built to it) | immutable once Accepted |
 | **Research a decision rests on** | `docs/research/YYYY-MM-DD-slug.md`, only when an issue or ADR cites it ([README](research/README.md)) | immutable |
 | **The working plan of issue N** | `docs/local/plans/<N>-slug.md` | from the start of the work to its merge: then what was not built is filed as issues, and the plan is deleted or archived |
 | **A research draft** | `docs/local/research/<topic>/` | until it is published or dropped |

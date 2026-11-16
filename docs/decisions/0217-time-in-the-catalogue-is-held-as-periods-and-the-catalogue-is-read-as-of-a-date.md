@@ -3,6 +3,7 @@
 **Date:** 2026-11-16
 **Status:** Draft
 **Issue:** [#2578](https://github.com/uncovering-world/track-your-regions/issues/2578), Epic #2115
+**Built by:** #2578, #1719, #2128, #2008, #2009, #2584, #1676, #2622
 **Narrows (once accepted):** [ADR-0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md)
 decisions 1 and 3, and the slot sentence of decision 2;
 [ADR-0020](0020-experience-lifecycle-and-run-changeset.md) decision 2 (the `existence` axis);
