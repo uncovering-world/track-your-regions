@@ -1,7 +1,8 @@
 /**
  * A curator's word on a place in a whole (#2118): a place's parts and wholes,
  * the places a curator may add, and the add and the take-out. Imported only by
- * the card's lazy *Parts* section, so none of it reaches a visitor's bundle.
+ * the card's lazy *Parts* section and the lazy curation dialog, so none of it
+ * reaches a visitor's bundle.
  */
 
 import {

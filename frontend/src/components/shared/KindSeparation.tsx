@@ -5,13 +5,20 @@
  * Places of worship side of the Ajanta Caves, say, if its item named another
  * cave temple. One step to choose, one to confirm, since the action splits a
  * place readers know into two.
+ *
+ * A place of one kind is offered it too where it is a component of a serial
+ * site (ADR-0213 decision 6): UNESCO's list makes it a place, so its only kind
+ * may leave and the site keeps its part. Whether it is one is read from the
+ * card's *Part of* rows (`fetchPlaceParts`), asked only for a place of one
+ * kind.
  */
 
 import { useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { separateKind } from '../../api/curation';
+import { fetchPlaceParts } from '../../api/parts';
 import { queryKeys } from '../../api/queryKeys';
 import type { Experience } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
@@ -34,14 +41,23 @@ export function KindSeparation({ experience, regionId, onSeparated }: {
     },
   });
   const kinds = experience.kinds ?? [];
-  if (kinds.length < 2) return null;
+  const partsQuery = useQuery({
+    queryKey: queryKeys.curation.placeParts(experience.id),
+    queryFn: () => fetchPlaceParts(experience.id),
+    enabled: kinds.length === 1,
+  });
+  // The site whose list names this place among its components, which makes it a place whatever kinds it holds.
+  const site = kinds.length === 1 ? partsQuery.data?.wholes.find(whole => whole.standing && whole.list !== null) : undefined;
+  if (kinds.length < 2 && !site) return null;
   const chosen = kinds.find(kind => kind.kind_id === asked);
 
   return (
     <Box sx={{ mt: 2 }}>
       <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Separate a kind</Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-        One place for {kinds.map(kind => kind.kind_name).join(' and ')}. If one of them is another place, separate it.
+        {site
+          ? `A part of ${site.place.name}, and one place with ${kinds[0].kind_name}. If that is another place, separate it.`
+          : `One place for ${kinds.map(kind => kind.kind_name).join(' and ')}. If one of them is another place, separate it.`}
       </Typography>
       {separation.isError && (
         <Alert severity="error" sx={{ mb: 1 }}>
@@ -63,8 +79,11 @@ export function KindSeparation({ experience, regionId, onSeparated }: {
             </Stack>
           )}
         >
-          {chosen.kind_name} becomes a place of its own, with the points and works it places. This place keeps its
-          other kinds and its visits; travellers who marked it visited are asked which of the two they visited.
+          {chosen.kind_name} becomes a place of its own, with the points and works it places.{' '}
+          {site
+            ? `This place stays a part of ${site.place.name} and keeps its visits.`
+            : 'This place keeps its other kinds and its visits.'}{' '}
+          Travellers who marked it visited are asked which of the two they visited.
         </Alert>
       ) : (
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>

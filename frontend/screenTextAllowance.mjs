@@ -70,7 +70,6 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/components/shared/CurationDialog.tsx': { breaches: 1, slice: '#2444' },
   'src/components/shared/CurationPlaces.tsx': { breaches: 3, slice: '#2444' },
   'src/components/shared/FindsOnViewChip.tsx': { breaches: 1, slice: '#2444' },
-  'src/components/shared/KindSeparation.tsx': { breaches: 1, slice: '#2444' },
   'src/components/shared/LocationPicker.tsx': { breaches: 2, slice: '#2444' },
   'src/components/shared/PlaceIdentifiers.tsx': { breaches: 1, slice: '#2444' },
   'src/components/shared/PlaceKindAdd.tsx': { breaches: 1, slice: '#2444' },
