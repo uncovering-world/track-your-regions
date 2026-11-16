@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { reviewQueueQuerySchema } from '../../types/index.js';
-import { CURATOR_REFUSAL_REASON } from './curatorRefusalController.js';
+import { CURATOR_REFUSAL_REASON } from './membershipWriter.js';
 import { keepOutUnderLock, listPlaceKinds } from './keepOutController.js';
 import { answerAdmissionUnderLock } from './lifecycleController.js';
 import { getReviewQueue } from './reviewQueueController.js';

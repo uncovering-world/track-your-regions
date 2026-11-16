@@ -30,7 +30,9 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { CURATOR_SOURCE_ID, MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
+import {
+  CURATOR_SOURCE_ID, MEMBERSHIPS, componentRecordSql, membershipAdmittedSql, partRecordSql, partRecordUnreadSql,
+} from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
@@ -237,6 +239,61 @@ export async function refuseOnMembership(
           ${CLEAR_ICONIC}
       WHERE m.id = $1 AND m.experience_id = $4
     `, [membershipId, reason, JSON.stringify(curated), lock.id]);
+}
+
+/**
+ * The reason a curator's refusal carries, in the words the kept-out list shows:
+ * on an arrival's membership, and on a part's record in its whole, which the
+ * schema's derivation of the record's gate writes in the same words
+ * (`refresh_part_record_gates()`).
+ */
+export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
+
+/** What a curator answers about a serial site's parts nobody has read, or turned down. */
+export type PartRecordAnswer = 'publish' | 'refuse' | 'restore';
+
+/**
+ * A curator's answer about a serial site's parts, written on each part's
+ * record in its site (ADR-0213): published, turned down, or taken back. The
+ * parts are the ones whose list line one of the points `points` is (`points`
+ * a `SELECT` of point ids, its parameters from `$2` on), on the place `lock`
+ * holds: its own record or a record in it. The record answers for the whole
+ * part, so each of its line points follows it, a duplicate the curator did
+ * not name among them: the caller writes them in the same statement
+ * (`answerPoints`, `experienceLocationWriter.ts`), which is why this is the
+ * statement's text, a data-modifying `WITH` item, rather than a statement of
+ * its own. `$1` is the place's id in the caller's statement, and `bind` binds
+ * the refusal's reason there. Only a record the answer is open on is written:
+ * an unread one for a publish or a refusal, a turned down one for a take-back.
+ * The statement answers each record it changed, as `(experience_id, whole_id)`.
+ */
+export function partRecordAnswerSql(
+  _lock: LockedExperience,
+  answer: PartRecordAnswer,
+  points: string,
+  bind: (value: unknown) => string,
+): string {
+  const write = {
+    publish: {
+      set: "curation_state = 'verified', published_at = COALESCE(rec.published_at, NOW())",
+      open: partRecordUnreadSql('rec'),
+    },
+    refuse: {
+      set: () => `admission = 'refused', admission_reason = ${bind(CURATOR_REFUSAL_REASON)}, admission_answered_at = NOW()`,
+      open: partRecordUnreadSql('rec'),
+    },
+    restore: {
+      set: "admission = 'admitted', admission_reason = NULL, admission_answered_at = NULL",
+      open: `NOT ${membershipAdmittedSql('rec')}`,
+    },
+  }[answer];
+  const set = typeof write.set === 'function' ? write.set() : write.set;
+  return `UPDATE ${MEMBERSHIPS} rec SET ${set}, updated_at = NOW()
+      WHERE ${partRecordSql('rec')} AND (rec.whole_id = $1 OR rec.experience_id = $1) AND ${write.open}
+        AND EXISTS (SELECT 1 FROM experience_locations line
+                     WHERE line.experience_id = rec.experience_id AND is_part_line_point(line.id, rec.whole_id)
+                       AND line.id IN (${points}))
+      RETURNING rec.experience_id, rec.whole_id`;
 }
 
 /** A curator's answer to a crowded city: kept in the list, kept in the shadow (ADR-0180). */

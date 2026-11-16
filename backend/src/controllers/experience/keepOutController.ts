@@ -31,7 +31,7 @@ import {
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, keepOutOfKindBodySchema } from '../../types/index.js';
-import { CURATOR_REFUSAL_REASON } from './curatorRefusalController.js';
+import { CURATOR_REFUSAL_REASON } from './membershipWriter.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { addableKinds } from './kindAddController.js';
 import type { AnswerRefusal } from './lifecycleController.js';

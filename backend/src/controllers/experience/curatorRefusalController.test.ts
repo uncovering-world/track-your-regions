@@ -32,7 +32,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { CURATOR_REFUSAL_REASON } from './curatorRefusalController.js';
+import { CURATOR_REFUSAL_REASON } from './membershipWriter.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { contentsAnswerableSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
@@ -76,7 +76,8 @@ function makeClient(
           && missingSince === null;
         return { rows: [{ ...(membership ?? {}), answerable }], rowCount: 1 };
       }
-      if (sql.trimStart().startsWith('UPDATE')) return { rows: [], rowCount };
+      // The points' statement opens with the part records it answers (ADR-0213).
+      if (sql.trimStart().startsWith('UPDATE') || sql.includes('UPDATE experience_locations')) return { rows: [], rowCount };
       return { rows: [], rowCount: 0 };
     }),
     release: vi.fn(),
@@ -175,8 +176,9 @@ describe('refuseContents', () => {
     expect(points?.sql).toContain(unreadPointSql('experience_locations'));
     expect(points?.sql).toContain(offeredLocationSql('experience_locations'));
     expect(points?.sql).not.toContain('SET curation_state');
-    // The place, then the answering membership: the statement reaches its rows alone (#1290).
-    expect(points?.params).toEqual([5, 40]);
+    // The place, then the answering membership: the statement reaches its rows alone (#1290);
+    // then the reason a part's record takes when the statement turns the part down (ADR-0213).
+    expect(points?.params).toEqual([5, 40, 'kept out by a curator']);
 
     const links = client.queries.find(q => q.sql.includes('UPDATE experience_treasures'));
     expect(links?.sql).toContain(unreadLinkSql('et', 't'));

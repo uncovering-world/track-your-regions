@@ -380,7 +380,7 @@ describe('declineHeldValue', () => {
     const marks = queries.filter(q => q.sql.includes('UPDATE experience_locations'));
     expect(marks).toHaveLength(1);
     expect(marks[0].sql).toContain('SET refused_at = NOW()');
-    expect(marks[0].params).toEqual([1138, [15624]]);
+    expect(marks[0].params).toEqual([1138, [15624], 'kept out by a curator']);
     const log = queries.find(q => q.sql.includes("'declined_held'"));
     expect(JSON.parse(log?.params?.[3] as string)).toMatchObject({ movedPointRefused: 15624 });
     // Re-placed after the COMMIT, with the client back in the pool.

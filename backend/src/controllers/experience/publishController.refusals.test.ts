@@ -32,9 +32,9 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 }));
 
 import {
-  CURATOR, grantScope, makeClient, mockedConnect, mockedQuery, noWrites, only, publish,
-  resetPublishMocks,
+  CURATOR, grantScope, makeClient, membershipWrite, mockedConnect, mockedQuery, noWrites, only, publish, resetPublishMocks,
 } from './publishController.fixtures.js';
+
 
 beforeEach(resetPublishMocks);
 
@@ -229,7 +229,7 @@ describe('refusing to publish', () => {
 
     // The other direction, or the guard above could be an unconditional refusal.
     expect(res.status).not.toHaveBeenCalled();
-    expect(only(queries, 'UPDATE source_records').sql).toContain(`curation_state = 'verified'`);
+    expect(membershipWrite(queries).sql).toContain(`curation_state = 'verified'`);
   });
 
   it('destroys a client whose rollback also failed', async () => {

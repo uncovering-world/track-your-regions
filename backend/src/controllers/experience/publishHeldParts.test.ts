@@ -36,9 +36,9 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 }));
 
 import {
-  grantScope, makeClient, mockedConnect, mockedQuery, none, noWrites, only, publish,
-  type ProposedPart,
+  grantScope, makeClient, membershipWrite, mockedConnect, mockedQuery, none, noWrites, only, type ProposedPart, publish,
 } from './publishController.fixtures.js';
+
 
 beforeEach(() => {
   mockedQuery.mockReset();
@@ -275,7 +275,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       heldLeftOpen: 1,
     }));
     // The attribution is still the open question, so the card stays.
-    expect(only(queries, 'UPDATE source_records').sql)
+    expect(membershipWrite(queries).sql)
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 
@@ -558,7 +558,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       // the card for a look at the siblings, and the card has to be there.
       heldLeftOpen: 1,
     }));
-    expect(only(queries, 'UPDATE source_records').sql)
+    expect(membershipWrite(queries).sql)
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 });

@@ -255,6 +255,20 @@ export function only(queries: Recorded[], fragment: string): Recorded {
   return found[0];
 }
 
+/** A statement that writes the place's membership, and nothing before it. */
+const MEMBERSHIP_WRITE = /^\s*UPDATE\s+source_records\b/;
+
+/**
+ * The one statement that writes the place's membership. The contents'
+ * statement writes a serial site's part's record in its whole too (ADR-0213),
+ * but opens with the points it reaches, so it is no membership write.
+ */
+export function membershipWrite(queries: Recorded[]): Recorded {
+  const found = queries.filter(q => MEMBERSHIP_WRITE.test(q.sql));
+  if (found.length !== 1) throw new Error(`${found.length} statements wrote the membership`);
+  return found[0];
+}
+
 export function none(queries: Recorded[], fragment: string): boolean {
   return !queries.some(q => q.sql.includes(fragment));
 }
