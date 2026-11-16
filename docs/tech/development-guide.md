@@ -807,6 +807,27 @@ A review answer alone does not count.
 
 `/pr-create` asks for this before it opens a pull request, and the review bot checks it on every branch that shows a reader something new.
 
+## An ADR and the issues built to it agree
+
+An issue's body is what a session builds from, and an ADR is what was decided. When the two say different things and nobody has noticed, a session builds whichever it happened to read. ADR-0217 (time), ADR-0218 (shape) and ADR-0219 (visits) are the measured case: on the day they merged no issue built to them named one, #2009's body asked for a virtual kind of gone places where ADR-0217 decision 7 makes them a section of each list, and #2128's asked for a closures table of its own where ADR-0217 holds a closure as a period.
+
+**Neither side wins by default.** An ADR carries a decision and its reason. An issue may carry an argument, a measurement or a named case the ADR's author did not have, and either may have forgotten something. So the rule has two parts: the two ends name each other, and a disagreement is decided aloud.
+
+- **The links.** An ADR lists the issues built to it in its header field `**Built by:**`, and each of those issues carries at the top of its Description `**Built to:** ADR-NNNN decisions …` (`docs/decisions/README.md` § An ADR names the issues built to it). An issue filed to an existing ADR carries its line from the start, and the ADR's field gains the issue: the field is a pointer, so an Accepted ADR takes the edit. Adding a link where the two already agree needs no discussion.
+- **A disagreement.** Whoever finds one stops and puts it to the maintainer at once, in the chat and in a comment on the issue. Two quotes are not enough: the finder analyses the mismatch first and brings a judgement. The same holds for any mismatch between two records of intent (two issues, an ADR and the vision, an audit's finding):
+  1. walk it on a real named case, and say what each side would show the person;
+  2. look for what decides it: the code, the linked issues, the ADR's alternatives, the vision, a read-only measurement where a number settles it;
+  3. judge it from each role that bears on it: at least the seasoned traveller, the product manager and the engineer (`CLAUDE.md` § Three Chairs), and the curator or privacy where they matter;
+  4. give one verdict, with its confidence and the strongest argument against it.
+
+  The maintainer decides, and only then one side changes: the issue's body, or the ADR (a Draft in place, an Accepted one through an ADR that narrows or supersedes it). The decision and its reason go on the issue and, where the ADR changed, into the ADR.
+- **What nobody does.** Rewrite an issue's requirements to match an ADR, or an ADR to match an issue, without that decision.
+- **An ADR's pull request** reads every issue in the field against the ADR before it merges, and its description lists the issues found in disagreement and how each was settled. "None" is an answer only after the bodies were read. That pull request is where the two come apart, so that is where the reading is owed.
+
+**The check.** `scripts/adr-issues.sh check` (`npm run adr:issues`) reads every ADR's field and every open issue's line and fails when one end does not name the other. It reads GitHub, so it is not in the gate map; `/pr-create` runs it on a branch that touches `docs/decisions/`, `/queue check` over a queue's items and `/docs-sweep` over everything. `scripts/adr-issues.sh for <issue>` reads the working tree only and prints the ADRs an issue is built to, each with its Status, apart from the ADRs that only mention it. `/feature` and `/fix` start from it.
+
+**What the check does not read.** It checks links. A missing link says that nobody has compared the issue with the ADR yet, and the answer is to compare them, never to paste the line. Whether a body's sentences agree with the decisions is read by a person or an agent each time. An ADR older than the rule has no field until it is next amended or the check names it; its issues are found by searching `docs/decisions/` for their numbers.
+
 ## Commits and Branches
 
 ### Commit Messages
