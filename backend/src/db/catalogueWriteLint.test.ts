@@ -32,6 +32,7 @@ const POINT_WRITE = /^experience_locations and experience_location_placements ar
 const WORK_WRITE = /^treasures, experience_treasures and experience_treasure_placements are written by their writer modules only/;
 const REGION_WRITE = /^regions is written by its writer modules only/;
 const DATE_WRITE = /^place_dates and record_dates are written by their writer module only/;
+const PERIOD_WRITE = /^place_periods and record_periods are written by their writer module only/;
 
 describe('the catalogue lint rules', () => {
   // The first lint in a worker loads the whole config and its plugins; pay it
@@ -151,5 +152,21 @@ describe('the catalogue lint rules', () => {
     ['the seed', 'export const q = `INSERT INTO place_dates (experience_id, slot) VALUES ($1, $2)`;\n', 'src/db/seed/lint-fixture.ts'],
   ])('lets a date write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => DATE_WRITE.test(m))).toBe(false);
+  });
+
+  it.each([
+    ['a place\'s period set in a controller', 'export const q = `INSERT INTO place_periods (experience_id, says, ordinal) VALUES ($1, $2, $3)`;\n', 'src/controllers/experience/lint-fixture.ts'],
+    ['a place\'s periods taken off in a sync service', "export const q = 'delete from place_periods where experience_id = $1';\n", 'src/services/sync/lint-fixture.ts'],
+    ['a record\'s view rewritten in the run\'s upsert', 'export const q = `UPDATE record_periods SET ended = true WHERE record_id = $1`;\n', 'src/services/sync/experienceUpsert.ts'],
+  ])('refuses a write to a place\'s periods outside their writer: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => PERIOD_WRITE.test(m))).toBe(true);
+  });
+
+  it.each([
+    ['a read', 'export const q = `SELECT says, ended FROM place_periods WHERE experience_id = $1`;\n', 'src/controllers/lint-fixture.ts'],
+    ['the writer module', 'export const q = `INSERT INTO record_periods (record_id, says, ordinal) VALUES ($1, $2, $3)`;\n', 'src/db/placePeriodsWriter.ts'],
+    ['the seed', 'export const q = `INSERT INTO place_periods (experience_id, says, ordinal) VALUES ($1, $2, $3)`;\n', 'src/db/seed/lint-fixture.ts'],
+  ])('lets a period write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => PERIOD_WRITE.test(m))).toBe(false);
   });
 });

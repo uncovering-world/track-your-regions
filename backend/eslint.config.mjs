@@ -212,6 +212,17 @@ const PLACE_DATE_WRITE_RULES = [
   ...spelledWriteRules('record_dates', PLACE_DATE_WRITE),
 ];
 
+/**
+ * A place's periods and each source's view of them (#2578, ADR-0217): the two
+ * tables `src/db/placePeriodsWriter.ts` writes under the place's lock.
+ */
+const PLACE_PERIOD_WRITE = 'place_periods and record_periods are written by their writer module only (ADR-0069): add a named '
+  + 'write to src/db/placePeriodsWriter.ts, taking the place\'s LockedExperience token.';
+const PLACE_PERIOD_WRITE_RULES = [
+  ...spelledWriteRules('place_periods', PLACE_PERIOD_WRITE),
+  ...spelledWriteRules('record_periods', PLACE_PERIOD_WRITE),
+];
+
 /** A curator's choice between two sources' views of a place (#1246): `viewChoices.ts`. */
 const VIEW_CHOICE_WRITE = 'experience_view_choices is written by its writer module only (ADR-0077): add a named write to '
   + 'src/controllers/experience/viewChoices.ts, taking the place\'s LockedExperience token.';
@@ -485,7 +496,8 @@ const SOURCE_RULE_FAMILIES = [
   TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  PART_WRITE_RULES, PLACE_DATE_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
+  PART_WRITE_RULES, PLACE_DATE_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES,
+  VIEW_SUGGESTION_WRITE_RULES,
   COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
@@ -498,7 +510,8 @@ const SOURCE_RULE_FAMILIES = [
 const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  PART_WRITE_RULES, PLACE_DATE_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
+  PART_WRITE_RULES, PLACE_DATE_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES,
+  VIEW_SUGGESTION_WRITE_RULES,
   COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
@@ -753,6 +766,12 @@ export default [
     files: ['src/db/placeDatesWriter.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(PLACE_DATE_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/db/placePeriodsWriter.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(PLACE_PERIOD_WRITE_RULES),
     },
   },
   {
