@@ -770,6 +770,7 @@ export interface ExperiencesRow {
   state_decided_by: number | null;
   state_decided_at: Date | null;
   state_note: string | null;
+  stands_today: boolean;
   merged_into_id: number | null;
   whole_shape: string | null;
 }
@@ -925,6 +926,35 @@ export interface PlaceIdentifiersRow {
   recorded_at: Date;
 }
 
+/** The table `place_periods`. */
+export interface PlacePeriodsRow {
+  experience_id: number;
+  says: string;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  ending: string | null;
+  what: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  source_id: number;
+  decided_by: number | null;
+  updated_at: Date;
+}
+
 /** The table `place_venues`. */
 export interface PlaceVenuesRow {
   source_id: number;
@@ -981,6 +1011,32 @@ export interface RecordDatesRow {
   ending: string | null;
   property: string | null;
   statement: string | null;
+}
+
+/** The table `record_periods`. */
+export interface RecordPeriodsRow {
+  record_id: number;
+  says: string;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  ending: string | null;
+  what: string | null;
+  from_first: number | null;
+  until_last: number | null;
 }
 
 /** The table `refresh_tokens`. */
@@ -1552,11 +1608,13 @@ export const RELATION_SCHEMAS = {
   place_dates: "public",
   place_identifier_verdicts: "public",
   place_identifiers: "public",
+  place_periods: "public",
   place_venues: "public",
   readership_month_files: "workbench",
   readership_months: "workbench",
   readership_staging: "workbench",
   record_dates: "public",
+  record_periods: "public",
   refresh_tokens: "public",
   region_geom_pieces: "public",
   region_image_overlays: "public",
@@ -1840,11 +1898,27 @@ export const COLUMN_WIDTHS = {
     scheme: 12,
     value: 64,
   },
+  place_periods: {
+    says: 8,
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+    ending: 12,
+  },
   record_dates: {
     slot: 10,
     span: 10,
     ending: 12,
     property: 12,
+  },
+  record_periods: {
+    says: 8,
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+    ending: 12,
   },
   refresh_tokens: {
     token_hash: 255,
@@ -2041,10 +2115,22 @@ export const CHECK_VALUES = {
   place_identifiers: {
     scheme: ["wikidata", "whc", "osm"],
   },
+  place_periods: {
+    ending: ["destroyed", "demolished", "removed", "collapsed"],
+    from_span: ["decade", "century", "millennium"],
+    says: ["stood", "used", "closed", "held"],
+    until_span: ["decade", "century", "millennium"],
+  },
   record_dates: {
     ending: ["destroyed", "demolished", "removed", "collapsed"],
     slot: ["began", "rebuilt", "use_ended", "ended"],
     span: ["decade", "century", "millennium"],
+  },
+  record_periods: {
+    ending: ["destroyed", "demolished", "removed", "collapsed"],
+    from_span: ["decade", "century", "millennium"],
+    says: ["stood", "used", "closed", "held"],
+    until_span: ["decade", "century", "millennium"],
   },
   region_image_overlays: {
     image_type: ["image/png", "image/jpeg", "image/webp"],
