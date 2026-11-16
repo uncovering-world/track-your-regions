@@ -185,8 +185,11 @@ So the stated shape and the pin cannot disagree, whatever came first. Museum Isl
 a curator states an area, keeps its coordinate until its outline is held. An Archaeology
 record that arrives as an area with another object's outline is an area that holds its
 coordinate. A bridge becomes a line when a line spanning 1 km arrives and a point again when
-that line goes. A part gained or lost changes nothing on an `area` or a `line`; on a `point`
-or on `none` it may change the default shape (decision 3), and the row then follows the table.
+that line goes. A part gained changes nothing on an `area` or a `line`; on a `point` it may
+change the default shape (decision 3), and the row then follows the table. A record that loses
+its last part takes its default shape again, unless a curator pinned its shape: an area its
+parts made is a point again, as a record of shape `none` is, and an area or a line its kind
+states stays one.
 The trigger runs on a write to the record. Where a source later moves the reference point away
 from an outline already taken as the record's own, the check names the record, and the next
 write to it settles the row.
@@ -332,6 +335,13 @@ kilometres are for hiking trails and cycling routes (#1948).
 | #2580 | The region referent that survives a re-import | A basis `named` in `experience_shape_regions`, read by `refresh_place_regions()`: a dish, a class object and an area at sea alike |
 | #2125 | Containers and "lies within" | `shape = 'area'` and `boundary`; it removes no point by hand |
 | #1969 | The read of outlines and lines by viewport, the layers, the credit | `shape`, `shape_min_zoom`, `extent` |
+
+**Amended while Draft, in the pull request of its first slice (#2577):** decision 5 said a
+part gained or lost changes nothing on an `area` or a `line`. That left an area its parts had
+made an area for good once its last part was taken out: nothing had stated it one, and
+decision 3 asks the default only of a `point`, so parts 44 km apart added later would not have
+made it `none`. A record that loses its last part now takes its default again, which is what
+`whole_shape_follows_parts()` did for a container.
 
 ## Alternatives Considered
 
