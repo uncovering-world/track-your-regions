@@ -34,6 +34,7 @@ import {
   standing,
 } from '../wikidataQueries.js';
 import { readsSubset } from '../subset/reader.js';
+import { inceptionYearOf } from '../wikidataYears.js';
 import {
   subsetContainerFacts, subsetEntityFacts, subsetIdsOfClasses, subsetPlacedPoolOfIds, subsetPoolOfClasses, subsetPoolOfIds,
 } from '../subset/publicArt.js';
@@ -136,7 +137,9 @@ export interface PoolEntity {
 /** What the pool asks about each entity besides why it was collected. */
 const POOL_DETAILS = `
       OPTIONAL { ?e wdt:P18 ?img }
-      OPTIONAL { ?e wdt:P571 ?inception }
+      # The best-ranked inception with its precision, so a BC year comes back in the item's own numbering (#2564).
+      OPTIONAL { ?e p:P571 ?inceptionStatement . ?inceptionStatement a wikibase:BestRank ;
+                 psv:P571 [ wikibase:timeValue ?inception ; wikibase:timePrecision ?inceptionPrecision ] }
       OPTIONAL { ?e p:P17 ?countryStatement . ?countryStatement a wikibase:BestRank ; ps:P17 ?country .
                  OPTIONAL { ?countryStatement pq:P582 ?countryEnded }
                  OPTIONAL { ?country wdt:P576 ?countryDissolved } }
@@ -147,7 +150,7 @@ const POOL_DETAILS = `
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
-const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?part ?partLabel ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
+const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?part ?partLabel ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year) ?inceptionPrecision';
 
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
@@ -304,7 +307,7 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
       countryLabel: null,
       articleUrl: row.article?.value || null,
       website: row.site?.value || null,
-      year: row.year?.value ? parseInt(row.year.value, 10) : null,
+      year: inceptionYearOf(row),
     });
   }
   applyPreferred(out, kept);

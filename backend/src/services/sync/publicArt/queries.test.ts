@@ -27,6 +27,28 @@ const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
 /** One canned answer, and the recount every fetcher now asks answered from its own counts. */
 const answer = (rows: SparqlBinding[]): SparqlFn => answeringWith(rows);
 
+describe("an entity's year read live (#2564)", () => {
+  // The Lion Capital of Ashoka (Q3595955): an inception of 250 BC to the year,
+  // which the query service gives as -249.
+  const lionCapital = (precision: string): SparqlBinding => ({
+    e: ref('Q3595955'), eLabel: { value: 'Lion Capital of Ashoka' }, coord: { value: 'Point(83.0244 25.3811)' },
+    sl: { value: '30' }, year: { value: '-249' }, inceptionPrecision: { value: precision },
+  });
+
+  it('reads a BC year given to the year in the item\'s own numbering, and one given to the century as it came', async () => {
+    expect((await fetchClassPool(answer([lionCapital('9')]), ['Q860861']))[0].year).toBe(-250);
+    expect((await fetchClassPool(answer([lionCapital('7')]), ['Q860861']))[0].year).toBe(-249);
+  });
+
+  it('reads an AD year as it came, and no year where none was bound', async () => {
+    const statue = { ...lionCapital('11'), year: { value: '1886' } };
+    expect((await fetchClassPool(answer([statue]), ['Q860861']))[0].year).toBe(1886);
+    const undated = lionCapital('9');
+    delete undated.year;
+    expect((await fetchClassPool(answer([undated]), ['Q860861']))[0].year).toBeNull();
+  });
+});
+
 describe('fetchClassPool', () => {
   it('makes one entity of the rows an answer repeats', async () => {
     const rows: SparqlBinding[] = [

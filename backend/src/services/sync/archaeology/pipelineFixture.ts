@@ -163,6 +163,7 @@ interface FixtureFind {
   clsLabel?: string;
   /** The broad root whose fame bands answer with it. Those rows bind no class. */
   broadRoot?: string;
+  /** The item's own year, given to the year; a row carries it as the query service would (#2564). */
   year?: number;
   /** Every `P31` the item carries, as the find facts answer. */
   classes?: string[];
@@ -696,7 +697,11 @@ function findRow(qid: string, find: FixtureFind, withClass: boolean): SparqlBind
     row.cls = uri(find.cls);
     row.clsLabel = { value: find.clsLabel ?? find.cls };
   }
-  if (find.year !== undefined) row.year = { value: String(find.year) };
+  if (find.year !== undefined) {
+    // The service numbers a BC year given to the year astronomically: 575 BC is -574.
+    row.year = { value: String(find.year < 0 ? find.year + 1 : find.year) };
+    row.inceptionPrecision = { value: '9' };
+  }
   return row;
 }
 

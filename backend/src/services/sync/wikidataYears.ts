@@ -1,3 +1,5 @@
+import type { SparqlBinding } from './wikidataUtils.js';
+
 /**
  * A year the Wikidata Query Service gives, in the item's own numbering (#2564,
  * ADR-0214).
@@ -25,4 +27,17 @@ const YEAR_PRECISION = 9;
 export function itemYearOf(serviceYear: number, precision: number | null | undefined): number {
   const precise = (precision ?? YEAR_PRECISION) >= YEAR_PRECISION;
   return precise && serviceYear <= 0 ? serviceYear - 1 : serviceYear;
+}
+
+/**
+ * The year of an inception a live pool query bound as `?year` (`YEAR(?inception)`)
+ * beside its `?inceptionPrecision`, in the item's own numbering, or null where
+ * it bound none (#2564): the Lion Capital of Ashoka's -249 at year precision
+ * reads -250, as the subset reads it.
+ */
+export function inceptionYearOf(row: SparqlBinding): number | null {
+  const year = row.year?.value;
+  if (!year) return null;
+  const precision = row.inceptionPrecision?.value;
+  return itemYearOf(parseInt(year, 10), precision ? parseInt(precision, 10) : null);
 }
