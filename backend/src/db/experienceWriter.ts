@@ -85,10 +85,22 @@ export async function lockTwoExperiences(
   first: number,
   second: number,
 ): Promise<Map<number, { lock: LockedExperience; mergedInto: number | null }> | null> {
+  return lockPlaces(client, [first, second]);
+}
+
+/**
+ * Any number of places' object locks, in the place order, as
+ * `lockTwoExperiences` takes two: a curator moving a list line from one part
+ * of a whole to another holds the whole and both places (#2527).
+ */
+export async function lockPlaces(
+  client: PoolClient,
+  ids: readonly number[],
+): Promise<Map<number, { lock: LockedExperience; mergedInto: number | null }> | null> {
   const locked = new Map<number, { lock: LockedExperience; mergedInto: number | null }>();
   const order = await client.query<{ id: number }>(
-    `SELECT id FROM unnest(ARRAY[$1::int, $2::int]) AS id ORDER BY ${placeLockOrderSql('id')}`,
-    [first, second],
+    `SELECT id FROM (SELECT DISTINCT unnest($1::int[]) AS id) AS asked ORDER BY ${placeLockOrderSql('id')}`,
+    [ids],
   );
   for (const { id } of order.rows) {
     const result = await lockExperience<{ merged_into_id: number | null }>(client, id, 'merged_into_id');

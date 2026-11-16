@@ -172,7 +172,10 @@
  *   are a curator's presses, seconds apart at most. No other writer takes it,
  *   and none waits for it while holding what a holder waits for: the holder's
  *   objects are locked before it, and the region keys after it are never
- *   held by a writer that then asks for an object.
+ *   held by a writer that then asks for an object. A list line moved to the
+ *   place it names (`partLineController.ts`, #2527) is such a word over three
+ *   places: their object locks in the place order (`lockPlaces`), then the
+ *   key, then the three places' region keys.
  *
  * **Then the mode: `FOR NO KEY UPDATE`, not `FOR UPDATE`.** It self-conflicts, so
  * two writers on one object still serialise, and it still blocks an UPDATE or a

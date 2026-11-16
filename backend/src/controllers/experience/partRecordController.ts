@@ -68,7 +68,7 @@ interface Authority {
 }
 
 /** What the pair holds, read under both locks. */
-interface PairState {
+export interface PairState {
   whole_name: string;
   part_name: string;
   standing: boolean;
@@ -103,7 +103,7 @@ export async function takeOutPart(
     takeOutWithin(client, locks, state, authority, body)));
 }
 
-function settle(outcome: { result?: PartWordAnswered; refusal?: AnswerRefusal }): PartWordAnswered {
+export function settle<T>(outcome: { result?: T; refusal?: AnswerRefusal }): T {
   if (outcome.refusal) {
     const { status, ...refusal } = outcome.refusal;
     throw new Refusal(status, refusal);
@@ -194,7 +194,7 @@ async function underLocks(
  * parts name one: an unread place outside the caller's scope is null, so a
  * refusal counts it and never names it (#2522).
  */
-async function readPair(client: PoolClient, wholeId: number, partId: number, caller: Express.User): Promise<PairState> {
+export async function readPair(client: PoolClient, wholeId: number, partId: number, caller: Express.User): Promise<PairState> {
   // $3 says whether the caller is an admin, $4 is the caller.
   const asked: CallerParams = { user: '$4', admin: '$3::boolean' };
   const read = await client.query<PairState>(
@@ -244,7 +244,7 @@ function hiddenInChain(chain: readonly (string | null)[]): string {
 }
 
 /** The refusals an add meets before it writes, or null where none does. */
-function addRefusal(state: PairState, makesWhole: boolean): AnswerRefusal | null {
+export function addRefusal(state: PairState, makesWhole: boolean): AnswerRefusal | null {
   if (state.loop) {
     return {
       status: 409, code: 'loop',

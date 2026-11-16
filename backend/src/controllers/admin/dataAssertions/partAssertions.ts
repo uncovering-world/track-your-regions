@@ -281,7 +281,10 @@ const wholeOwnPoint: CatalogueAssertion = {
  * each part: shown to a reader, unread, turned down by a curator, withdrawn by
  * the list and still to be judged, or none of these. One label per side, the
  * first that holds in that order. The points go with #2124, and this check
- * with them.
+ * with them. A part that holds no line point has no points' reading, and the
+ * gate refresh leaves its record as it is (`refresh_part_record_gates()`), so
+ * the check skips it: a list line a curator moved to the place it names, when
+ * the line's point is the old place's own, placed by its kind too (#2527).
  */
 const partGateOutOfStep: CatalogueAssertion = {
   id: 'part-gate-out-of-step',
@@ -313,6 +316,11 @@ const partGateOutOfStep: CatalogueAssertion = {
                         WHEN ${partRecordWithdrawnSql('rec')} AND ${hideLostSql('part')} THEN 'withdrawn'
                         ELSE 'hidden' END AS state) recd
          WHERE ${partRecordSql('rec')}
+           -- A record whose part holds no line point is not read by its points (#2527);
+           -- it goes when #2124 drops the points' reading.
+           AND EXISTS (SELECT 1 FROM experience_locations lp
+                        WHERE lp.experience_id = rec.experience_id AND lp.merged_into_id IS NULL
+                          AND is_part_line_point(lp.id, rec.whole_id))
            AND pts.state <> recd.state
          ORDER BY whole.name, part.id`,
   describe: (row: AssertionRow) => `${text(row, 'whole_name')} (#${count(row, 'whole_id')}): `

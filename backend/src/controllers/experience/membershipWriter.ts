@@ -615,6 +615,32 @@ export async function withdrawCuratorPartRecord(
 }
 
 /**
+ * Move the list line `from` holds in `whole` to `to` (#2527): the record of
+ * World Heritage components, with its reference, its ordinal and the list's
+ * name for the line, becomes `to`'s, and its gate follows `to`'s line points
+ * (`refresh_part_record_gates()`, through the trigger on the record's place),
+ * so the caller moves those points first, under the three places' locks.
+ * Thessaloniki's line "Rotunda", held by the Arch of Galerius and Rotunda,
+ * moved to the Rotunda. Answers the record and its reference, or null where
+ * `from` holds no line of `whole`.
+ */
+export async function movePartLineRecord(
+  client: PoolClient,
+  whole: LockedExperience,
+  from: LockedExperience,
+  to: LockedExperience,
+): Promise<{ id: number; reference: string } | null> {
+  const moved = await client.query<{ id: number; external_id: string }>(
+    `UPDATE ${MEMBERSHIPS} rec SET experience_id = $3, updated_at = NOW()
+      WHERE rec.whole_id = $1 AND rec.experience_id = $2 AND ${componentRecordSql('rec')}
+      RETURNING rec.id, rec.external_id`,
+    [whole.id, from.id, to.id],
+  );
+  const row = moved.rows[0];
+  return row ? { id: row.id, reference: row.external_id } : null;
+}
+
+/**
  * Whether the membership `sourceId` brought to the place claims its type — the
  * claim a proposal of that source's run meets (ADR-0084: the type within a
  * kind is the membership's, and so is a curator's pin on it).
