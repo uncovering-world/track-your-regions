@@ -58,7 +58,7 @@ import { shareOf, type PlaceGather } from './places/gather.js';
 import { sharedWorksOf } from './places/sharedWorks.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { mergeSurroundings, surroundingsArrivals, type SurroundingsKind } from './places/surroundingsTier.js';
-import { refuseGone } from './places/gone.js';
+import { goneReason, refuseGone } from './places/gone.js';
 import { worldHistory } from './places/worldMemory.js';
 import { typeOf, worshipVerdict } from './worship/worshipTest.js';
 import type { WorshipTrees } from './worship/classes.js';
@@ -389,7 +389,7 @@ async function processPlace(
     // place holds, where a treasure is what admitted it. A place through door
     // one is admitted for its own fame and names nothing.
     admittedFor: place.admittedFor ?? null,
-  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report — as
   // against an empty delta, which says the question was asked (ADR-0026).
@@ -484,6 +484,9 @@ export function worshipSource(
     // property of *this* run rather than of the source.
     fetchItems: (progress) => fetchWorshipItems(progress, gather, options.refreshCache === true),
     processItem: processPlace,
+    // Each place's lifetime, from its own item, with the end the gone rule reads (#1719).
+    lifetimeItem: (p) => p.qid,
+    lifetimeGone: goneReason,
     getItemName: (p) => p.label,
     getItemId: (p) => p.qid,
   };

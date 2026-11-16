@@ -20,7 +20,7 @@ vi.mock('../subset/entities.js', () => ({
 
 import { subsetStandingFacts } from '../subset/standing.js';
 import { goneReason, goneWorkReason } from './gone.js';
-import { lifetimeOf } from './lifetime.js';
+import { lifetimeOf, readLifetimes } from './lifetime.js';
 
 const JULIAN = 'http://www.wikidata.org/entity/Q1985786';
 
@@ -196,5 +196,16 @@ describe('a place\'s lifetime as its item states it (#1719)', () => {
 
   it('reads a recent date stated to ten thousand years as its year', async () => {
     expect((await lifetimes(['Q9719003'])).Q9719003).toEqual({ began: year(1920, { property: 'P571' }) });
+  });
+});
+
+describe('the lifetimes a run reads on the live service (#1719)', () => {
+  it('reads an item that states no date as an empty view, and leaves one the service does not answer unread', async () => {
+    const e = (qid: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/${qid}` });
+    // Q9719201 exists and states no date any more; Q9719202 is a redirect, which the service answers with no row.
+    const sparql = vi.fn(async () => [{ e: e('Q9719201'), known: { type: 'literal', value: '3' } }]);
+    const read = await readLifetimes(sparql, [{ key: 'kept', qid: 'Q9719201' }, { key: 'gone', qid: 'Q9719202' }]);
+    expect(read.get('kept')).toEqual({});
+    expect(read.has('gone')).toBe(false);
   });
 });

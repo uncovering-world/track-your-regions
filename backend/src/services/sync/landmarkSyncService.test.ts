@@ -58,7 +58,7 @@ const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), gu
 vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => history) }));
 vi.mock('./places/surroundingsPool.js', () => ({ readSurroundingsPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
-vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0), goneWorkReason: vi.fn(() => null) }));
+vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0), goneWorkReason: vi.fn(() => null), goneReason: vi.fn(() => null) }));
 // Whom or what a place commemorates is its own module's (`places/commemorates.test.ts`, #2144); here it names nobody.
 const readCommemorates = vi.hoisted(() => vi.fn(async () => new Map()));
 vi.mock('./places/commemorates.js', () => ({ readCommemorates, commemorationWiki: vi.fn(async () => ({})) }));

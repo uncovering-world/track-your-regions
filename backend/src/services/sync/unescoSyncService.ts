@@ -550,7 +550,7 @@ async function upsertExperience(
     itemPictures: exp.itemPictures,
     metadata: exp.metadata,
     wikidataItems,
-  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // A preview writes nothing downstream either: locations would belong to a row
   // that was never touched.
@@ -709,6 +709,15 @@ export function syncUnescoSites(
       if (!context.dryRun && context.syncLogId !== null && (components.total > 0 || components.failedSites > 0)) {
         await recordComponentItemsReport(context.syncLogId, finishComponentReport(components));
       }
+    },
+    // A site's lifetime from its one Wikidata item, the item its picture comes
+    // from; a site of several items, or none, has no one lifetime, and its
+    // view is emptied. Nothing is read where Wikidata did not answer, and World
+    // Heritage reads no end of the place (#1719).
+    lifetimeItem: (record) => {
+      if (!factsAnswered) return undefined;
+      const items = siteItems(facts, String(record.id_no), record.name_en);
+      return items.length === 1 ? items[0] : null;
     },
     getItemName: (record) => record.name_en || `Site ${record.id_no}`,
     getItemId: (record) => String(record.id_no),

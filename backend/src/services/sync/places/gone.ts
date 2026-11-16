@@ -263,7 +263,11 @@ const LIFETIME_VALUES = LIFETIME_PROPERTIES.map((property) => `("${property}" p:
 /**
  * The live twin of `subsetStandingFacts`: one branch of the union per fact, so
  * a row carries one statement and an item's facts do not multiply, each time
- * read with its precision.
+ * read with its precision. One branch asks only that the item exists
+ * (`wikibase:sitelinks`, which every item has and a redirect or a deleted
+ * item has not), so an item that states none of these facts is answered with
+ * none, as the subset answers it, and its lifetime reads as empty rather than
+ * unread (#1719).
  */
 async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<string, StandingFacts>> {
   const rows = await sparql(`
@@ -281,6 +285,7 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
       UNION { ?e p:P625 ?c . ?c a wikibase:BestRank ; pqv:P580 [ wikibase:timeValue ?placedSince ; wikibase:timePrecision ?placedSincePrecision ] .
         FILTER NOT EXISTS { ?c pq:P582 ?cEnded } }
       UNION { ?e wdt:P793 ?event }
+      UNION { ?e wikibase:sitelinks ?known }
       UNION { VALUES (?datedProperty ?datedClaim ?datedValue) { ${LIFETIME_VALUES} }
         ?e ?datedClaim ?datedStatement . ?datedStatement a wikibase:BestRank ;
           ?datedValue [ wikibase:timeValue ?dated ; wikibase:timePrecision ?datedPrecision ] .

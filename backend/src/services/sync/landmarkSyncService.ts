@@ -32,7 +32,7 @@ import {
 import { categoryNote, filedAsMonument, readMonumentCategories } from './publicArt/monumentCategories.js';
 import type { FiledAsMonument } from './publicArt/publicArtTest.js';
 import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
-import { goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
+import { goneReason, goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
 import { commemorationWiki, readCommemorates } from './places/commemorates.js';
 import { leadDedicationReader } from './places/leadDedication.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
@@ -380,7 +380,7 @@ async function upsertLandmarkExperience(
     imageUrl,
     itemPictures: landmark.itemPictures,
     metadata,
-  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
@@ -548,6 +548,9 @@ export function placeSource(
     // that fails throws, and fails the run.
     fetchItems: (progress) => fetchLandmarkItems(sourceId, classifier, credits, gather, progress),
     processItem: (landmark, _progress, context) => upsertLandmarkExperience(sourceId, classifier, credits, landmark, context),
+    // Each place's lifetime, from its own item, with the end the kind's gone rule reads (#1719).
+    lifetimeItem: (lm) => lm.qid,
+    lifetimeGone: classifier.gone ?? goneReason,
     getItemName: (lm) => lm.label,
     getItemId: (lm) => lm.qid,
   };
