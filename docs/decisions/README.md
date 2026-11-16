@@ -236,6 +236,7 @@ and accepted by it.
 | [0215](0215-a-password-is-digested-whole-before-bcrypt.md) | A password is digested whole before bcrypt | Accepted | 2026-11-16 |
 | [0216](0216-a-withdrawn-part-stays-shown-until-a-curator-answers.md) | A withdrawn part stays shown until a curator answers | Accepted | 2026-11-16 |
 | [0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) | Time in the catalogue is held as periods, and the catalogue is read as of a date | Draft | 2026-11-16 |
+| [0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md) | A record states its shape, and its pin is derived from what it holds | Draft | 2026-11-16 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
