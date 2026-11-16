@@ -8611,26 +8611,46 @@ development catalogue on 2026-10-22: 151 of 566 open candidates were exact and e
 conditions; curators had accepted every exact candidate they answered.
 
 **A component the list placed only roughly is recorded as approximate** (#1853). The World Heritage
-run records on each point it writes why the list's coordinate only says roughly where the component
-is (`experience_locations.approximate`, from `approximateReasons` in `@tyr/shared/precision`):
+run records on each line's record, beside the coordinate the list gave it, why that coordinate only
+says roughly where the component is (`source_records.reported_location_rough`, written by
+`writePartListings` from `approximateReasons` in `@tyr/shared/precision`, ADR-0213 decision 5,
+#2123), whatever a curator made of the place, and resolved for the site's area (below). Whether a
+point stands only roughly is one predicate every reader composes, the map's ring, the reader reads,
+the *Where is it?* card, the hint pass and the component-item finder alike (`pointRoughSql`,
+`placePoints.ts`): no curator claimed its coordinate, the point still stands at the record's
+coordinate, the record is rough, and it is the line's own point (`partLinePointSql`,
+`is_part_line_point()`'s rule written out so it costs two index probes, asked only of a rough
+line's point). A point looks for its record only where its place holds a rough record
+(a set read once per statement through `idx_source_records_rough`) or the point keeps a stored
+reason (below), so a hot read pays a hash probe for every other point. The reasons are
 `whole-minute`, both coordinates within `WHOLE_MINUTE_TOLERANCE_DEG` of a whole minute (the Longmen
 Grottoes' 34°28′0″ N 112°28′0″ E, about 10 km from the caves) — 1e-5°, since the list writes some
 whole minutes in decimals cut to five places (Novgorod's 58.53333, Guachimontones' 20.6833305556),
 while the nearest point given to the second stands 0.17″ off one (#2158) — or `shared`, a point another
 component of the property under another reference stands on too (Echmiatsin's cathedral, church and
 cemetery on the property's own point). A point a curator placed is not approximate, and neither is
-one that stands for its whole site (`stands_for_whole_site()`) of an area at least ten times its
+a line that stands for its whole site (`stands_for_whole_site()`, read off the line's name and
+reference and the count of the list's lines) of an area at least ten times its
 minute's cell (`outsizes_its_minute()`, read off UNESCO's `areaHectares`, #1903): anywhere in the
 minute stands for the Okavango Delta or Virunga well enough, while the Longmen Grottoes (331 ha,
 10 km off), Sigiriya and Grimeton stay asked. Migration 162 cleared the 41 such points on the
 development catalogue on 2026-10-23. Measured on
 2026-10-22 against the items carrying the same World Heritage reference, points to the whole minute
 stood a median 1.4 km from their item, 63 % over a kilometre, against 26 m and 13 % for points given
-to the second. The writer's fast path, which leaves unchanged points as they are, gives way when a
-point's stored mark differs from the one it reads (`approximateDrifts` over `APPROXIMATE_REASONS`,
-`locationWriter.ts`), so a site whose area crosses ten cells of its minute is marked again on its next
-run. Migration 157 recorded the mark on the points placed before #1853: 511 to the whole minute and
-501 shared on the development catalogue on 2026-10-23.
+to the second. The run resolves that rule on the record, where it knows the area
+(`listingRoughSql`, `partFieldsWriter.ts`), so a site whose area crosses ten cells of its minute is
+marked again by its next run: the writer's fast path gives way when a record holds another precision
+than the list and the area give (`partListingChangesSql`). Migration 157 recorded the mark on the
+points placed before #1853: 511 to the whole minute and 501 shared on the development catalogue on
+2026-10-23. Migration 258 gave every line's record its precision, read off the coordinate it holds
+as the run reads the list, with the area rule applied. Until the points go (#2124), the run still stores its old mark on each
+point (`experience_locations.approximate`, `APPROXIMATE_REASONS` in `locationWriter.ts`). One case
+reads it: under a gated source, a move of a component's coordinate waits for a curator as an unread
+arrival (`withdrawal_deferred_for_location_id`), the point a reader sees keeps the list's old
+coordinate, and the record already holds the new one. The coordinate on screen is still the rough
+one, so that point keeps the reason stored with it, until the arrival is published, or for good
+once it is refused. Elsewhere the catalogue check `point-rough-out-of-step` holds the mark to the
+record's.
 The component-item finder does not count a candidate's coordinate within `COPIED_COORDINATE_M` of an
 approximate point (`componentItemMatching.ts`): it is the list's point copied, not a measurement, as
 Wikidata's item for ancient Zvartnots carries Echmiatsin's shared point and was offered to the
