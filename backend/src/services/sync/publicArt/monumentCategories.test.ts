@@ -285,7 +285,7 @@ describe('what the category does not answer (#2171)', () => {
     // The subset states its inception in 1949 and its end in 1999, and nothing that says it stands.
     expect(goneWorkReason({
       ended: true, endedYear: 1999, endedAt: { year: 1999, month: 8, day: 27, precision: 11 }, use: [], conservation: [], heritage: false,
-      designatedSince: [], inceptions: [{ year: 1949, month: 7, day: 10, precision: 11 }], placedSince: [], events: [],
+      designatedSince: [], inceptions: [{ year: 1949, month: 7, day: 10, precision: 11 }], placedSince: [], events: [], dated: [],
     })).toBe('removed in 1999');
   });
 });

@@ -20,7 +20,7 @@ const PROPOSED = 'Q811683';
 
 const facts = (over: Partial<StandingFacts>): StandingFacts => ({
   ended: false, endedYear: null, endedAt: null, use: [], conservation: [], heritage: false,
-  designatedSince: [], inceptions: [], placedSince: [], events: [], ...over,
+  designatedSince: [], inceptions: [], placedSince: [], events: [], dated: [], ...over,
 });
 
 describe('goneReason', () => {
@@ -109,6 +109,33 @@ describe('fetchStandingFacts on the live service', () => {
     expect(answer.get('Q15272827')).toEqual(facts({
       heritage: true, designatedSince: [{ year: 1997, month: 5, day: 16, precision: 11 }], events: ['Q331483'],
     }));
+  });
+});
+
+describe('the dated statements of a lifetime on the live service (#1719, #2564)', () => {
+  it('reads each with its statement id, circa, and a BC year back in the item\'s own numbering', async () => {
+    const e = (qid: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/${qid}` });
+    const lit = (value: string) => ({ type: 'literal', value });
+    const node = (id: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/statement/${id}` });
+    // Tell es-Sultan states its inception to the century, -9600, which the
+    // service leaves as it is; the Lion Capital of Ashoka's -0250 to the year,
+    // which the service writes as -0249; Nelson's Pillar's end to the day,
+    // under two properties.
+    const rows: SparqlBinding[] = [
+      { e: e('Q2402267'), datedProperty: lit('P571'), datedStatement: node('Q2402267-AAAA-1'), dated: lit('-9600-01-01T00:00:00Z'), datedPrecision: lit('7') },
+      { e: e('Q3595955'), datedProperty: lit('P571'), datedStatement: node('Q3595955-BBBB-2'), dated: lit('-0249-01-01T00:00:00Z'), datedPrecision: lit('9'), datedCirca: e('Q5727902') },
+      { e: e('Q2350741'), datedProperty: lit('P576'), datedStatement: node('Q2350741-CCCC-3'), dated: lit('1966-03-08T00:00:00Z'), datedPrecision: lit('11') },
+      { e: e('Q2350741'), datedProperty: lit('P3999'), datedStatement: node('Q2350741-DDDD-4'), dated: lit('1966-03-08T00:00:00Z'), datedPrecision: lit('11') },
+      { e: e('Q2350741'), datedProperty: lit('P3999'), datedStatement: node('Q2350741-DDDD-4'), dated: lit('1966-03-08T00:00:00Z'), datedPrecision: lit('11') },
+    ] as SparqlBinding[];
+    const answer = await fetchStandingFacts(() => Promise.resolve(rows), ['Q2402267', 'Q3595955', 'Q2350741']);
+    expect(answer.get('Q2402267')?.dated).toEqual([
+      { property: 'P571', time: { year: -9600, month: 1, day: 1, precision: 7 }, julian: false, circa: false, statement: 'Q2402267$AAAA-1' },
+    ]);
+    expect(answer.get('Q3595955')?.dated).toEqual([
+      { property: 'P571', time: { year: -250, month: 1, day: 1, precision: 9 }, julian: false, circa: true, statement: 'Q3595955$BBBB-2' },
+    ]);
+    expect(answer.get('Q2350741')?.dated.map((d) => d.property)).toEqual(['P576', 'P3999']);
   });
 });
 

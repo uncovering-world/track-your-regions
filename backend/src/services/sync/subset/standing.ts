@@ -4,10 +4,12 @@
  * best-ranked end of existence (`P576`), state of use (`P5817`), state of
  * conservation (`P5816`), inceptions (`P571`) and significant events
  * (`P793`), the start time of each coordinate (`P625`) that still holds, and
- * each heritage designation (`P1435`) that still holds, with its start time.
+ * each heritage designation (`P1435`) that still holds, with its start time;
+ * and every dated statement a place's lifetime is read from (#1719,
+ * `places/lifetime.ts`).
  */
 
-import type { CompactValue } from '../../dumps/wikidata/compactEntity.js';
+import type { CompactStatement, CompactValue } from '../../dumps/wikidata/compactEntity.js';
 import { entitiesOf } from './entities.js';
 import { bestStatements, isNoValue, itemsOf, standingStatements, yearOf } from './values.js';
 
@@ -44,6 +46,33 @@ export interface StandingFacts {
   placedSince: readonly StatedTime[];
   /** The significant events (`P793`). */
   events: readonly string[];
+  /** The best-rank statements a place's lifetime is read from, each with its time (#1719). */
+  dated: readonly DatedStatement[];
+}
+
+/** The properties a place's lifetime is read from: its starts, then its ends. */
+export const LIFETIME_PROPERTIES = ['P571', 'P1619', 'P580', 'P576', 'P3999', 'P582'] as const;
+export type LifetimeProperty = (typeof LIFETIME_PROPERTIES)[number];
+
+/** Wikidata's item for the proleptic Julian calendar, the calendar model of most dates before 1582. */
+export const JULIAN_CALENDAR = 'Q1985786';
+
+/** Wikidata's item for *circa*, the value of the sourcing circumstances (`P1480`) of an approximate date. */
+export const CIRCA = 'Q5727902';
+
+/**
+ * One best-rank statement of a lifetime property, with its time as the item
+ * states it, in the item's own numbering of years.
+ */
+export interface DatedStatement {
+  property: LifetimeProperty;
+  time: StatedTime;
+  /** The time is a day of the Julian calendar, which the place's date turns into the Gregorian one. */
+  julian: boolean;
+  /** The statement says the date is approximate (`P1480` circa). */
+  circa: boolean;
+  /** The statement's id (`Q214944$899b…`), as Wikidata's JSON gives it. */
+  statement: string;
 }
 
 /**
@@ -73,6 +102,23 @@ function timeOf(value: CompactValue): StatedTime | null {
 const timesOf = (values: readonly CompactValue[]): StatedTime[] =>
   values.map(timeOf).filter((time): time is StatedTime => time !== null);
 
+/** The calendar model a compact time value names, Julian or not. */
+function isJulian(value: CompactValue): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const model = (value as { calendarmodel?: unknown }).calendarmodel;
+  return typeof model === 'string' && model.endsWith(`/${JULIAN_CALENDAR}`);
+}
+
+/** Every best-rank statement of the lifetime properties that gives a time. */
+function datedStatementsOf(claims: Record<string, CompactStatement[]>): DatedStatement[] {
+  return LIFETIME_PROPERTIES.flatMap((property) => bestStatements(claims[property]).flatMap((statement) => {
+    const time = timeOf(statement.value);
+    if (!time) return [];
+    const circa = (statement.qualifiers?.P1480 ?? []).includes(CIRCA);
+    return [{ property, time, julian: isJulian(statement.value), circa, statement: statement.id }];
+  }));
+}
+
 /** The standing facts of each kept item; an item the subset does not keep has none. */
 export async function subsetStandingFacts(ids: string[]): Promise<Map<string, StandingFacts>> {
   const out = new Map<string, StandingFacts>();
@@ -95,6 +141,7 @@ export async function subsetStandingFacts(ids: string[]): Promise<Map<string, St
       inceptions: timesOf(bestStatements(claims.P571).map((statement) => statement.value)),
       placedSince: standingStatements(claims.P625).flatMap((statement) => timesOf(statement.qualifiers?.P580 ?? [])),
       events: itemsOf(bestStatements(claims.P793)),
+      dated: datedStatementsOf(claims),
     });
   }
   return out;

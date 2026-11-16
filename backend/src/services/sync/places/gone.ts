@@ -33,7 +33,11 @@ import type { FilteredEntity } from '../syncContract.js';
 import { chunk, values, type SparqlFn } from '../wikidataQueries.js';
 import { extractQid, isQid, type SparqlBinding } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
-import { statedTime, subsetStandingFacts, type StandingFacts, type StatedTime } from '../subset/standing.js';
+import {
+  CIRCA, LIFETIME_PROPERTIES, statedTime, subsetStandingFacts,
+  type DatedStatement, type LifetimeProperty, type StandingFacts, type StatedTime,
+} from '../subset/standing.js';
+import { itemYearOf } from '../wikidataYears.js';
 
 export type { StandingFacts };
 
@@ -197,21 +201,39 @@ interface LiveFacts {
   inceptions: StatedTime[];
   placedSince: StatedTime[];
   events: Set<string>;
+  /** By statement, so a statement the answer names twice counts once. */
+  dated: Map<string, DatedStatement>;
 }
 
-/** A time the live service bound, with the precision bound beside it, or null where none was bound. */
+/**
+ * A time the live service bound, with the precision bound beside it, or null
+ * where none was bound, its year in the item's own numbering (`itemYearOf`):
+ * the service writes a BC date known to the year or finer astronomically.
+ */
 function liveTime(value: SparqlBinding[string] | undefined, precision: SparqlBinding[string] | undefined): StatedTime | null {
   if (!value?.value) return null;
-  return statedTime(value.value, precision?.value === undefined ? undefined : Number(precision.value));
+  const time = statedTime(value.value, precision?.value === undefined ? undefined : Number(precision.value));
+  return time && { ...time, year: itemYearOf(time.year, time.precision) };
 }
+
+/**
+ * A statement's id from the node the service names it by
+ * (`…/entity/statement/Q214944-899b…`): the item and the rest joined by `$`,
+ * as Wikidata's JSON writes it.
+ */
+const statementIdOf = (node: string): string => node.replace(/^.*\/statement\//, '').replace(/^([Qq]\d+)-/, '$1$$');
+
+/** The lifetime property a row's statement was read under, or null. */
+const lifetimePropertyOf = (value: string | undefined): LifetimeProperty | null =>
+  (LIFETIME_PROPERTIES as readonly string[]).includes(value ?? '') ? value as LifetimeProperty : null;
 
 /** What one row of the live answer adds to its item's facts: one statement. */
 function addRow(facts: LiveFacts, row: SparqlBinding): void {
   if (row.end?.value) {
     facts.ended = true;
-    const year = /^([+-]?\d+)-/.exec(row.end.value);
-    if (year && facts.endedYear === null) facts.endedYear = Number(year[1]);
-    facts.endedAt ??= liveTime(row.end, row.endPrecision);
+    const endedAt = liveTime(row.end, row.endPrecision);
+    if (endedAt && facts.endedYear === null) facts.endedYear = endedAt.year;
+    facts.endedAt ??= endedAt;
   }
   if (row.use?.value) facts.use.add(extractQid(row.use.value));
   if (row.cons?.value) facts.conservation.add(extractQid(row.cons.value));
@@ -221,7 +243,22 @@ function addRow(facts: LiveFacts, row: SparqlBinding): void {
   const placed = liveTime(row.placedSince, row.placedSincePrecision);
   if (placed) facts.placedSince.push(placed);
   if (row.event?.value) facts.events.add(extractQid(row.event.value));
+  const property = lifetimePropertyOf(row.datedProperty?.value);
+  const dated = liveTime(row.dated, row.datedPrecision);
+  if (property && dated && row.datedStatement?.value) {
+    const statement = statementIdOf(row.datedStatement.value);
+    const known = facts.dated.get(statement);
+    // The service writes a Julian date to the day as the Gregorian day it is,
+    // so a time read here is never Julian.
+    facts.dated.set(statement, {
+      property, time: dated, julian: false, statement,
+      circa: (known?.circa ?? false) || row.datedCirca?.value !== undefined,
+    });
+  }
 }
+
+/** The lifetime properties as the service's statement and value predicates, with each one's name. */
+const LIFETIME_VALUES = LIFETIME_PROPERTIES.map((property) => `("${property}" p:${property} psv:${property})`).join(' ');
 
 /**
  * The live twin of `subsetStandingFacts`: one branch of the union per fact, so
@@ -231,7 +268,8 @@ function addRow(facts: LiveFacts, row: SparqlBinding): void {
 async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<string, StandingFacts>> {
   const rows = await sparql(`
     SELECT ?e ?end ?endPrecision ?use ?cons ?herit ?heritSince ?heritSincePrecision
-           ?inception ?inceptionPrecision ?placedSince ?placedSincePrecision ?event WHERE {
+           ?inception ?inceptionPrecision ?placedSince ?placedSincePrecision ?event
+           ?datedProperty ?datedStatement ?dated ?datedPrecision ?datedCirca WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e p:P576 ?n . ?n a wikibase:BestRank ; ps:P576 ?end .
         OPTIONAL { ?n psv:P576 [ wikibase:timePrecision ?endPrecision ] } }
@@ -243,6 +281,10 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
       UNION { ?e p:P625 ?c . ?c a wikibase:BestRank ; pqv:P580 [ wikibase:timeValue ?placedSince ; wikibase:timePrecision ?placedSincePrecision ] .
         FILTER NOT EXISTS { ?c pq:P582 ?cEnded } }
       UNION { ?e wdt:P793 ?event }
+      UNION { VALUES (?datedProperty ?datedClaim ?datedValue) { ${LIFETIME_VALUES} }
+        ?e ?datedClaim ?datedStatement . ?datedStatement a wikibase:BestRank ;
+          ?datedValue [ wikibase:timeValue ?dated ; wikibase:timePrecision ?datedPrecision ] .
+        OPTIONAL { ?datedStatement pq:P1480 ?datedCirca . FILTER(?datedCirca = wd:${CIRCA}) } }
     }`, { kind: 'entities', label: `whether ${qids.length} places still stand` });
   const out = new Map<string, LiveFacts>();
   for (const row of rows) {
@@ -251,13 +293,14 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
     const facts = out.get(qid) ?? {
       ended: false, endedYear: null, endedAt: null, use: new Set<string>(), conservation: new Set<string>(),
       designations: new Map<string, StatedTime | null>(), inceptions: [], placedSince: [], events: new Set<string>(),
+      dated: new Map<string, DatedStatement>(),
     };
     addRow(facts, row);
     out.set(qid, facts);
   }
-  return new Map([...out].map(([qid, { designations, ...f }]) => [qid, {
+  return new Map([...out].map(([qid, { designations, dated, ...f }]) => [qid, {
     ...f, use: [...f.use], conservation: [...f.conservation], events: [...f.events],
-    heritage: designations.size > 0, designatedSince: [...designations.values()],
+    heritage: designations.size > 0, designatedSince: [...designations.values()], dated: [...dated.values()],
   }]));
 }
 
