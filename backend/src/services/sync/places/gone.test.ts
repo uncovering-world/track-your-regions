@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { SparqlBinding } from '../wikidataUtils.js';
-import { fetchStandingFacts, goneReason, refuseGone, type StandingFacts } from './gone.js';
+import { fetchStandingFacts, goneReason, refuseGone, removedWorkReason, type StandingFacts } from './gone.js';
 
 const DEMOLISHED = 'Q56556915';
 const PERMANENTLY_CLOSED = 'Q104664889';
@@ -20,7 +20,7 @@ const PROPOSED = 'Q811683';
 
 const facts = (over: Partial<StandingFacts>): StandingFacts => ({
   ended: false, endedYear: null, endedAt: null, use: [], conservation: [], heritage: false,
-  designatedSince: [], inceptions: [], placedSince: [], events: [], dated: [], ...over,
+  designatedSince: [], inceptions: [], placedSince: [], events: [], dated: [], datedEvents: [], ...over,
 });
 
 describe('goneReason', () => {
@@ -136,6 +136,54 @@ describe('the dated statements of a lifetime on the live service (#1719, #2564)'
       { property: 'P571', time: { year: -250, month: 1, day: 1, precision: 9 }, julian: false, circa: true, statement: 'Q3595955$BBBB-2' },
     ]);
     expect(answer.get('Q2350741')?.dated.map((d) => d.property)).toEqual(['P576', 'P3999']);
+  });
+});
+
+describe('the dated events of a destruction or a rebuilding on the live service (#2578)', () => {
+  const e = (qid: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/${qid}` });
+  const lit = (value: string) => ({ type: 'literal', value });
+  const node = (id: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/statement/${id}` });
+  const dated = (qid: string, event: string, statement: string, qualifier: string, at: string, precision: string) => ({
+    e: e(qid), datedEvent: e(event), eventStatement: node(statement), eventQualifier: lit(qualifier), eventAt: lit(at), eventAtPrecision: lit(precision),
+  });
+
+  it('keeps each date of an event that says the place was destroyed or stands again, once, and no other event', async () => {
+    const rows = [
+      // The Kintai Bridge: its construction, its demolition, and two reconstructions.
+      dated('Q1196460', 'Q3875186', 'Q1196460-6736075e', 'P585', '1673-01-01T00:00:00Z', '9'),
+      dated('Q1196460', 'Q331483', 'Q1196460-1063075a', 'P585', '1950-09-14T00:00:00Z', '11'),
+      dated('Q1196460', 'Q331483', 'Q1196460-1063075a', 'P585', '1950-09-14T00:00:00Z', '11'),
+      dated('Q1196460', 'Q2478058', 'Q1196460-c619a92e', 'P585', '1953-01-01T00:00:00Z', '9'),
+      { ...dated('Q1196460', 'Q2478058', 'Q1196460-dc7b359e', 'P585', '1674-11-30T00:00:00Z', '11'), eventCirca: e('Q5727902') },
+      // St. Anne's Church in Warsaw states one rebuilding at three points in time.
+      dated('Q1798910', 'Q52385658', 'Q1798910-AAAA', 'P585', '1533-01-01T00:00:00Z', '9'),
+      dated('Q1798910', 'Q52385658', 'Q1798910-AAAA', 'P585', '1667-01-01T00:00:00Z', '9'),
+      dated('Q1798910', 'Q52385658', 'Q1798910-AAAA', 'P585', '1962-01-01T00:00:00Z', '9'),
+    ] as SparqlBinding[];
+    const answer = await fetchStandingFacts(() => Promise.resolve(rows), ['Q1196460', 'Q1798910']);
+    expect(answer.get('Q1196460')?.datedEvents).toEqual([
+      { event: 'Q331483', qualifier: 'P585', time: { year: 1950, month: 9, day: 14, precision: 11 }, julian: false, circa: false, statement: 'Q1196460$1063075a' },
+      { event: 'Q2478058', qualifier: 'P585', time: { year: 1953, month: 1, day: 1, precision: 9 }, julian: false, circa: false, statement: 'Q1196460$c619a92e' },
+      { event: 'Q2478058', qualifier: 'P585', time: { year: 1674, month: 11, day: 30, precision: 11 }, julian: false, circa: true, statement: 'Q1196460$dc7b359e' },
+    ]);
+    expect(answer.get('Q1798910')?.datedEvents.map((event) => event.time.year)).toEqual([1533, 1667, 1962]);
+  });
+
+  it('leaves out an event that names a part, as the subset does: Hirano Shrine\'s worship hall', async () => {
+    const rows = [
+      { ...dated('Q738971', 'Q17781833', 'Q738971-fd225362', 'P585', '2018-09-04T00:00:00Z', '11'), eventPart: e('Q3125745') },
+      { ...dated('Q738971', 'Q1370468', 'Q738971-73ed2d85', 'P582', '2021-09-01T00:00:00Z', '10'), eventPart: e('Q3125745') },
+    ] as SparqlBinding[];
+    const answer = await fetchStandingFacts(() => Promise.resolve(rows), ['Q738971']);
+    expect(answer.get('Q738971')).toEqual(facts({}));
+  });
+});
+
+describe('a work a dated or undated event says was destroyed', () => {
+  it('reads a building implosion as a destruction, as a demolition is', () => {
+    const blownUp = { ended: true, endedYear: 1931, endedAt: { year: 1931, month: 12, day: 5, precision: 11 } };
+    expect(removedWorkReason(facts({ ...blownUp, events: ['Q1650581'] }))).toBe('destroyed in 1931');
+    expect(removedWorkReason(facts({ ...blownUp, events: ['Q678146'] }))).toBe('removed in 1931');
   });
 });
 

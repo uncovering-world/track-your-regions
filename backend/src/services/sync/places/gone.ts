@@ -34,8 +34,8 @@ import { chunk, values, type SparqlFn } from '../wikidataQueries.js';
 import { extractQid, isQid, type SparqlBinding } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
 import {
-  CIRCA, LIFETIME_PROPERTIES, statedTime, subsetStandingFacts,
-  type DatedStatement, type LifetimeProperty, type StandingFacts, type StatedTime,
+  APPLIES_TO_PART, CIRCA, DESTROYED_EVENTS, EVENT_DATE_QUALIFIERS, LIFETIME_PROPERTIES, REBUILT_EVENTS, statedTime, subsetStandingFacts,
+  type DatedEvent, type DatedStatement, type EventDateQualifier, type LifetimeProperty, type StandingFacts, type StatedTime,
 } from '../subset/standing.js';
 import { itemYearOf } from '../wikidataYears.js';
 
@@ -95,9 +95,6 @@ export function goneReason(facts: StandingFacts): string | null {
   }
   return null;
 }
-
-/** A significant event (`P793`) that says the work was destroyed rather than taken away. */
-const DESTROYED_EVENTS: ReadonlySet<string> = new Set(['Q331483', 'Q17781833']); // demolition, destruction
 
 /**
  * Whether `a` is earlier than `b`, as precisely as the coarser of the two is
@@ -167,7 +164,7 @@ export function removedWorkReason(facts: StandingFacts): string | null {
     .reduce<StatedTime | null>((latest, time) => (latest && !isEarlier(latest, time) ? latest : time), null);
   const months = end && lastInception ? monthsBetween(lastInception, end) : null;
   if (months !== null && months < 12) return `a temporary work, taken down${when}`;
-  const destroyed = facts.events.some((event) => DESTROYED_EVENTS.has(event)) || facts.conservation.some((state) => DEMOLISHED[state]);
+  const destroyed = facts.events.some((event) => DESTROYED_EVENTS[event]) || facts.conservation.some((state) => DEMOLISHED[state]);
   return `${destroyed ? 'destroyed' : 'removed'}${when}`;
 }
 
@@ -203,6 +200,8 @@ interface LiveFacts {
   events: Set<string>;
   /** By statement, so a statement the answer names twice counts once. */
   dated: Map<string, DatedStatement>;
+  /** By statement, qualifier and time, so a date the answer names twice counts once. */
+  datedEvents: Map<string, DatedEvent>;
 }
 
 /**
@@ -226,6 +225,31 @@ const statementIdOf = (node: string): string => node.replace(/^.*\/statement\//,
 /** The lifetime property a row's statement was read under, or null. */
 const lifetimePropertyOf = (value: string | undefined): LifetimeProperty | null =>
   (LIFETIME_PROPERTIES as readonly string[]).includes(value ?? '') ? value as LifetimeProperty : null;
+
+/** The qualifier a row's event date was read under, or null. */
+const eventQualifierOf = (value: string | undefined): EventDateQualifier | null =>
+  (EVENT_DATE_QUALIFIERS as readonly string[]).includes(value ?? '') ? value as EventDateQualifier : null;
+
+/**
+ * What one row of the live answer adds to its item's dated events: one date
+ * of one event. The answer carries every dated event of the item, and the two
+ * choices the subset makes are made here: only an event that says the place
+ * was destroyed or stands again, and none that names a part.
+ */
+function addEventRow(facts: LiveFacts, row: SparqlBinding): void {
+  const qualifier = eventQualifierOf(row.eventQualifier?.value);
+  const time = liveTime(row.eventAt, row.eventAtPrecision);
+  if (!qualifier || !time || !row.datedEvent?.value || !row.eventStatement?.value || row.eventPart?.value) return;
+  const event = extractQid(row.datedEvent.value);
+  if (!(DESTROYED_EVENTS[event] ?? REBUILT_EVENTS[event])) return;
+  const statement = statementIdOf(row.eventStatement.value);
+  const key = `${statement} ${qualifier} ${row.eventAt?.value ?? ''}`;
+  // A date read here is never Julian, as for a dated statement.
+  facts.datedEvents.set(key, {
+    event, qualifier, time, julian: false, statement,
+    circa: (facts.datedEvents.get(key)?.circa ?? false) || row.eventCirca?.value !== undefined,
+  });
+}
 
 /** What one row of the live answer adds to its item's facts: one statement. */
 function addRow(facts: LiveFacts, row: SparqlBinding): void {
@@ -255,7 +279,21 @@ function addRow(facts: LiveFacts, row: SparqlBinding): void {
       circa: (known?.circa ?? false) || row.datedCirca?.value !== undefined,
     });
   }
+  addEventRow(facts, row);
 }
+
+/**
+ * One branch per qualifier that dates an event, each from the item to its own
+ * event statements by fixed predicates. A branch that names the events or the
+ * qualifier as `VALUES`, or filters the part out with `NOT EXISTS`, ran past
+ * the service's deadline on eight items where this shape answers in a second,
+ * so which events count and which name a part is decided on the rows.
+ */
+const EVENT_BRANCHES = EVENT_DATE_QUALIFIERS.map((qualifier) => `
+      UNION { ?e p:P793 ?eventStatement . ?eventStatement a wikibase:BestRank ; ps:P793 ?datedEvent ;
+          pqv:${qualifier} [ wikibase:timeValue ?eventAt ; wikibase:timePrecision ?eventAtPrecision ] . BIND("${qualifier}" AS ?eventQualifier)
+        OPTIONAL { ?eventStatement pq:${APPLIES_TO_PART} ?eventPart }
+        OPTIONAL { ?eventStatement pq:P1480 ?eventCirca . FILTER(?eventCirca = wd:${CIRCA}) } }`).join('');
 
 /** The lifetime properties as the service's statement and value predicates, with each one's name. */
 const LIFETIME_VALUES = LIFETIME_PROPERTIES.map((property) => `("${property}" p:${property} psv:${property})`).join(' ');
@@ -267,13 +305,15 @@ const LIFETIME_VALUES = LIFETIME_PROPERTIES.map((property) => `("${property}" p:
  * (`wikibase:sitelinks`, which every item has and a redirect or a deleted
  * item has not), so an item that states none of these facts is answered with
  * none, as the subset answers it, and its lifetime reads as empty rather than
- * unread (#1719).
+ * unread (#1719). The item's dated events are two more branches of the same
+ * query (`EVENT_BRANCHES`, #2578).
  */
 async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<string, StandingFacts>> {
   const rows = await sparql(`
     SELECT ?e ?end ?endPrecision ?use ?cons ?herit ?heritSince ?heritSincePrecision
            ?inception ?inceptionPrecision ?placedSince ?placedSincePrecision ?event
-           ?datedProperty ?datedStatement ?dated ?datedPrecision ?datedCirca WHERE {
+           ?datedProperty ?datedStatement ?dated ?datedPrecision ?datedCirca
+           ?datedEvent ?eventStatement ?eventQualifier ?eventAt ?eventAtPrecision ?eventPart ?eventCirca WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e p:P576 ?n . ?n a wikibase:BestRank ; ps:P576 ?end .
         OPTIONAL { ?n psv:P576 [ wikibase:timePrecision ?endPrecision ] } }
@@ -289,7 +329,7 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
       UNION { VALUES (?datedProperty ?datedClaim ?datedValue) { ${LIFETIME_VALUES} }
         ?e ?datedClaim ?datedStatement . ?datedStatement a wikibase:BestRank ;
           ?datedValue [ wikibase:timeValue ?dated ; wikibase:timePrecision ?datedPrecision ] .
-        OPTIONAL { ?datedStatement pq:P1480 ?datedCirca . FILTER(?datedCirca = wd:${CIRCA}) } }
+        OPTIONAL { ?datedStatement pq:P1480 ?datedCirca . FILTER(?datedCirca = wd:${CIRCA}) } }${EVENT_BRANCHES}
     }`, { kind: 'entities', label: `whether ${qids.length} places still stand` });
   const out = new Map<string, LiveFacts>();
   for (const row of rows) {
@@ -298,14 +338,15 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
     const facts = out.get(qid) ?? {
       ended: false, endedYear: null, endedAt: null, use: new Set<string>(), conservation: new Set<string>(),
       designations: new Map<string, StatedTime | null>(), inceptions: [], placedSince: [], events: new Set<string>(),
-      dated: new Map<string, DatedStatement>(),
+      dated: new Map<string, DatedStatement>(), datedEvents: new Map<string, DatedEvent>(),
     };
     addRow(facts, row);
     out.set(qid, facts);
   }
-  return new Map([...out].map(([qid, { designations, dated, ...f }]) => [qid, {
+  return new Map([...out].map(([qid, { designations, dated, datedEvents, ...f }]) => [qid, {
     ...f, use: [...f.use], conservation: [...f.conservation], events: [...f.events],
     heritage: designations.size > 0, designatedSince: [...designations.values()], dated: [...dated.values()],
+    datedEvents: [...datedEvents.values()],
   }]));
 }
 
