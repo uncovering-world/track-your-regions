@@ -6804,7 +6804,18 @@ Maggiore, and crowds out 51 more of its churches.
       measured yet hollow. The legend names the circle's groups
       (`GROUP_WORDS`), and a hover over a dot says its group. A hover over a
       region's dot says why the place stands where it does, a click opens its circle, and a row and its dot
-      share the hovered membership. `@turf/turf`'s `circle` is not used: imported from the
+      share the hovered membership. A dot also finds its row (#2576): once the pointer, or keyboard focus,
+      has rested on a dot for `FIND_AFTER_MS` (`useFoundRow.ts`), its row in the region's list or the
+      circle is marked (`found` on `CrowdingRow`: a blue tint and an edge, apart from the hover's grey
+      and the open place's amber) and scrolled to its nearest edge where it is out of view
+      (`bringIntoView`, `rowInView.ts`, the move a newly opened place's own row takes), clear of the
+      table's sticky headings and the Apply bar (`ROW_SCROLL_MARGINS`). Leaving the dot clears the mark
+      and leaves the table where it is; a row's own hover only lights its dot, so the table never
+      scrolls under the pointer. Bringing the row into view can scroll the page while the map pane is
+      not yet stuck, which moves the map under a pointer that stayed: a pointer's leave after the pane
+      moved keeps the mark, and whatever dot now lies under it is found only once the pointer itself
+      moves and rests there (a move within a dot sends no second enter, so the dot is kept for it) (`DotHover` says whether a dot's hover came from the pointer or from
+      focus; focus is never moved by a scroll, so a blur always clears the mark). `@turf/turf`'s `circle` is not used: imported from the
       window's chunk, it put 19 kB into the visitor's entry chunk.
     - `crowdingStaging.ts` is the staging: which answers a place takes by where it stands
       (`answersOffered`: a shown place *Shadow*; a shadowed one *Show anyway* or *Keep shadowed*; a
