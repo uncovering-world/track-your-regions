@@ -369,13 +369,25 @@ which ADR-0156 had keyed by the relation, into its relation's record, and delete
 record carries its part's gate (ADR-0213, #2123): `curation_state` says whether a curator has
 read the part, `admission` whether one turned it down (the shape of a curator's no to an arrival,
 "kept out by a curator"), `missing_since` and `source_membership` whether the list still gives
-its line. A new part's record is written in its point's state (`part_site_components()`): pending
-where the site's source holds its new points for a curator. While the review queue and the run
-still write the points, the record follows the points of its line, the ones the site's own record
-in a kind placed or nothing did (`is_part_line_point()`), through `refresh_part_record_gates()`
-on every statement that writes a point and on a record that moves to another place: read once
-one of them is published, turned down while none is and every one still asked about is refused,
-missing and former once all of them are. *Lost* stays the part's own. Migration 250 writes it on
+its line. A new part's record arrives by the gate of its whole's source (`part_site_components()`):
+pending where the site's source holds its new points for a curator, or the site itself waits for
+one, and its line is unread; a part revived with a line a reader already sees is no arrival.
+**A curator's answer about a part is written on its record** (`partRecordAnswerSql`,
+`membershipWriter.ts`): the review queue's publish of unread contents, a site's arrival publish
+releasing its pending parts, the refusal of unread contents and its take-back all write the
+record, through the point writers they always called (`publishUnreadPoints`,
+`markUnreadPointsRefused`, `restoreRefusedPoints`, `experienceLocationWriter.ts`). The record
+answers for the whole part, so its line points follow it until the points go, written in the
+same statement as the points the answer reaches (`answerPoints`): published, each standing unread
+line point is published; turned down, each is marked refused at the record's answer; taken back,
+the marks come off. A duplicate the curator did not name follows with the part. One statement, so
+the triggers that follow a point (its part's leaves and regions, its record's derivation) run once. Every
+other writer of a point (the run's withdrawal, a curator's *lost*, a held move) still writes the
+point, and the record follows the points of its line, the ones the site's own record in a kind
+placed or nothing did (`is_part_line_point()`), through `refresh_part_record_gates()` on every
+statement that writes a point and on a record that moves to another place: read once one of them
+is published, turned down while none is and every one still asked about is refused, missing and
+former once all of them are. *Lost* stays the part's own. Migration 250 writes it on
 every part's record: on the development catalogue (2026-11-15, a dry run of its rule) 75 parts nobody has read, Wudang's
 45 among them, and 13 withdrawn lines, 11 judged former. The predicates the record is asked by
 are `partRecordShownSql` (`readerPredicates.ts`), `partRecordUnreadSql` and
