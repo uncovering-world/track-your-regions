@@ -9991,7 +9991,20 @@ coordinate turns its moved point down with it (ADR-0083) — and claims
 nothing, which is the whole difference from the one lever a curator had before (edit the field,
 which claims it, then publish, which skips it). Both record what they answered in
 `experience_held_decisions`, keyed on the experience, the part the record names and the field, and
-storing **the value**. A type within the kind is the membership's (ADR-0084), so its answer also
+storing **the value**. A serial site's part is keyed by its record in the site instead
+(`record_id`, ADR-0213 decision 4, migration 254): the answer stores the record the entry's
+reference resolves to, one whose part or view carries the entry's name first since a component
+crossing a border is listed once per country under one number (`itemRecordSql`), and an entry is
+matched by its record where the answer and the entry both resolve to one. A line the list
+renumbers or renames keeps its answer. The changeset still names the part, never by id (ADR-0026
+decision 4), so two records under one reference and one name resolve to one record and are one
+question. An entry no record answers, a museum's work and a cast are matched by their name as
+before. A merge moves an answer keyed by the folded site's record to the survivor's record of the
+same part where the survivor records it too, since that record stays on the folded site and the
+proposals moved with the answer are read against the survivor's (`moveHeldDecisions`); the undo
+keys it back. On the
+development catalogue (2026-11-16) the 35 answers about parts, on 20 sites, each resolve to one
+record, and the 19 held part fields waiting on 11 sites each name one. A type within the kind is the membership's (ADR-0084), so its answer also
 records the source of the run it answers (`source_id`) and answers only that source's runs; every
 other answer has no source and answers every run of the place ([ADR-0125](../decisions/0125-a-type-answer-is-the-kinds.md), #1720),
 so every reader names the run whose proposal it reads. With that, the queue, `heldWaitingSql`, the admin panel's count and the catalogue
