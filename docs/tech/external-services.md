@@ -98,7 +98,9 @@ the policy page is the authority.
     (`wbsearchentities` + `wbgetentities`, a curator's typing) and
     `scripts/catalogueCoverageLookup.ts` `apiGet`.
   - Wikipedia: `sync/wikipediaCategories.ts` `askWikipediaOnce` → `postWikipedia` (categories,
-    articles, extracts), `sync/visit/visitReading.ts` `articleLeads` and `articleLead`, and
+    articles, extracts), `sync/visit/visitReading.ts` `articleLeads` (also behind a review card's first sentence,
+    `controllers/experience/reviewArticleLeads.ts`: a curator opening an arrival's card, the articles
+    not read in the last day, twenty titles an ask, waiting at most 5 s) and `articleLead`, and
     `services/wikipediaCoordinate.ts`.
   - Commons: `sync/imageCredit.ts` (`extmetadata`, 50 titles a call), `sync/visit/commonsPhotos.ts`,
     `pictureClass/pictureClasses.ts`, `sync/commonsNearby.ts`, `worldViewImport/geoshapeCache.ts`
