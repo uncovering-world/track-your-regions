@@ -5537,13 +5537,20 @@ BEGIN
     UPDATE source_records SET experience_id = part, updated_at = NOW()
      WHERE source_id = 10 AND whole_id = site AND experience_id = site
        AND lower(external_id) = lower(component.external_ref);
-    -- A new record arrives as its line did (ADR-0213): pending where the
-    -- site's source holds its new points for a curator, so the part waits
-    -- for one too. A record moves out of pending only (guard_curation_state_move).
+    -- A new record arrives by the gate of its whole's source (ADR-0213):
+    -- pending where the site's source holds its new points for a curator, or
+    -- the site itself waits for one, and its line is unread; a line a reader
+    -- already sees (a part revived) is no arrival. A record moves out of
+    -- pending only (guard_curation_state_move).
     IF NOT FOUND THEN
       INSERT INTO source_records (experience_id, whole_id, source_id, external_id, curation_state)
       VALUES (part, site, 10, component.external_ref,
-              CASE WHEN component.curation_state = 'pending' THEN 'pending' ELSE 'auto' END);
+              CASE WHEN component.curation_state = 'pending'
+                        -- A site with no membership is gated by its points alone.
+                        AND COALESCE((SELECT s.requires_curation OR m.curation_state = 'pending'
+                                        FROM source_records m JOIN experience_sources s ON s.id = m.source_id
+                                       WHERE m.id = site_membership), TRUE)
+                   THEN 'pending' ELSE 'auto' END);
     END IF;
 
     UPDATE experience_locations SET experience_id = part WHERE id = component.id;
