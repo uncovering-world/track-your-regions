@@ -5808,18 +5808,47 @@ ALTER TABLE experiences ADD CONSTRAINT experiences_location_iff_not_dispersed
 -- a container's later parts do not move its shape (an outlier 44 km off would
 -- otherwise take a valley's point away), and the check whole-shape-drift
 -- names one they would.
+--
+-- Exact without measuring every two points: each standing point's reach is
+-- its distance from one of them, the origin. Two points are never farther
+-- apart than their reaches added up, so only a pair whose reaches add up to
+-- 1 km is measured, and of every such pair at least one point reaches half of
+-- it. The origin is the standing point nearest the points' centre (ties by
+-- the point's id), so an outlier is never the origin: a gatehouse 700 m from
+-- 757 parcels would put every parcel past half the rule from it, and every
+-- pair would be measured. Points all within 500 m of the origin are a
+-- container at once, the 758 shelters of a whole on one spot among them; a
+-- point more than 1 km from the origin is a dispersed whole at the first
+-- pair. The bounds keep a millimetre to spare, so a pair the rounding of a
+-- reach could hide is measured.
 CREATE OR REPLACE FUNCTION whole_shape_of(place INTEGER) RETURNS TEXT
 LANGUAGE sql STABLE AS $$
+  WITH standing AS MATERIALIZED (
+    SELECT el.id, el.location::geography AS point
+      FROM experience_parts p JOIN experience_locations el ON el.experience_id = p.part_id
+     WHERE p.whole_id = place
+       AND el.missing_since IS NULL AND el.existence <> 'lost' AND el.merged_into_id IS NULL AND el.refused_at IS NULL
+  ),
+  centre AS MATERIALIZED (
+    SELECT ST_Centroid(ST_Collect(point::geometry)::geography) AS point FROM standing
+  ),
+  origin AS MATERIALIZED (
+    SELECT s.point
+      FROM standing s, centre c
+     ORDER BY ST_Distance(s.point, c.point), s.id
+     LIMIT 1
+  ),
+  measured AS MATERIALIZED (
+    SELECT s.point, ST_Distance(s.point, origin.point) AS reach
+      FROM standing s, origin
+  )
   SELECT CASE
     WHEN EXISTS (SELECT 1 FROM source_records r WHERE r.experience_id = place AND r.source_id = 1) THEN 'dispersed'
     WHEN EXISTS (
       SELECT 1
-        FROM experience_parts pa JOIN experience_locations a ON a.experience_id = pa.part_id
-        JOIN experience_parts pb ON pb.whole_id = pa.whole_id JOIN experience_locations b ON b.experience_id = pb.part_id
-       WHERE pa.whole_id = place
-         AND a.missing_since IS NULL AND a.existence <> 'lost' AND a.merged_into_id IS NULL AND a.refused_at IS NULL
-         AND b.missing_since IS NULL AND b.existence <> 'lost' AND b.merged_into_id IS NULL AND b.refused_at IS NULL
-         AND NOT ST_DWithin(a.location::geography, b.location::geography, 1000)) THEN 'dispersed'
+        FROM measured a JOIN measured b ON a.reach + b.reach >= 999.999
+       WHERE a.reach >= 499.9995
+         AND NOT ST_DWithin(a.point, b.point, 1000)) THEN 'dispersed'
     ELSE 'container' END
 $$;
 COMMENT ON FUNCTION whole_shape_of(INTEGER) IS 'The shape a place takes as it becomes a whole (ADR-0210): dispersed with a World Heritage record or parts more than 1 km apart, else container.';
@@ -5835,8 +5864,8 @@ CREATE OR REPLACE FUNCTION whole_shape_follows_parts() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    -- whole_shape_of measures every two parts' points against each other, so
-    -- it is asked once for each whole with no shape yet, in a MATERIALIZED
+    -- whole_shape_of measures the parts' points against each other, so it is
+    -- asked once for each whole with no shape yet, in a MATERIALIZED
     -- CTE: a subquery on the inner side of a nested loop is run again for
     -- every outer row, and the planner picks that loop, experiences outside,
     -- whenever its statistics say the table is nearly empty.

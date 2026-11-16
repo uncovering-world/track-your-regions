@@ -194,7 +194,9 @@ describe("a whole's leaves (ADR-0206)", () => {
       ]);
     });
     expect(await leaves(ROCK_ART)).toEqual({ ids: SHELTERS, offered: 758 });
-  });
+    // Every trigger on 759 places, 758 points and 758 parts runs inside it: 3x
+    // its slowest passing CI run (43798085175).
+  }, 7_000);
 
   it('is nothing the out-of-step check reports, until a row is changed by hand', async () => {
     await places([ARC, ...STATIONS]);
