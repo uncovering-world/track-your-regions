@@ -7234,12 +7234,26 @@ CREATE TABLE IF NOT EXISTS experience_held_decisions (
     -- The source whose runs the answer answers, for a field that is a kind's
     -- rather than the place's: the type within the kind (ADR-0125, #1720).
     -- NULL, the place's, for every other field.
-    source_id INTEGER REFERENCES experience_sources(id) ON DELETE CASCADE,
-    CONSTRAINT experience_held_decisions_answer_key
-      UNIQUE NULLS NOT DISTINCT (experience_id, part_kind, part_ref, part_name, field, source_id)
+    source_id INTEGER REFERENCES experience_sources(id) ON DELETE CASCADE
 );
 
--- No index beyond the unique constraint, for the reason given above it: the
+-- A serial site's part is answered by its record in the site (ADR-0213
+-- decision 4): db/migrations/254-a-held-part-field-is-answered-by-its-record.sql
+-- for a database that holds answers. Two keys, one per kind of row: a part's
+-- record, so a line the list renumbers or renames keeps its answer; and, for the
+-- object's own field, a museum's work and a cast, the part as the record
+-- names it.
+ALTER TABLE experience_held_decisions ADD COLUMN IF NOT EXISTS record_id INTEGER
+    REFERENCES source_records(id) ON DELETE CASCADE;
+ALTER TABLE experience_held_decisions DROP CONSTRAINT IF EXISTS experience_held_decisions_answer_key;
+CREATE UNIQUE INDEX IF NOT EXISTS experience_held_decisions_named_key
+    ON experience_held_decisions (experience_id, part_kind, part_ref, part_name, field, source_id)
+    NULLS NOT DISTINCT WHERE record_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS experience_held_decisions_record_key
+    ON experience_held_decisions (experience_id, record_id, field, source_id)
+    NULLS NOT DISTINCT WHERE record_id IS NOT NULL;
+
+-- No index beyond the two unique keys, for the reason given above them: each
 -- btree leads on experience_id, which is where every reader of this table
 -- starts -- the queue asking whether one card's row is answered, publishing
 -- reading one object's answers under its lock.
@@ -7248,6 +7262,7 @@ COMMENT ON TABLE experience_held_decisions IS 'Gate-held proposals a curator has
 COMMENT ON COLUMN experience_held_decisions.part_kind IS 'NULL for the object own field; otherwise the contents kind the record filed the part under';
 COMMENT ON COLUMN experience_held_decisions.answer IS 'published: the value was written by a curator click. refused: the curator said not this, and nothing was written';
 COMMENT ON COLUMN experience_held_decisions.value IS 'The proposed value the answer is about, read from the locked proposal and never from the request';
+COMMENT ON COLUMN experience_held_decisions.record_id IS 'The record of a serial site''s part the answer is about (ADR-0213 decision 4); NULL for the object own field and for every other part, named by part_ref and part_name';
 COMMENT ON COLUMN experience_held_decisions.source_id IS 'The source whose runs a kind field answer answers (the type within the kind, ADR-0125); NULL for a fact of the place, answered for every run';
 
 -- A run's batch a curator has set aside (#805, ADR-0051). Keyed on the run
