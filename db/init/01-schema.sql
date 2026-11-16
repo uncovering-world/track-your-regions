@@ -2693,7 +2693,7 @@ CREATE TABLE IF NOT EXISTS experiences (
     -- ADR-0084): the Pantheon is a church as a place of worship and a site as archaeology.
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
-    -- The place's point; none on a dispersed whole, which is its parts (ADR-0210)
+    -- The record's coordinate; none on a record of shape none, which is its parts (ADR-0218)
     location GEOMETRY(Point, 4326),
 
     -- Optional boundary polygon (some sites have defined areas)
@@ -2723,14 +2723,14 @@ CREATE TABLE IF NOT EXISTS experiences (
 );
 
 COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, museums, etc.)';
--- A dispersed whole holds no point (ADR-0210): the CREATE TABLE above no longer
+-- A record of shape none holds no point (ADR-0218): the CREATE TABLE above no longer
 -- declares NOT NULL, and a database made before it drops it here.
 ALTER TABLE experiences ALTER COLUMN location DROP NOT NULL;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS cast_points BOOLEAN NOT NULL DEFAULT FALSE;
 COMMENT ON COLUMN experiences.cast_points IS 'The points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5). Run-owned; other sources leave it unchanged.';
 COMMENT ON COLUMN experiences.external_id IS 'The id the source that first brought this row knows it by (e.g., a UNESCO id_no). Provenance only since ADR-0084: a run finds a place through its membership''s external_id, never through this.';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
-COMMENT ON COLUMN experiences.location IS 'The place''s point. NULL exactly on a dispersed whole, which is its parts and has no point of its own (whole_shape, ADR-0210).';
+COMMENT ON COLUMN experiences.location IS 'The record''s coordinate. Held to its shape by experiences_shape_holds (ADR-0218): none on a record of shape none, which is its parts and has no point of its own.';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
 COMMENT ON COLUMN experiences.metadata IS 'The place''s own source data (website, Wikipedia article, picture credit, UNESCO page); a kind''s facts are on its membership (ADR-0153)';
@@ -5944,26 +5944,37 @@ CREATE TRIGGER trg_part_record_gate_follows_its_place
                      AND (OLD.experience_id, OLD.whole_id) IS DISTINCT FROM (NEW.experience_id, NEW.whole_id))
   EXECUTE FUNCTION part_record_gate_follows_its_place();
 
--- A whole's shape (ADR-0210): dispersed, a place a traveller visits one part
--- of at a time, which is its parts and holds no point of its own (Seville's
--- World Heritage site is its cathedral, its Alcázar and its Archivo de
--- Indias); or container, one a traveller stands inside, which keeps its own
--- point. NULL on a place that is not a whole. A serial World Heritage site is
--- always dispersed, whatever the walk between its parts (Würzburg's two, 159 m
--- apart).
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS whole_shape VARCHAR(10)
-    CHECK (whole_shape IN ('dispersed', 'container'));
-COMMENT ON COLUMN experiences.whole_shape IS 'A whole''s shape (ADR-0210): dispersed (its parts, no point of its own: a serial World Heritage site) or container (one place a traveller stands inside, keeping its point); NULL on a place that is not a whole. Written by whole_shape_follows_parts() when the place gains its first part or loses its last.';
-ALTER TABLE experiences DROP CONSTRAINT IF EXISTS experiences_location_iff_not_dispersed;
-ALTER TABLE experiences ADD CONSTRAINT experiences_location_iff_not_dispersed
-    CHECK ((location IS NULL) = (whole_shape IS NOT DISTINCT FROM 'dispersed'));
+-- What a record is on the ground (ADR-0218): a point a traveller goes to, an
+-- area a traveller is inside, a line a traveller is on, or none, a record met
+-- at its parts. It says what the thing is, and the geometry columns say what
+-- the catalogue holds of it. Having parts is a second fact
+-- (experience_parts): Seville's World Heritage site is none and is its
+-- cathedral, its Alcázar and its Archivo de Indias, while a place whose parts
+-- stand within a walk of each other is an area that keeps its coordinate.
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS shape VARCHAR(5) NOT NULL DEFAULT 'point'
+    CHECK (shape IN ('point', 'area', 'line', 'none'));
+COMMENT ON COLUMN experiences.shape IS 'What the record is on the ground (ADR-0218): point, area, line or none (met at its parts: a serial World Heritage site). Written by shape_follows_parts() when the record gains its first part or loses its last; point on every other record.';
+-- The shape holds the coordinate: a point has one, a record of shape none has
+-- none, and an area or a line has one or the outline or line that stands for
+-- it. ELSE false: a shape this does not name holds nothing.
+ALTER TABLE experiences DROP CONSTRAINT IF EXISTS experiences_shape_holds;
+ALTER TABLE experiences ADD CONSTRAINT experiences_shape_holds
+    CHECK (CASE shape
+        WHEN 'point' THEN location IS NOT NULL
+        WHEN 'area'  THEN location IS NOT NULL OR boundary IS NOT NULL
+        WHEN 'line'  THEN location IS NOT NULL OR path IS NOT NULL
+        WHEN 'none'  THEN location IS NULL
+        ELSE false
+    END);
 
--- The shape a place takes as it becomes a whole (ADR-0210): dispersed when it
--- holds a World Heritage record, or its parts' standing points lie more than
--- 1 km apart; container otherwise. Asked once, when the first parts arrive:
--- a container's later parts do not move its shape (an outlier 44 km off would
--- otherwise take a valley's point away), and the check whole-shape-drift
--- names one they would.
+-- The shape a record takes by default (ADR-0218 decision 3): point with no
+-- part; with parts, none when it holds a World Heritage record or its parts'
+-- standing points lie more than 1 km apart, and an area otherwise. A serial
+-- World Heritage site is none whatever the walk between its parts (Würzburg's
+-- two, 159 m apart). Asked once, when the first parts arrive: an area's later
+-- parts do not move its shape (an outlier 44 km off would otherwise take a
+-- valley's coordinate away), and the check whole-shape-drift names one they
+-- would.
 --
 -- Exact without measuring every two points: each standing point's reach is
 -- its distance from one of them, the origin. Two points are never farther
@@ -5972,12 +5983,12 @@ ALTER TABLE experiences ADD CONSTRAINT experiences_location_iff_not_dispersed
 -- it. The origin is the standing point nearest the points' centre (ties by
 -- the point's id), so an outlier is never the origin: a gatehouse 700 m from
 -- 757 parcels would put every parcel past half the rule from it, and every
--- pair would be measured. Points all within 500 m of the origin are a
--- container at once, the 758 shelters of a whole on one spot among them; a
--- point more than 1 km from the origin is a dispersed whole at the first
--- pair. The bounds keep a millimetre to spare, so a pair the rounding of a
--- reach could hide is measured.
-CREATE OR REPLACE FUNCTION whole_shape_of(place INTEGER) RETURNS TEXT
+-- pair would be measured. Points all within 500 m of the origin are an area
+-- at once, the 758 shelters of a whole on one spot among them; a point more
+-- than 1 km from the origin makes the record none at the first pair. The
+-- bounds keep a millimetre to spare, so a pair the rounding of a reach could
+-- hide is measured.
+CREATE OR REPLACE FUNCTION default_shape_of(place INTEGER) RETURNS TEXT
 LANGUAGE sql STABLE AS $$
   WITH standing AS MATERIALIZED (
     SELECT el.id, el.location::geography AS point
@@ -5999,49 +6010,50 @@ LANGUAGE sql STABLE AS $$
       FROM standing s, origin
   )
   SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM source_records r WHERE r.experience_id = place AND r.source_id = 1) THEN 'dispersed'
+    WHEN NOT EXISTS (SELECT 1 FROM experience_parts p WHERE p.whole_id = place) THEN 'point'
+    WHEN EXISTS (SELECT 1 FROM source_records r WHERE r.experience_id = place AND r.source_id = 1) THEN 'none'
     WHEN EXISTS (
       SELECT 1
         FROM measured a JOIN measured b ON a.reach + b.reach >= 999.999
        WHERE a.reach >= 499.9995
-         AND NOT ST_DWithin(a.point, b.point, 1000)) THEN 'dispersed'
-    ELSE 'container' END
+         AND NOT ST_DWithin(a.point, b.point, 1000)) THEN 'none'
+    ELSE 'area' END
 $$;
-COMMENT ON FUNCTION whole_shape_of(INTEGER) IS 'The shape a place takes as it becomes a whole (ADR-0210): dispersed with a World Heritage record or parts more than 1 km apart, else container.';
+COMMENT ON FUNCTION default_shape_of(INTEGER) IS 'The shape a record takes by default (ADR-0218): point with no part; with parts, none with a World Heritage record or parts more than 1 km apart, else area.';
 
--- Keeps every whole's shape and point in step with its parts (ADR-0210): a
--- place that gains its first part takes its shape (whole_shape_of), and gives
--- up its point when dispersed, with a curator's claim on it, which no answer
--- could then write; a whole that loses its last part is a place of
--- its own again, at the point its kind record reports (the World Heritage
--- record's first), else at a standing point of its own; with neither it keeps
--- its shape.
-CREATE OR REPLACE FUNCTION whole_shape_follows_parts() RETURNS trigger
+-- Keeps every record's shape and coordinate in step with its parts
+-- (ADR-0218): a point that gains its first part takes its default shape
+-- (default_shape_of), and gives up its coordinate when that is none, with a
+-- curator's claim on it, which no answer could then write; a record that
+-- loses its last part is a point again, at the coordinate its kind record
+-- reports (the World Heritage record's first), else at a standing point of
+-- its own; with neither it keeps its shape.
+CREATE OR REPLACE FUNCTION shape_follows_parts() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    -- whole_shape_of measures the parts' points against each other, so it is
-    -- asked once for each whole with no shape yet, in a MATERIALIZED
+    -- default_shape_of measures the parts' points against each other, so it
+    -- is asked once for each record that is still a point, in a MATERIALIZED
     -- CTE: a subquery on the inner side of a nested loop is run again for
     -- every outer row, and the planner picks that loop, experiences outside,
     -- whenever its statistics say the table is nearly empty.
     WITH shaped AS MATERIALIZED (
-      SELECT e.id, whole_shape_of(e.id) AS shape
+      SELECT e.id, default_shape_of(e.id) AS shape
         FROM experiences e
-       WHERE e.whole_shape IS NULL AND e.id IN (SELECT n.whole_id FROM new_parts n)
+       WHERE e.shape = 'point' AND e.id IN (SELECT n.whole_id FROM new_parts n)
     )
     UPDATE experiences e
-       SET whole_shape = shaped.shape,
-           location = CASE WHEN shaped.shape = 'dispersed' THEN NULL ELSE e.location END,
-           curated_fields = CASE WHEN shaped.shape = 'dispersed' THEN e.curated_fields - 'location' ELSE e.curated_fields END,
+       SET shape = shaped.shape,
+           location = CASE WHEN shaped.shape = 'none' THEN NULL ELSE e.location END,
+           curated_fields = CASE WHEN shaped.shape = 'none' THEN e.curated_fields - 'location' ELSE e.curated_fields END,
            updated_at = NOW()
       FROM shaped
      -- Asked again here, not only in the CTE: a row another statement shaped
      -- while this one waited on its lock is rechecked by this clause alone.
-     WHERE e.id = shaped.id AND e.whole_shape IS NULL;
+     WHERE e.id = shaped.id AND e.shape = 'point';
   ELSE
     UPDATE experiences e
-       SET whole_shape = NULL, location = back.location, updated_at = NOW()
+       SET shape = 'point', location = back.location, updated_at = NOW()
       FROM (SELECT w.whole_id, COALESCE(held.location,
               (SELECT r.reported_location FROM source_records r
                 WHERE r.experience_id = w.whole_id AND r.kind_id IS NOT NULL AND r.reported_location IS NOT NULL
@@ -6052,8 +6064,10 @@ BEGIN
                 ORDER BY el.id LIMIT 1)) AS location
               FROM (SELECT DISTINCT o.whole_id FROM old_parts o) w
               JOIN experiences held ON held.id = w.whole_id) back
-     WHERE e.id = back.whole_id AND e.whole_shape IS NOT NULL
-       -- A place nothing gives a point keeps its shape, which the check
+     -- The shapes parts give. A line is stated by nothing yet and follows no
+     -- part.
+     WHERE e.id = back.whole_id AND e.shape IN ('none', 'area')
+       -- A record nothing gives a coordinate keeps its shape, which the check
        -- whole-shape-drift names, rather than refuse the delete.
        AND back.location IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM experience_parts p WHERE p.whole_id = back.whole_id);
@@ -6062,16 +6076,16 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_whole_shape_part_insert ON experience_parts;
-CREATE TRIGGER trg_whole_shape_part_insert
+DROP TRIGGER IF EXISTS trg_shape_part_insert ON experience_parts;
+CREATE TRIGGER trg_shape_part_insert
   AFTER INSERT ON experience_parts
   REFERENCING NEW TABLE AS new_parts
-  FOR EACH STATEMENT EXECUTE FUNCTION whole_shape_follows_parts();
-DROP TRIGGER IF EXISTS trg_whole_shape_part_delete ON experience_parts;
-CREATE TRIGGER trg_whole_shape_part_delete
+  FOR EACH STATEMENT EXECUTE FUNCTION shape_follows_parts();
+DROP TRIGGER IF EXISTS trg_shape_part_delete ON experience_parts;
+CREATE TRIGGER trg_shape_part_delete
   AFTER DELETE ON experience_parts
   REFERENCING OLD TABLE AS old_parts
-  FOR EACH STATEMENT EXECUTE FUNCTION whole_shape_follows_parts();
+  FOR EACH STATEMENT EXECUTE FUNCTION shape_follows_parts();
 
 -- =============================================================================
 -- A place's regions (ADR-0197)

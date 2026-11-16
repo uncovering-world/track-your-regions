@@ -459,8 +459,8 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
       `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $2, 10, '9710-001')`,
       [part.rows[0].id, PANTHEON],
     );
-    const shape = await pool.query('SELECT whole_shape, location FROM experiences WHERE id = $1', [PANTHEON]);
-    expect(shape.rows[0]).toEqual({ whole_shape: 'dispersed', location: null });
+    const shape = await pool.query('SELECT shape, location FROM experiences WHERE id = $1', [PANTHEON]);
+    expect(shape.rows[0]).toEqual({ shape: 'none', location: null });
   };
 
   it('places a kind separated from a dispersed whole where the whole stands, its own source giving no point (ADR-0210)', async () => {
@@ -469,10 +469,10 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     const outcome = await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
 
     expect(outcome.refusal).toBeUndefined();
-    const at = await pool.query<{ lon: number; whole_shape: string | null }>(
-      'SELECT ST_X(location) AS lon, whole_shape FROM experiences WHERE id = $1', [outcome.result!.separatedId],
+    const at = await pool.query<{ lon: number; shape: string }>(
+      'SELECT ST_X(location) AS lon, shape FROM experiences WHERE id = $1', [outcome.result!.separatedId],
     );
-    expect(at.rows[0]).toEqual({ lon: 12.4769, whole_shape: null });
+    expect(at.rows[0]).toEqual({ lon: 12.4769, shape: 'point' });
   });
 
   it('refuses to separate a kind from a dispersed whole where nothing gives it a point, and changes nothing', async () => {
