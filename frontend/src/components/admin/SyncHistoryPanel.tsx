@@ -426,9 +426,10 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
 
             {changesetNote(log)}
 
-            {/* Three columns for nine tiles. Held sits right after Unchanged
-                because it is the part of Unchanged that is waiting on a person
-                rather than a fifth bucket beside it (#523). */}
+            {/* Three columns for nine tiles. Held sits right after Unchanged: it
+                counts the rows waiting on a person, beside their own bucket,
+                Unchanged where nothing was written and Changed where something
+                passed beside the hold (#523, #1719). */}
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(3, 1fr)', mb: 3 }}>
               <Tile value={log.total_fetched} label="Fetched" bg="grey.100" />
               <Tile value={log.total_created} label="Created" bg="success.light" />

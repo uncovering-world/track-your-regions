@@ -77,7 +77,8 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import {
-  MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql, placeOfferedSql, placeVisibleSql, sourcePlacesSql, withTypeClaim,
+  admissionPinnedSql, MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql, placeOfferedSql, placeVisibleSql, sourcePlacesSql,
+  withTypeClaim,
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import { withSubjectsOnOneLine } from './subjectLinesKept.js';
@@ -90,7 +91,11 @@ import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
-import { lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { lockExperience, lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import type { RecordDates } from '../../db/placeDatesWriter.js';
+import {
+  decideLifetime, heldDatesOf, withLifetimeChanges, writeLifetime, type LifetimeDecision, type LifetimeGate,
+} from './lifetimeWrites.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts.js';
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
@@ -301,6 +306,8 @@ function proposedBy(stored: Record<string, unknown> | null, changeSet: ChangeSet
 function storedPlaceSql(place: string, externalId: string): string {
   return `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
          ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT}, sm.facts AS own_facts,
+         (${admissionPinnedSql('sm')} AND ${membershipAdmittedSql('sm')}) AS kept_by_pin,
+         (SELECT requires_curation FROM experience_sources WHERE id = $1) AS gated,
          ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
          ${PLACE_HELD} AS was_held, ${REFUSED_WRITER} AS refused_writer
     FROM experiences e
@@ -520,7 +527,7 @@ function namedRecord(params: ExperienceUpsertParams): NamedRecord {
   return { sourceId: params.sourceId, label: params.name, description: params.subtitle };
 }
 
-async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcome> {
+async function previewUpsert(sent: ExperienceUpsertParams, lifetime: RecordDates | undefined): Promise<UpsertOutcome> {
   // The place the run would write: its own membership's, or else the one an
   // item identifies, as the run finds it (unlocked, since nothing is written).
   const result = await pool.query(
@@ -544,11 +551,12 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
 
   if (result.rows.length === 0) {
     const incoming = snapshotFromParams(params, await incomingOutline(pool, params, null));
+    const dates = lifetime && decideLifetime({}, lifetime, newPlaceGate(params.sourceId, await sourceIsGated(params.sourceId)));
     return {
       experienceId: 0,
       // No stored row, so nothing to hold: the insert writes every column, and
       // `pending` is what the gate does about a new membership.
-      changeSet: computeChangeSet(null, incoming, [], false),
+      changeSet: withDates(computeChangeSet(null, incoming, [], false), dates),
       nameSnapshot: params.name,
       returnedFromMissing: false,
       location: { lon: params.lon, lat: params.lat },
@@ -582,7 +590,10 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
     // a gate the proposal is what a curator is being asked about, so a preview
     // that reported "nothing would change" would hide the question. The hold
     // rides along so it lands in the bucket that says it was refused.
-    changeSet: proposedBy(row, computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView)),
+    changeSet: withDates(
+      proposedBy(row, computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView)),
+      lifetime && decideLifetime(await heldDatesOf(pool, row.id), lifetime, storedPlaceGate(params.sourceId, row, curatedFields)),
+    ),
     nameSnapshot: curatedFields.includes('name') || heldFromView
       ? (row.name as string)
       : written.name,
@@ -687,6 +698,61 @@ function reportedCreditOf(params: ExperienceUpsertParams, curatedFields: unknown
   return JSON.stringify(params.metadata.imageCredit);
 }
 
+/** Whether a source holds what it finds for a curator (ADR-0025). */
+async function sourceIsGated(sourceId: number): Promise<boolean> {
+  const result = await pool.query<{ requires_curation: boolean }>(
+    'SELECT requires_curation FROM experience_sources WHERE id = $1', [sourceId],
+  );
+  return result.rows[0]?.requires_curation ?? false;
+}
+
+/** The lifetime gate over a place the run creates: no reader sees it, no curator has claimed or pinned it. */
+const newPlaceGate = (sourceId: number, gated: boolean): LifetimeGate =>
+  ({ sourceId, gated, held: false, claimed: [], pinned: false });
+
+/** The lifetime gate over a stored place, as its locked read (`storedPlaceSql`) answers it. */
+const storedPlaceGate = (sourceId: number, stored: Record<string, unknown>, claimed: readonly string[]): LifetimeGate => ({
+  sourceId,
+  gated: Boolean(stored.gated),
+  held: Boolean(stored.was_held),
+  claimed,
+  pinned: Boolean(stored.kept_by_pin),
+});
+
+/** The change set with what the run wrote of the place's dates, where it read any. */
+const withDates = (changeSet: ChangeSetResult, dates: LifetimeDecision | undefined): ChangeSetResult =>
+  (dates ? withLifetimeChanges(changeSet, dates) : changeSet);
+
+/**
+ * The run's view of the place's lifetime on its own record, and the place's
+ * dates the gate lets through (`lifetimeWrites.ts`), where the run read one,
+ * under the lock the upsert
+ * holds: the place's, or, for a place the statement just created, its insert's
+ * row lock, which taking it again only names.
+ */
+async function writeOwnLifetime(
+  client: PoolClient,
+  locked: LockedExperience | null,
+  row: Record<string, unknown>,
+  params: ExperienceUpsertParams,
+  lifetime: RecordDates | undefined,
+  held: boolean,
+): Promise<LifetimeDecision | undefined> {
+  if (lifetime === undefined) return undefined;
+  const lock = locked ?? (await lockExperience(client, row.id as number))?.lock;
+  const record = (await client.query<{ id: number; kept_by_pin: boolean; gated: boolean }>(
+    `SELECT m.id, (${admissionPinnedSql('m')} AND ${membershipAdmittedSql('m')}) AS kept_by_pin, s.requires_curation AS gated
+       FROM ${MEMBERSHIPS} m JOIN experience_sources s ON s.id = m.source_id
+      WHERE m.source_id = $1 AND m.external_id = $2 AND m.kind_id IS NOT NULL`,
+    [params.sourceId, params.externalId],
+  )).rows[0];
+  if (!lock || !record) throw new Error(`The run's record of ${params.externalId} is not where its upsert wrote it`);
+  const claimed = Array.isArray(row.curated_fields) ? row.curated_fields as string[] : [];
+  return writeLifetime(client, lock, record.id, lifetime, {
+    sourceId: params.sourceId, gated: record.gated, held, claimed, pinned: record.kept_by_pin,
+  });
+}
+
 /**
  * Upsert an experience record and its membership with curated_fields-aware
  * conflict handling, returning both the prior and resulting state.
@@ -698,18 +764,19 @@ function reportedCreditOf(params: ExperienceUpsertParams, curatedFields: unknown
  */
 export async function upsertExperienceRecord(
   rawParams: ExperienceUpsertParams,
-  options: { dryRun?: boolean; syncLogId?: number | null } = {},
+  options: { dryRun?: boolean; syncLogId?: number | null; lifetimes?: ReadonlyMap<string, RecordDates> } = {},
 ): Promise<UpsertOutcome> {
   // Before the dry-run branch, so a preview says what the run would do rather
   // than what the source proposed.
   const params = withOwnWebsite(withShowablePicture(withTidyNames(rawParams)));
-  if (options.dryRun) return previewUpsert(params);
+  const lifetime = options.lifetimes?.get(params.externalId);
+  if (options.dryRun) return previewUpsert(params, lifetime);
 
   const client = await pool.connect();
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    const outcome = await writeUnderLock(client, params, options.syncLogId ?? null);
+    const outcome = await writeUnderLock(client, params, options.syncLogId ?? null, lifetime);
     await client.query('COMMIT');
     return outcome;
   } catch (error) {
@@ -793,6 +860,7 @@ async function writeUnderLock(
   client: PoolClient,
   sent: ExperienceUpsertParams,
   syncLogId: number | null,
+  lifetime: RecordDates | undefined,
 ): Promise<UpsertOutcome> {
   // The lock first, in a statement of its own — the mode every curator write
   // takes on the same row. A place the run has not created yet locks nothing
@@ -1137,7 +1205,10 @@ async function writeUnderLock(
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
   const incoming = snapshotFromParams(written, await incomingOutline(client, params, stored ?? null), shortMove);
-  const changeSet = proposedBy(stored, computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held));
+  const dates = await writeOwnLifetime(client, locked, row, params, lifetime, held);
+  const changeSet = withDates(
+    proposedBy(stored, computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held)), dates,
+  );
   fileKeyMove(changeSet, redirectedFrom, params.externalId);
 
   // A curator's pass covered the object that was there; a changed object has not

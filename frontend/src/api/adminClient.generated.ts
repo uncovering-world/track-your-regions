@@ -506,7 +506,7 @@ export interface SyncStatus {
      */
   curatedConflicts?: number;
   /**
-     * Rows the gate held whole so far, inside `unchanged`.
+     * Rows holding a change the gate kept out so far, counted beside their own bucket (`unchanged` or `updated`).
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -1222,7 +1222,7 @@ export interface SyncLog {
      */
   total_curated_conflicts: number;
   /**
-     * Visible rows whose every proposed change the gate kept out, a subset of `total_unchanged` (#523).
+     * Visible rows on which the gate kept a proposed change out, counted beside their own bucket: in `total_unchanged` where nothing was written, in `total_updated` where something passed beside the hold (#523, #1719).
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -1430,7 +1430,7 @@ export interface SyncLogDetail {
      */
   total_curated_conflicts: number;
   /**
-     * Visible rows whose every proposed change the gate kept out, a subset of `total_unchanged` (#523).
+     * Visible rows on which the gate kept a proposed change out, counted beside their own bucket: in `total_unchanged` where nothing was written, in `total_updated` where something passed beside the hold (#523, #1719).
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -1520,6 +1520,7 @@ export const ChangedFieldPassedTheGate = {
   unseen: 'unseen',
   typography: 'typography',
   'short-move': 'short-move',
+  'first-date': 'first-date',
 } as const;
 
 /**

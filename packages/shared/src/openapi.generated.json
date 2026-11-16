@@ -20017,7 +20017,8 @@
               "type-within-vocabulary",
               "unseen",
               "typography",
-              "short-move"
+              "short-move",
+              "first-date"
             ]
           },
           "regionCrossings": {
@@ -34970,7 +34971,8 @@
               "type-within-vocabulary",
               "unseen",
               "typography",
-              "short-move"
+              "short-move",
+              "first-date"
             ]
           },
           "regionCrossings": {
@@ -41036,7 +41038,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Visible rows whose every proposed change the gate kept out, a subset of `total_unchanged` (#523)."
+            "description": "Visible rows on which the gate kept a proposed change out, counted beside their own bucket: in `total_unchanged` where nothing was written, in `total_updated` where something passed beside the hold (#523, #1719)."
           },
           "total_filtered": {
             "type": "integer",
@@ -41290,7 +41292,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Visible rows whose every proposed change the gate kept out, a subset of `total_unchanged` (#523)."
+            "description": "Visible rows on which the gate kept a proposed change out, counted beside their own bucket: in `total_unchanged` where nothing was written, in `total_updated` where something passed beside the hold (#523, #1719)."
           },
           "total_filtered": {
             "type": "integer",
@@ -41638,7 +41640,7 @@
             "maximum": 9007199254740991
           },
           "held": {
-            "description": "Rows the gate held whole so far, inside `unchanged`.",
+            "description": "Rows holding a change the gate kept out so far, counted beside their own bucket (`unchanged` or `updated`).",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991

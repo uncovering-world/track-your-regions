@@ -15,8 +15,11 @@ import type { SyncProgress, ErrorDetail, ContentsByKind } from './types.js';
 import { contentsHeld, recordedContents } from './types.js';
 
 /**
- * The source's gate kept every proposed write out of a row a reader can
- * already see: nothing moved, and a verdict is waiting (#519).
+ * The source's gate kept a proposed write out of a row a reader can already
+ * see, and a verdict is waiting (#519): the row is held whatever else passed
+ * the gate beside it. A date filled where the place held none passes (#1719,
+ * ADR-0214), as a re-read credit does, and a row holding a renamed museum is
+ * held all the same, or a curator's waiting question reads as an update.
  *
  * The one predicate behind two readers — the changeset row's word and the run's
  * `held` counter — so the two can never disagree, which migration 038 relies on
@@ -32,7 +35,7 @@ import { contentsHeld, recordedContents } from './types.js';
  * counter answers for.
  */
 function wasHeld(result: ProcessItemResult, contents: ContentsByKind | null): boolean {
-  return result.outcome === 'unchanged'
+  return result.outcome !== 'created'
     && (result.changeSet.heldFields.length > 0 || contentsHeld(contents));
 }
 
@@ -108,18 +111,19 @@ export function recordItemOutcome<T>(
   // meaning what its column comment says if it absorbed them.
   progress.curatedConflicts += curatedConflicts.length;
 
-  // A held row is `unchanged`: the gate kept the write out, so nothing about the
-  // row moved and `total_updated` — which counts rows that actually changed —
-  // must not move either (#519).
+  // A row's own bucket is what was written to it: a row the gate held whole is
+  // `unchanged`, so `total_updated`, which counts rows that actually changed,
+  // does not move for it (#519); one where a date passed beside the hold is
+  // `updated` (#1719).
   if (result.outcome === 'created') progress.created++;
   else if (result.outcome === 'updated') progress.updated++;
   else progress.unchanged++;
 
-  // Counted again, inside `unchanged` rather than beside it (#523): that
-  // counter's meaning is already fixed by its column comment. `curatedConflicts`
-  // above is the precedent for counting a refusal on top of the outcome
-  // buckets, not for the arithmetic — it counts claimed fields, on updated rows
-  // too, where this counts rows, and only inside `unchanged`. Without this a
+  // Counted again, beside its own bucket (#523): `unchanged` where the gate
+  // kept every write out, `updated` where something passed beside the hold (a
+  // date, #1719). `curatedConflicts` above is the precedent for counting a
+  // refusal on top of the outcome buckets, not for the arithmetic: it counts
+  // claimed fields, where this counts rows. Without this a
   // gated run reads as a run that touched nothing — run 68 held all 1272
   // UNESCO sites and reported "unchanged 1272".
   if (wasHeld(result, contents)) progress.held++;

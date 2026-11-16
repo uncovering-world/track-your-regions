@@ -118,6 +118,29 @@ describe('orchestrateSync changeset recording', () => {
     );
   });
 
+  it('counts a held row as held where a date passed the gate beside the hold, and records it as held (#1719)', async () => {
+    // A museum renamed under a gated source, whose inception the run filled
+    // where it held none: the date is written, the name waits for a curator.
+    const dated = heldRun();
+    dated.outcome = 'updated';
+    dated.changeSet.changeType = 'updated';
+    dated.changeSet.changedFields = [{
+      field: 'began', old: null, new: { year: 1793 }, significance: 'minor' as const,
+      curatedConflict: false, held: false, passedTheGate: 'first-date' as const,
+    }];
+    const config = makeConfig({ processItem: vi.fn().mockResolvedValue(dated) });
+
+    await orchestrateSync(config, 1);
+
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_SOURCE_ID, 42, 'success',
+      expect.objectContaining({ held: 2, updated: 2, unchanged: 0 }),
+      undefined,
+    );
+    const rows = vi.mocked(recordSyncChanges).mock.calls[0][0] as { changeType: string }[];
+    expect(rows.map((row) => row.changeType)).toEqual(['held', 'held']);
+  });
+
   it('keeps a claim-only refusal out of the held counter', async () => {
     const conflicted = processed('unchanged');
     conflicted.changeSet.curatedConflicts = [{
