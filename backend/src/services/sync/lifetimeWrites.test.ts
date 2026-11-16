@@ -49,6 +49,42 @@ describe('the gate over a place\'s periods (#2578)', () => {
     expect(decideLifetime({ stood: held(dated) }, { stood: PILLAR }, gate()).write).toEqual({ stood: PILLAR });
   });
 
+  it('passes every gap a run reads where the place held fewer: Ponte Santa Trinita\'s two, the Old Bridge\'s one', () => {
+    const trinita = [until(on(1252), on(1557, { property: 'P576' })), until(on(1569, { property: 'P1619' }), on(1944, { property: 'P576' })), open(on(1958, { month: 3, day: 16, property: 'P1619' }))];
+    // Held as it began, and held with the one gap an earlier run read.
+    for (const stored of [[open(on(1252))], [until(on(1252), on(1944, { property: 'P576' })), trinita[2]]]) {
+      const decision = decideLifetime({ stood: held(stored) }, { stood: trinita }, gate());
+      expect(decision.write).toEqual({ stood: trinita });
+      expect(decision.changes).toMatchObject([{ field: 'stood', old: stored, new: trinita, passedTheGate: 'first-date' }]);
+    }
+    // A gap told as a destruction fills a period that did not say how it would end.
+    const mostar = [until(on(1566), on(1993, { month: 11, day: 9, property: 'P793' }), 'destroyed'), open(on(2004, { month: 7, day: 23, property: 'P793' }))];
+    expect(decideLifetime({ stood: held([open(on(1566))]) }, { stood: mostar }, gate()).changes)
+      .toMatchObject([{ field: 'stood', passedTheGate: 'first-date' }]);
+  });
+
+  it('asks about a list of gaps that takes one away, moves one, or leaves the place gone', () => {
+    const trinita = [until(on(1252), on(1557)), until(on(1569), on(1944)), open(on(1958))];
+    const stored = { stood: held(trinita) };
+    // One gap fewer, though every start it keeps is one the place holds.
+    expect(decideLifetime(stored, { stood: [until(on(1252), on(1944)), open(on(1958))] }, gate()).heldBack).toEqual(['stood']);
+    // As many periods, with the first gap at another year.
+    expect(decideLifetime(stored, { stood: [until(on(1252), on(1333)), until(on(1345), on(1944)), open(on(1958))] }, gate()).heldBack).toEqual(['stood']);
+    // A gap more, and the last period closed: the place would leave today's lists.
+    const gone = [...trinita.slice(0, 2), until(on(1958), on(2020)), until(on(2021), on(2024))];
+    expect(decideLifetime(stored, { stood: gone }, gate()).heldBack).toEqual(['stood']);
+    expect(decideLifetime({ stood: held([open(on(1252))]) }, { stood: gone }, gate()).heldBack).toEqual(['stood']);
+  });
+
+  it('asks about the end of a use a run no longer reports once the item says the place was rebuilt after it', () => {
+    // The Frauenkirche in Dresden: its end of 1945 was read as the end of a use, and is now the end of a standing period.
+    const stored = { stood: held([open(on(1726))]), used: held([until(null, on(1945, { month: 2, day: 15, property: 'P576' }))]) };
+    const view = { stood: [until(on(1726), on(1945, { month: 2, day: 15, property: 'P576' })), open(on(2005, { month: 10, day: 30, property: 'P793' }))] };
+    const decision = decideLifetime(stored, view, gate());
+    expect(decision.write).toEqual(view);
+    expect(decision.heldBack).toEqual(['used']);
+  });
+
   it('holds a view that moves a date a reader sees, under a gated source, and writes it elsewhere', () => {
     const stored = { stood: held(SINCE_1883) };
     const view = { stood: [open(on(1881))] };

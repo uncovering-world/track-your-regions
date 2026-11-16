@@ -148,7 +148,7 @@ describe('a run writes a place\'s periods through the gate (#2578)', () => {
     expect(membership).toEqual({ state: 'verified', pointer: null });
   });
 
-  it('fills a gap into the period a seen place holds, which moves no date of it and leaves it standing', async () => {
+  it('fills a gap into the period a seen place holds, and another in front of it, which move no date of it and leave it standing', async () => {
     const created = await write({ stood: [open(on(1883))] });
     await pool.query(
       `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
@@ -158,6 +158,22 @@ describe('a run writes a place\'s periods through the gate (#2578)', () => {
     const filled = await write({ stood: [until(on(1883), on(1931, { month: 12, day: 5, property: 'P576' })), open(on(2000))] });
     expect(filled.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([['stood', 'first-date']]);
     expect((await placePeriods()).map((p) => [p.ordinal, p.from_year, p.until_year])).toEqual([[1, 1883, 1931], [2, 2000, null]]);
+    expect(await standsToday()).toBe(true);
+
+    // A gap more, in front of the one the place holds and told by an event: the list is renumbered.
+    const earlier = [
+      until(on(1812), on(1837, { property: 'P793', statement: 'Q9719101$aa03' }), 'destroyed'),
+      until(on(1883), on(1931, { month: 12, day: 5, property: 'P576' })),
+      open(on(2000)),
+    ];
+    const more = await write({ stood: earlier });
+    expect(more.changeSet.changedFields.map((f) => [f.field, f.passedTheGate])).toEqual([['stood', 'first-date']]);
+    expect((await placePeriods()).map((p) => [p.ordinal, p.from_year, p.until_year])).toEqual([[1, 1812, 1837], [2, 1883, 1931], [3, 2000, null]]);
+    // The same list with its last period closed would take the place off today's lists: asked, not written.
+    const closed = await write({ stood: [earlier[0], earlier[1], until(on(2000), on(2024, { property: 'P793', statement: 'Q9719101$aa04' }), 'destroyed')] });
+    expect(closed.changeSet.changedFields).toEqual([]);
+    expect((await placePeriods()).map((p) => [p.ordinal, p.ended])).toEqual([[1, true], [2, true], [3, false]]);
+    expect((await recordPeriods()).filter((p) => p.says === 'stood').map((p) => [p.from_year, p.until_year])).toEqual([[1812, 1837], [1883, 1931], [2000, 2024]]);
     expect(await standsToday()).toBe(true);
   });
 
