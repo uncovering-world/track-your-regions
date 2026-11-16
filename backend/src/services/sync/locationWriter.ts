@@ -118,7 +118,7 @@ import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { foldedPointsSql, pointItemClaimedSql, pointItemSql, shownBySql } from '../../db/placePoints.js';
 import { writePartItems } from '../../db/partFieldsWriter.js';
-import { listingsDrift, partsBehind, writeParts } from './componentListings.js';
+import { lineWithdrawnOnItsRecordSql, listingsDrift, partsBehind, writeParts } from './componentListings.js';
 import { completePairing } from './locationMatching.js';
 
 
@@ -304,6 +304,8 @@ export async function writeExperienceLocations(
                     WHERE mine.location_id = ${alias}.id AND mine.membership_id = ${runMembership})
                OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
                     WHERE any_placement.location_id = ${alias}.id))`;
+  /** A line withdrawn on its part's record (`lineWithdrawnOnItsRecordSql`): a component run's only. */
+  const lineWithdrawnOnItsRecord = (alias: string) => (run.components === true ? lineWithdrawnOnItsRecordSql(alias) : 'FALSE');
   /**
    * The stored points this run pairs with: the ones the place shows, and the
    * ones a merge folded into them (#1662). A folded point keeps the reference
@@ -1169,6 +1171,7 @@ export async function writeExperienceLocations(
           WHERE ${ownPointSql('el')}
             AND el.missing_since IS NULL
             AND ${runsPoint('el')}
+            AND NOT ${lineWithdrawnOnItsRecord('el')}
             AND NOT EXISTS (
               SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
             )
@@ -1220,11 +1223,14 @@ export async function writeExperienceLocations(
          AND NOT EXISTS (
            SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
          )
-         AND EXISTS (
-           SELECT 1 FROM experience_locations waiting
-           WHERE ${shownBySql('waiting', 'ARRAY[$1::int]')}
-           AND waiting.withdrawal_deferred_for_location_id = el.id
-         )`,
+         AND (EXISTS (
+                SELECT 1 FROM experience_locations waiting
+                WHERE ${shownBySql('waiting', 'ARRAY[$1::int]')}
+                AND waiting.withdrawal_deferred_for_location_id = el.id
+              )
+              -- A line withdrawn on its record stands too, and is in no list
+              -- either: its record reads the null as the list not giving it.
+              OR ${lineWithdrawnOnItsRecord('el')})`,
       withSource,
     );
 

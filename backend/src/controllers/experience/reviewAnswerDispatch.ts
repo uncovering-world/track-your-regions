@@ -55,7 +55,7 @@ import {
 import { answerLocationStateUnderLock } from './locationStateController.js';
 import { publishUnderLock } from './publishController.js';
 import {
-  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql, withdrawnSinceSql,
 } from './reviewQueuePredicates.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
 
@@ -452,7 +452,7 @@ async function answerKindMissing(who: Answerer, answer: Answer, membershipId: nu
 async function answerWithdrawn(who: Answerer, answer: Answer): Promise<Outcome> {
   const { experienceId, userId, logRegionId } = who;
   const open = await pool.query(
-    `SELECT el.id, el.source_membership, el.existence, el.missing_since
+    `SELECT el.id, el.source_membership, el.existence, ${withdrawnSinceSql('el')} AS missing_since
        FROM experience_locations el
        JOIN experiences e ON e.id = $1
       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}

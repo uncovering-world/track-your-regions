@@ -35,7 +35,7 @@ import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
+import { withdrawnContainerOpenSql, withdrawnPointOpenSql, withdrawnSinceSql } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointOfComponentSql, pointsShownSql } from '../../db/placePoints.js';
 import { someoneVisitedPointSql } from '../../db/visits.js';
 
@@ -449,7 +449,8 @@ export async function queryWithdrawn(
   // component's number to another, so Western Tien-Shan's Karabastau area,
   // dropped as 1490-003, is not "35 km away now" as the Boraldaitau area that
   // number names now (#2182).
-  const sameComponentSql = `(CASE WHEN ${pointOfComponentSql('el')}
+  // A part's line withdrawn on its record stands (ADR-0216), and is not its own replacement.
+  const sameComponentSql = `(moved.id <> el.id AND CASE WHEN ${pointOfComponentSql('el')}
                          THEN moved.experience_id = el.experience_id
                               OR (moved.external_ref IS NOT DISTINCT FROM el.external_ref
                                   AND name_match_key(moved.name) = name_match_key(el.name))
@@ -462,7 +463,7 @@ export async function queryWithdrawn(
              'id', el.id,
              'name', el.name,
              'externalRef', el.external_ref,
-             'missingSince', el.missing_since,
+             'missingSince', ${withdrawnSinceSql('el')},
              'latitude', ST_Y(el.location),
              'longitude', ST_X(el.location),
              -- Which of its fields a curator has claimed (migration 027): the card's
@@ -569,7 +570,7 @@ export async function queryWithdrawn(
                ORDER BY ST_Distance(el.location::geography, moved.location::geography), moved.id
                LIMIT 1
              )
-           ) ORDER BY el.missing_since DESC, el.id) AS withdrawn_points,
+           ) ORDER BY ${withdrawnSinceSql('el')} DESC, el.id) AS withdrawn_points,
            NULL::jsonb AS proposed
     FROM experiences e
     ${rowKindJoinSql('e', 'mk', 'kd')}

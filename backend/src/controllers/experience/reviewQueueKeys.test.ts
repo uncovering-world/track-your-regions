@@ -18,7 +18,7 @@ import { pool } from '../../db/index.js';
 import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
 import { linkableFindSql, mayBeFindOriginSql } from './siteFinds.js';
 import {
-  missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql,
+  missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql, withdrawnSinceSql,
   conflictChangeOpenSql, mergeProposalOpenSql, pairMembershipSql, visitQuestionOpenSql,
 } from './reviewQueuePredicates.js';
 import { contentsWaitingSql } from './waitingCounts.js';
@@ -79,7 +79,8 @@ describe('queryQueueKeys', () => {
     expect(contents).toContain('max(el.created_at)');
     expect(contents).toContain('max(et.created_at)');
     const withdrawn = between(sql, "SELECT 'withdrawn'", "SELECT 'refused'");
-    expect(withdrawn).toContain('max(el.missing_since)');
+    // A part's line withdrawn on its record is dated by the record (ADR-0216).
+    expect(withdrawn).toContain(`max(${withdrawnSinceSql('el')})`);
     const refused = between(sql, "SELECT 'refused'", "SELECT 'missing'");
     expect(refused).toContain('COALESCE(l.completed_at, m.updated_at)');
     const missing = between(sql, "SELECT 'missing'", ', searched AS (');

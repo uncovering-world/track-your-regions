@@ -20,12 +20,13 @@
 import { approximatePointOpenSql } from '../../services/sync/pointHints.js';
 import {
   MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql,
-  placeHoldsKindSql, kindRecordSql,
+  placeHoldsKindSql, kindRecordSql, partRecordSql, partRecordWithdrawnSql,
 } from '../../db/membership.js';
 import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   experienceOfferedToReaderSql,
+  hideLostSql,
   offeredLocationSql,
   placeOrPartOfferedSql,
   publishedContentSql,
@@ -154,14 +155,46 @@ export function heldOpenSql(e = 'e', m = 'm', ch = 'ch'): string {
  * names the one it moved to raises none either: a short move took it there
  * (ADR-0140), and the move is its record. `el` is the `experience_locations`
  * alias.
+ *
+ * A serial site's part is withdrawn on its record in the site, not on its
+ * point (ADR-0216): the point stays standing, so every reader still shows the
+ * part and counts it in its site, and the question is the record's
+ * (`partRecordWithdrawnSql`). Its line points are asked, each a reader is
+ * shown, from one set the planner hashes once per statement.
  */
 export function withdrawnPointOpenSql(el = 'el'): string {
-  return `${el}.missing_since IS NOT NULL
+  return `((${el}.missing_since IS NOT NULL
     AND ${el}.source_membership = 'present'
     AND ${el}.existence = 'extant'
     AND ${el}.withdrawal_deferred_for_location_id IS NULL
     AND ${el}.moved_to_location_id IS NULL
-    AND ${publishedContentSql(el)}`;
+    AND ${publishedContentSql(el)})
+    OR (${offeredLocationSql(el)} AND ${publishedContentSql(el)} AND ${el}.id IN (${withdrawnPartLinePointsSql()})))`;
+}
+
+/**
+ * The line points of every part whose record says the list withdrew its line
+ * and nobody has judged it (`partRecordWithdrawnSql`), of a part still in the
+ * world, as a `SELECT` of point ids. Uncorrelated, so it is hashed once.
+ */
+function withdrawnPartLinePointsSql(): string {
+  return `SELECT wpl.id FROM ${MEMBERSHIPS} wpr
+            JOIN experience_locations wpl ON wpl.experience_id = wpr.experience_id
+            JOIN experiences wpp ON wpp.id = wpr.experience_id
+           WHERE ${partRecordSql('wpr')} AND ${partRecordWithdrawnSql('wpr')} AND ${hideLostSql('wpp')}
+             AND is_part_line_point(wpl.id, wpr.whole_id)`;
+}
+
+/**
+ * When the point `el` was withdrawn: its own mark, or, for a serial site's
+ * part's line point, its record's (ADR-0216). What the withdrawn card dates
+ * its question by, and the `flagged` a curator's answer is checked against.
+ */
+export function withdrawnSinceSql(el = 'el'): string {
+  return `COALESCE(${el}.missing_since,
+    (SELECT max(wsr.missing_since) FROM ${MEMBERSHIPS} wsr
+      WHERE wsr.experience_id = ${el}.experience_id AND ${partRecordSql('wsr')}
+        AND is_part_line_point(${el}.id, wsr.whole_id)))`;
 }
 
 /**

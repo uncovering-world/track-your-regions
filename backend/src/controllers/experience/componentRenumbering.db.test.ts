@@ -143,8 +143,8 @@ describe('a renumbered list keeps one part per component (#2182)', () => {
       expect(location.lon).toBeCloseTo(arrival.lon, 4);
       expect(location.lat).toBeCloseTo(arrival.lat, 4);
     }
-    // The component the list dropped is the one part with no point standing.
-    expect(after.get(KARABASTAU.name)!.points.map(p => p.missing)).toEqual([true]);
+    // The component the list dropped keeps its point standing, withdrawn on its record (ADR-0216).
+    expect(after.get(KARABASTAU.name)!.points.map(p => p.missing)).toEqual([false]);
   });
 
   it('keeps two records under 1490-003 in the site, the dropped Karabastau area\'s and the renumbered Boraldaitau area\'s (ADR-0198)', async () => {
@@ -196,7 +196,7 @@ describe('a renumbered list keeps one part per component (#2182)', () => {
       expect(after.get(component.name)!.relation_ref).toBe(component.externalRef);
     }
     expect(after.get(MAIDANTAL.name)!.points).toHaveLength(1);
-    expect(after.get(KARABASTAU.name)!.points.map(p => p.missing)).toEqual([true]);
+    expect(after.get(KARABASTAU.name)!.points.map(p => p.missing)).toEqual([false]);
   });
 
   it('keeps a row under the number that stayed, though a namesake under a new number is listed first', async () => {

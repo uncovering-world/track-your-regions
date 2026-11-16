@@ -10,7 +10,7 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS, componentRecordSql, partRecordSql } from '../../db/membership.js';
+import { MEMBERSHIPS, componentRecordSql, membershipVisibleSql, partRecordSql } from '../../db/membership.js';
 import {
   followTheSiteLine, followTheirPoints, partListingChangesSql, partsBehindSql, siteLineBehindSql, writePartListings,
 } from '../../db/partFieldsWriter.js';
@@ -46,6 +46,47 @@ export const COMPONENT_LISTINGS = `(SELECT DISTINCT ON (rec.id) rec.id AS record
     JOIN incoming i ON i.ordinal = c.ordinal AND i.external_ref = c.external_ref
    WHERE rec.whole_id = $1 AND rec.experience_id = $1 AND ${componentRecordSql('rec')}
    ORDER BY rec.id, c.id)`;
+
+/**
+ * The point `alias` is the line point of a part of the site `$1` that the
+ * run's list (`incoming`) no longer gives: the part's record in the site
+ * carries that withdrawal (`writePartListings`), and the point stays standing,
+ * so every reader shows the part and counts it in its site until a curator
+ * answers (ADR-0216). A line the list gives again elsewhere, as a point the
+ * run pairs with no part's point (`paired_rows`: an arrival is written on the
+ * site, and joins the pairing as it is written), is a move, and its old point
+ * goes as any point does, paired as the run pairs a move (`heldByNameSql`):
+ * under its name, or under its record's reference where no other line of the
+ * site carries the name the list gives it. A line the list gives under a
+ * point the site already holds is no move: Western Tien-Shan's Maidantal area
+ * is `1490-010` on a part of its own since a run made one, and its old part
+ * stands, withdrawn on its record. Western
+ * Tien-Shan's `1490-003` named the Karabastau area, the list dropped it, and
+ * gives `1490-003` to the Boraldaitau area now: the Karabastau area stands,
+ * withdrawn on its record. So does the line of a part nobody has read go,
+ * which no reader was shown and nobody is asked about.
+ */
+export function lineWithdrawnOnItsRecordSql(alias: string): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} gone_line
+             WHERE gone_line.experience_id = ${alias}.experience_id AND gone_line.whole_id = $1
+               AND ${partRecordSql('gone_line')} AND ${membershipVisibleSql('gone_line')}
+               AND is_part_line_point(${alias}.id, gone_line.whole_id)
+               AND NOT EXISTS (
+                 SELECT 1 FROM incoming gone_i
+                  WHERE NOT EXISTS (SELECT 1 FROM paired_rows gone_p
+                                      JOIN experience_locations gone_pl ON gone_pl.id = gone_p.location_id
+                                     WHERE gone_p.ordinal = gone_i.ordinal AND gone_pl.experience_id <> $1)
+                    AND ((NOT names_nothing(gone_i.name) AND name_match_key(gone_i.name) = name_match_key(${alias}.name))
+                     OR (lower(gone_i.external_ref) = lower(gone_line.external_id)
+                         AND NOT EXISTS (
+                           SELECT 1 FROM ${MEMBERSHIPS} other_line
+                             JOIN experience_locations other ON other.experience_id = other_line.experience_id
+                            WHERE other_line.whole_id = $1 AND ${partRecordSql('other_line')}
+                              AND other.id <> ${alias}.id AND other.merged_into_id IS NULL
+                              AND is_part_line_point(other.id, other_line.whole_id)
+                              AND NOT names_nothing(gone_i.name)
+                              AND name_match_key(other.name) = name_match_key(gone_i.name))))))`;
+}
 
 /**
  * Whether a component's record holds another view than the list gives it

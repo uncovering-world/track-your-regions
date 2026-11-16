@@ -360,16 +360,34 @@ export interface PartListing {
  * whether it has anything to change (the run's fast path, `locationWriter.ts`).
  */
 export function partListingChangesSql(listed: string): string {
+  const missing = `CASE WHEN rec.whole_id = rec.experience_id OR NOT given.line THEN rec.missing_since
+                        WHEN given.listed THEN NULL ELSE COALESCE(rec.missing_since, NOW()) END`;
+  const membership = `CASE WHEN rec.whole_id <> rec.experience_id AND given.line AND given.listed THEN 'present'
+                           ELSE rec.source_membership END`;
   return `SELECT rec.id, l.name,
                  CASE WHEN l.record_id IS NOT NULL THEN ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326) END AS location,
-                 l.ordinal
+                 l.ordinal, ${missing} AS missing_since, ${membership} AS source_membership
             FROM ${MEMBERSHIPS} rec
             LEFT JOIN ${listed} l ON l.record_id = rec.id
+            CROSS JOIN LATERAL (
+              -- Whether the list gives the line: a listing names it, or one of
+              -- its line points the run paired keeps its place in the list (a
+              -- line renumbered at its point, whose record takes the new
+              -- reference after this). Only for a line that has a point.
+              SELECT EXISTS (SELECT 1 FROM experience_locations gl
+                              WHERE gl.experience_id = rec.experience_id AND is_part_line_point(gl.id, rec.whole_id)) AS line,
+                     l.record_id IS NOT NULL
+                       OR EXISTS (SELECT 1 FROM experience_locations gl
+                                   WHERE gl.experience_id = rec.experience_id AND is_part_line_point(gl.id, rec.whole_id)
+                                     AND gl.merged_into_id IS NULL AND gl.missing_since IS NULL
+                                     AND gl.ordinal IS NOT NULL) AS listed) given
            WHERE rec.whole_id = $1 AND ${componentRecordSql('rec')}
              AND (rec.reported_name IS DISTINCT FROM l.name
                   OR rec.listing_ordinal IS DISTINCT FROM l.ordinal
                   OR (rec.reported_location IS NULL) <> (l.record_id IS NULL)
-                  OR NOT ST_Equals(rec.reported_location, ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326)))`;
+                  OR NOT ST_Equals(rec.reported_location, ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326))
+                  OR (rec.missing_since IS NULL) <> (${missing} IS NULL)
+                  OR rec.source_membership IS DISTINCT FROM ${membership})`;
 }
 
 /**
@@ -397,6 +415,7 @@ export async function writePartListings(
      view AS (${partListingChangesSql('listed')})
      UPDATE ${MEMBERSHIPS} rec
         SET reported_name = view.name, reported_location = view.location, listing_ordinal = view.ordinal,
+            missing_since = view.missing_since, source_membership = view.source_membership,
             updated_at = NOW()
        FROM view
       WHERE rec.id = view.id`,

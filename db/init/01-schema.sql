@@ -5641,9 +5641,9 @@ CREATE TRIGGER trg_parts_follow_records_update
 -- components' record of the part says whether a curator has read the part
 -- (curation_state), turned it down (admission, the shape of a curator's no to
 -- an arrival), and whether the list still gives its line (missing_since,
--- source_membership). Until the writers write the record, it follows the
--- points that are its list line, which the run, the review queue and the
--- curator's verdicts still write.
+-- source_membership). The read state and the refusal follow the points
+-- that are its list line for the writers of a point that do not write the
+-- record; the listing is the record's own (ADR-0216).
 --
 -- A point is the line of the part's record in the whole `whole` when the
 -- whole's own record in a kind placed it, or nothing did (a point from before
@@ -5662,16 +5662,17 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
                   WHERE pl.location_id = point AND site.experience_id = whole AND site.kind_id IS NOT NULL);
 $$;
 
--- Write the gate of the parts' records of the places `places` from their line
--- points, as the old gate reads them: read once one of them is published
--- (verified before auto), turned down while none is and every one still
--- asked about is refused, missing once all of them are (at the latest of
--- their marks), former once all of them are. A folded point is no line. A
--- move the guard refuses is not made (a new record a run wrote auto before its
--- pending point reached it): the record keeps its state, and the catalogue
--- check part-gate-out-of-step names it. A record with no line point keeps
--- what it holds. Writes only what differs, so a statement that changes no
--- gate writes no record.
+-- Write the read state and the refusal of the parts' records of the places
+-- `places` from their line points, as the old gate reads them: read once one
+-- of them is published (verified before auto), turned down while none is and
+-- every one still asked about is refused. Whether the list still gives the
+-- line is the record's own, written by the site's run (writePartListings) and
+-- a curator's verdict, never derived from the points (ADR-0216). A folded
+-- point is no line. A move the guard refuses is not made (a new record a run
+-- wrote auto before its pending point reached it): the record keeps its
+-- state, and the catalogue check part-gate-out-of-step names it. A record
+-- with no line point keeps what it holds. Writes only what differs, so a
+-- statement that changes no gate writes no record.
 CREATE OR REPLACE FUNCTION refresh_part_record_gates(places INTEGER[]) RETURNS void
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -5679,7 +5680,7 @@ BEGIN
     RETURN;
   END IF;
   WITH line AS (
-    SELECT rec.id AS record_id, el.curation_state, el.refused_at, el.missing_since, el.source_membership
+    SELECT rec.id AS record_id, el.curation_state, el.refused_at, el.missing_since
       FROM source_records rec
       JOIN experience_locations el ON el.experience_id = rec.experience_id AND el.merged_into_id IS NULL
      WHERE rec.experience_id = ANY(places)
@@ -5694,9 +5695,7 @@ BEGIN
            bool_and(curation_state = 'pending')
              AND NOT bool_or(refused_at IS NULL AND missing_since IS NULL)
              AND bool_or(refused_at IS NOT NULL) AS refused,
-           max(refused_at) AS refused_at,
-           CASE WHEN bool_and(missing_since IS NOT NULL) THEN max(missing_since) END AS missing_since,
-           CASE WHEN bool_and(source_membership = 'former') THEN 'former' ELSE 'present' END AS source_membership
+           max(refused_at) AS refused_at
       FROM line GROUP BY record_id
   ),
   wanted AS (
@@ -5706,8 +5705,7 @@ BEGIN
                 THEN gate.curation_state ELSE rec.curation_state END AS curation_state,
            CASE WHEN gate.refused THEN 'refused' ELSE 'admitted' END AS admission,
            CASE WHEN gate.refused THEN 'kept out by a curator' END AS admission_reason,
-           CASE WHEN gate.refused THEN gate.refused_at END AS admission_answered_at,
-           gate.missing_since, gate.source_membership
+           CASE WHEN gate.refused THEN gate.refused_at END AS admission_answered_at
       FROM gate JOIN source_records rec ON rec.id = gate.record_id
   )
   UPDATE source_records rec
@@ -5715,16 +5713,12 @@ BEGIN
          admission = wanted.admission,
          admission_reason = wanted.admission_reason,
          admission_answered_at = wanted.admission_answered_at,
-         missing_since = wanted.missing_since,
-         source_membership = wanted.source_membership,
          updated_at = NOW()
     FROM wanted
    WHERE rec.id = wanted.id
-     AND (rec.curation_state, rec.admission, rec.admission_reason, rec.admission_answered_at,
-          rec.missing_since, rec.source_membership)
+     AND (rec.curation_state, rec.admission, rec.admission_reason, rec.admission_answered_at)
          IS DISTINCT FROM
-         (wanted.curation_state, wanted.admission, wanted.admission_reason, wanted.admission_answered_at,
-          wanted.missing_since, wanted.source_membership);
+         (wanted.curation_state, wanted.admission, wanted.admission_reason, wanted.admission_answered_at);
 END;
 $$;
 

@@ -272,8 +272,9 @@ const shownPointSql = (el: string): string => `${offeredLocationSql(el)} AND ${p
  *
  * A part is shown while a point of its own is one a reader is shown, and a
  * serial site's part only while its record in the site shows it too
- * (`partRecordListedSql`, ADR-0213): read, not turned down and its line still
- * listed. The point stays asked while the record follows the points: a
+ * (`partRecordListedSql`, ADR-0213): read, not turned down and not judged
+ * former, since a line the list stopped giving shows its part until a curator
+ * answers (ADR-0216). The point stays asked while the record follows the points: a
  * curator's *lost* on a line point, and a merge folding every line point, are
  * written on the point, which the record does not follow. A part no source
  * records in a whole, one a curator's word or a Wikidata statement made, is
@@ -294,7 +295,7 @@ export function partOfferedSql(alias = 'e'): string {
 
 /**
  * A part a reader may be shown, by its record in its whole (ADR-0213): read
- * or published unread, not turned down, its line still listed
+ * or published unread, not turned down, not judged former
  * (`partRecordListedSql`), and the part still in the world. `rec` is a part's
  * record (`partRecordSql`), `part` the part's `experiences` alias.
  */

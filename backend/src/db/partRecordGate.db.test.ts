@@ -159,37 +159,30 @@ describe('the record follows its line points while the writers write the points'
     expect(await gate(QUARRY.ref)).toMatchObject({ curation_state: 'pending', admission: 'admitted', admission_reason: null });
   });
 
-  it('is withdrawn while the list does not give its line, judged former with it, and listed again', async () => {
-    await setPoint(TEMPLES.ref, 'missing_since = NOW()');
-    expect(await gate(TEMPLES.ref)).toMatchObject({ missing: true, source_membership: 'present' });
-    expect(await outOfStep()).toEqual([]);
+  it('leaves the record\'s listing to the run and the curator: a withdrawn point withdraws no record', async () => {
+    // The listing is the record's own (ADR-0216): the site's run writes it, never the derivation.
+    await setPoint(TEMPLES.ref, "missing_since = NOW(), source_membership = 'former'");
 
-    await setPoint(TEMPLES.ref, "source_membership = 'former'");
-    expect(await gate(TEMPLES.ref)).toMatchObject({ missing: true, source_membership: 'former' });
-    expect(await outOfStep()).toEqual([]);
-
-    await setPoint(TEMPLES.ref, "missing_since = NULL, source_membership = 'present'");
     expect(await gate(TEMPLES.ref)).toMatchObject({ missing: false, source_membership: 'present' });
   });
 
   it('reads only its line: another kind\'s point on the part leaves the record alone', async () => {
-    // The temples are also Archaeology's place, whose own point stands while the list withdraws the line.
-    const temples = await partOf(TEMPLES.ref);
+    // The quarry is also Archaeology's place, whose own point a curator read while the list's line waits.
+    const quarry = await partOf(QUARRY.ref);
     const dig = (await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
        SELECT $1, s.kind_id, s.id, 'Q9690001', 'verified' FROM experience_sources s WHERE s.id = $2 RETURNING id`,
-      [temples, ARCHAEOLOGY_SOURCE],
+      [quarry, ARCHAEOLOGY_SOURCE],
     )).rows[0].id;
     await pool.query(
       `WITH pt AS (
          INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
-         VALUES ($1, 'Baalbek temples', 'Q9690001', ST_SetSRID(ST_MakePoint(36.2040, 34.0070), 4326), 'verified') RETURNING id)
+         VALUES ($1, 'Baalbek quarry', 'Q9690001', ST_SetSRID(ST_MakePoint(36.1998, 33.9994), 4326), 'verified') RETURNING id)
        INSERT INTO experience_location_placements (location_id, membership_id) SELECT id, $2 FROM pt`,
-      [temples, dig],
+      [quarry, dig],
     );
-    await setPoint(TEMPLES.ref, 'missing_since = NOW()');
 
-    expect(await gate(TEMPLES.ref)).toMatchObject({ curation_state: 'auto', missing: true });
+    expect(await gate(QUARRY.ref)).toMatchObject({ curation_state: 'pending' });
     expect(await outOfStep()).toEqual([]);
   });
 
@@ -292,19 +285,25 @@ describe('the review queue and a reader ask a part\'s gate of its record (ADR-02
     expect(await partOffered(TEMPLES.ref)).toBe(false);
   });
 
-  it('shows a part by its record: withdrawn or turned down on its record, it is not offered', async () => {
+  it('shows a part by its record: withdrawn it still is, judged former or turned down it is not', async () => {
     await setPoint(QUARRY.ref, "curation_state = 'verified'");
     expect(await partOffered(QUARRY.ref)).toBe(true);
 
-    // Written on the record alone; its point still stands, published.
+    // Written on the record alone; its point still stands, published. A withdrawal waits for a curator (ADR-0216).
     await pool.query(
       'UPDATE source_records SET missing_since = NOW() WHERE source_id = $1 AND whole_id = $2 AND external_id = $3',
+      [COMPONENTS_SOURCE, SITE, QUARRY.ref],
+    );
+    expect(await partOffered(QUARRY.ref)).toBe(true);
+
+    await pool.query(
+      `UPDATE source_records SET source_membership = 'former' WHERE source_id = $1 AND whole_id = $2 AND external_id = $3`,
       [COMPONENTS_SOURCE, SITE, QUARRY.ref],
     );
     expect(await partOffered(QUARRY.ref)).toBe(false);
 
     await pool.query(
-      `UPDATE source_records SET missing_since = NULL, admission = 'refused'
+      `UPDATE source_records SET missing_since = NULL, source_membership = 'present', admission = 'refused'
         WHERE source_id = $1 AND whole_id = $2 AND external_id = $3`,
       [COMPONENTS_SOURCE, SITE, QUARRY.ref],
     );
@@ -453,17 +452,18 @@ describe('a curator\'s answer about a part is written on its record, and its poi
 
 describe('a part whose record and points disagree (part-gate-out-of-step)', () => {
   it('names a part whose record did not follow its points', async () => {
-    // A record written behind the derivation's back: withdrawn, while its line stands.
+    // A record judged former behind its verdict's back, while its line stands.
     await pool.query(
-      "UPDATE source_records SET missing_since = NOW() WHERE source_id = 10 AND whole_id = $1 AND external_id = '294-001'",
+      `UPDATE source_records SET missing_since = NOW(), source_membership = 'former'
+        WHERE source_id = 10 AND whole_id = $1 AND external_id = '294-001'`,
       [SITE],
     );
     const temples = await partOf(TEMPLES.ref);
 
     const rows = await outOfStep();
-    expect(rows).toMatchObject([{ part_id: temples, by_points: 'shown', by_record: 'withdrawn' }]);
+    expect(rows).toMatchObject([{ part_id: temples, by_points: 'shown', by_record: 'hidden' }]);
     expect(partAssertions.find(a => a.id === 'part-gate-out-of-step')!.describe(rows[0]))
-      .toBe(`Baalbek (gate fixture) (#${SITE}): Temples of Bacchus and Jupiter (#${temples}) is shown by its points and withdrawn by its record`);
+      .toBe(`Baalbek (gate fixture) (#${SITE}): Temples of Bacchus and Jupiter (#${temples}) is shown by its points and hidden by its record`);
   });
 
   it('names a part the list gives again at a new spot after it dropped its published line', async () => {

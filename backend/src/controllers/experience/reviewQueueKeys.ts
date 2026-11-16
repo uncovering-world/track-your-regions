@@ -66,7 +66,7 @@ import {
   conflictChangeOpenSql, heldOpenSql,
   membershipMissingOpenSql, mergeProposalOpenSql, missingOpenSql, openProposalSql, pairMembershipSql, pinQuestionOpenSql,
   refusedOpenSql,
-  sourcesOpenSql, visitQuestionOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  sourcesOpenSql, visitQuestionOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql, withdrawnSinceSql,
 } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
 import { placeViewSourcesSql } from '../../db/sourceViews.js';
@@ -345,7 +345,7 @@ function waitingKeysSql(membershipScopeFilter: string): string {
 function withdrawnKeysSql(scopeFilter: string): string {
   return `
     SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, ${placeSourceIdsSql('e')}, NULL,
-           max(el.missing_since), ARRAY[]::text[]
+           max(${withdrawnSinceSql('el')}), ARRAY[]::text[]
     FROM experience_locations el
     JOIN experiences e ON e.id = ${answeringPlaceSql()}
     WHERE ${withdrawnPointOpenSql('el')}

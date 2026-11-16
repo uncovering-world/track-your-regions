@@ -300,7 +300,9 @@ export async function releaseDeferredWithdrawals(
  * A curator's verdict on one point (ADR-0026): whether its source still lists it
  * and whether it still stands, with who decided. `clearFlag` clears
  * `missing_since` only where the verdict answers the flag — the caller decides
- * that, since only it knows both axes as the curator sent them.
+ * that, since only it knows both axes as the curator sent them. `flagSince`
+ * sets the flag on a point that holds none: a serial site's part's line point,
+ * withdrawn on its record (ADR-0216), hidden once a curator judges it former.
  */
 export async function setPointVerdict(
   client: PoolClient,
@@ -312,13 +314,14 @@ export async function setPointVerdict(
     clearFlag: boolean;
     decidedBy: number;
     note: string | null;
+    flagSince?: Date | null;
   },
 ): Promise<void> {
   await client.query(`
     UPDATE experience_locations
     SET source_membership = $2::varchar,
         existence = $3,
-        missing_since = CASE WHEN $4 THEN NULL ELSE missing_since END,
+        missing_since = CASE WHEN $4 THEN NULL ELSE COALESCE(missing_since, $8::timestamptz) END,
         -- Listed again by the curator's word: no longer a point that moved away (#1448).
         moved_to_location_id = CASE WHEN $2::varchar = 'present' THEN NULL ELSE moved_to_location_id END,
         state_decided_by = $5,
@@ -327,7 +330,7 @@ export async function setPointVerdict(
     WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$7::int]')}
   `, [
     locationId, verdict.sourceMembership, verdict.existence, verdict.clearFlag,
-    verdict.decidedBy, verdict.note, lock.id,
+    verdict.decidedBy, verdict.note, lock.id, verdict.flagSince ?? null,
   ]);
 }
 

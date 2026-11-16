@@ -131,12 +131,14 @@ export function partRecordSql(alias = 'rec'): string {
 
 /**
  * A part's record that shows the part (ADR-0213): read or published unread,
- * not turned down, and its line still listed. Whether the part is still in the
- * world is the part's own (`partRecordShownSql` asks both); a by-id read asks
- * this half alone, as it asks no place whether it still stands.
+ * not turned down, and not judged former. A line the list stopped giving
+ * shows its part until a curator answers (ADR-0216), as a membership its
+ * source stopped listing keeps its place shown (#1251). Whether the part is
+ * still in the world is the part's own (`partRecordShownSql` asks both); a
+ * by-id read asks this half alone, as it asks no place whether it still stands.
  */
 export function partRecordListedSql(rec = 'rec'): string {
-  return `${membershipAdmittedSql(rec)} AND ${membershipVisibleSql(rec)} AND ${rec}.missing_since IS NULL`;
+  return `${membershipAdmittedSql(rec)} AND ${membershipVisibleSql(rec)} AND ${rec}.source_membership = 'present'`;
 }
 
 /**
