@@ -110,120 +110,12 @@ The inventory this section held — every reader of `category_id` on both stacks
 - `experiences`: the place (`location`, optional `boundary`, the curator's claims, whether its sources still list it as a derivation of its memberships)
 - `experience_kinds`: what a traveller browses by (ADR-0045 decision 1); five rows under the sources' ids
 - `source_records`: a place's membership in a kind (ADR-0045 decision 4, #822) — the source that brought it, the admission verdict and its reason, `admitted_for`, the must-see badge, the curator's pins on those, and the gate state of the arrival
-- `place_dates` and `record_dates`: a place's lifetime and each source's view of it (§ A place's lifetime)
-- `place_periods` and `record_periods`: a place's time as periods and each source's view of it (§ A place's periods)
+- `place_periods` and `record_periods`: a place's time as periods, and each source's view of it (§ A place's periods)
 - `experience_regions`: the regions a place is in, its parts included, one row per region (`assignment_type = auto | manual`; `listing`, whether a reader finds it there, ADR-0197)
 - `user_visited_experiences`: per-user visit state
 - `experience_sync_logs`: sync audit log by source (`source_id`)
 
-### A place's lifetime (#1719, [ADR-0214](../decisions/0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md))
-
-A place holds up to four dates, one row of `place_dates` each, keyed by the place and the slot:
-
-| slot | what it says | example |
-|---|---|---|
-| `began` | the place first stood or was founded | Notre-Dame de Paris, 1163 |
-| `rebuilt` | what stands now was built again after an end | the Cathedral of Christ the Saviour in Moscow, 2000 |
-| `use_ended` | what it housed or was used for ended | Göbekli Tepe, abandoned about 7000 BC; Bath Abbey's monastery, dissolved in 1539 |
-| `ended` | the place itself stopped standing | the Arch of Reunification in Pyongyang, destroyed in January 2024 |
-
-Only `ended` says the place is gone; the end of a use never does. Each source's view of the same
-dates is a row of `record_dates`, keyed by its record, as its view of the name and the picture is
-its `reported_*` columns (ADR-0084).
-
-A date is not a Postgres `date`, which stops at 4713 BC. It is a year with a month and a day where
-known, a `span` (`decade`, `century`, `millennium`) where the source knows the year no closer, and
-`circa`. The year is numbered as the subset gives it from Wikidata's JSON: 250 BC is −250, and
-there is no year zero; a BC year read from the query service at a year's precision or finer is one
-higher there and is shifted back before it is written. A day is a day of the proleptic Gregorian
-calendar, which `isValidPlaceDate` counts in: Wikidata keeps a date to the day in its source's
-calendar, Julian for most dates before 1582, and `julianToGregorian` turns such a date into the
-Gregorian day it is (29 February 1500 Julian is 10 March 1500), or answers null for a day the Julian calendar does not have (30 February, 31 April). Only `ended` may hold no year, for a
-place known gone with no date. A place's date names the source it was taken from (`source_id`,
-Curators for a curator's, with `decided_by`) and the Wikidata property and statement it was read
-from; `ended` may say how (`destroyed`, `demolished`, `removed`, `collapsed`).
-
-The rule both sides apply is `@tyr/shared/lifetime`: the slots, spans and endings, which the
-schema's CHECK lists restate (`curationLogActions.test.ts` holds the two to each other), and
-`isValidPlaceDate` (a month only within a year, a day only within a month the month has, a BC leap
-year one later than an AD one, a year from 100,000 BC to this year) and `samePlaceDate`. The two
-tables are written by `db/placeDatesWriter.ts` alone (ADR-0069, `PLACE_DATE_WRITE_RULES`), under
-the place's `LockedExperience`: `writePlaceDate` and `clearPlaceDate` for the place's own dates,
-and `writeRecordDates` for a record's whole view, which replaces the slots it reports and clears
-the rest. Both are serving tables (ADR-0124). No curator screen writes them yet; the runs write
-them as § How a run writes a place's dates says.
-
-**How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
-derives a record's dates from the statements the gone rules already read (`fetchStandingFacts`,
-whose answer now carries every best-rank dated statement, `dated`, through the subset's reader
-`subset/standing.ts` or its live twin in `places/gone.ts`), given the gone rules' reason for the
-place. It writes nothing itself.
-
-- `began` is the earliest inception (`P571`) or official opening (`P1619`), so Notre-Dame's
-  reopening of 7 December 2024 never reads as its beginning (1163).
-- `rebuilt` is the first start after the latest end the place outlived: the Cathedral of Christ the
-  Saviour in Moscow, opened 1883 and blown up in 1931, is rebuilt in 2000.
-- `ended` is written only where the gone rules read the place as gone, from its latest end
-  (`P576`, `P3999`) or with no year, and says how where the reason does: Nelson's Pillar
-  "destroyed in 1966" ends 8 March 1966, destroyed.
-- `use_ended` is the latest end no start follows on a place not read as gone: Göbekli Tepe, begun
-  about the 10th millennium BC, is in use until the 7th; the Registan's 1420 ends a role.
-- An end before the beginning ends an earlier building and is dropped: Bath Abbey begins in 1572,
-  and its monastery's dissolution in 1539 is not its end.
-- Start and end times (`P580`, `P582`) are read only on an item that states none of the four
-  above (Mohenjo-daro's end about 1700 BC); otherwise they time something else, such as the
-  Dohány Street Synagogue's building.
-- An end before the beginning is dropped only where it is wholly before it: an end in the same
-  period is kept, as a work set up in 2019 and removed on 14 June 2019 keeps its date.
-
-A time becomes a date as precisely as the item states it, a precision coarser than a year being a
-`span` and ten millennia or coarser a millennium, except a date after AD 1000 stated coarser than
-a century, an entry error read as its year (the Tomb of the Unknown Soldier in Paris). Two dates
-are ordered by the one order of dates, `comparePlaceDates` in `@tyr/shared/lifetime`, which a trip
-is compared with a place's date by too (#2008): one follows another only where the periods they may
-be do not overlap, a span covering every year within one span either side of its stated year, since
-a century is stated both by its first and by its last year. An end in the same period as the
-beginning is kept. Where a start besides the beginning shares the period of the last end, the item
-leaves unsaid which came first: no end of use is read from that end, and it counts toward a rebuild
-only for a start wholly after it. An end in the 1950s beside an opening in 1955, or the Arch of Neutrality, taken
-down and set up again in 2010, reads neither; a place begun in 1800, ended in 1900 and started
-again in 1950 keeps its rebuild of 1950 beside an end and a start in 2010. A Julian date to the
-day becomes the Gregorian day
-(`julianToGregorian`), and one the Julian calendar lacks is skipped. Start and end times stand in
-only where the item states no inception, opening, end or closure at all, whether or not its date
-could be read. The new live reader turns a BC year back into the item's numbering with `itemYearOf`
-(`services/sync/wikidataYears.ts`), and the service has already written a Julian day as the
-Gregorian one. The live works and public-art queries read their inception's year the same way
-(§ Reading Wikidata from the local subset, the paragraph on a year before the common era).
-
-**How a run writes a place's dates** (`services/sync/lifetimeWrites.ts`, ADR-0214 decision 4).
-The orchestrator reads every item's lifetime once, before the first item is written
-(`runLifetimes` in `syncOrchestrator.ts`, `readLifetimes`), through the source's own door to
-Wikidata, from the item the source names (`lifetimeItem`): the six place kinds, Art Museums and
-Archaeology read each place's own item, and World Heritage the site's one item, the one its picture
-comes from; a site of several items has no one lifetime. Only a kind that runs a gone rule
-(`lifetimeGone`: the five landmark kinds, Places of worship) can derive an end of the place, which
-Archaeology and World Heritage never do, since Basilica Aemilia's end of 410 ends a use of a ruin
-that stands. A door that does not answer leaves every record as it stands, and the run goes on.
-
-The upsert then writes, under the place's lock, the run's view on its own record
-(`writeRecordDates`) and the place's dates through the gate (`decideLifetime`):
-
-- a date filled where the place held none is written and filed as passed (`first-date`);
-- a change to a date a reader sees, under a gated source, is held back: not written, its record
-  keeps the date it reports, and the run's log names nothing for a curator yet;
-- an end is held back under every gated source, filled or changed, since it takes the place off
-  today's lists;
-- a curator's admission pin on the run's membership keeps the run from writing an end;
-- a date another source set, a curator set or a curator claimed (`curated_fields` names the slot)
-  is left as it is;
-- a date the source no longer reports is taken off only where the source wrote it, by the same
-  gate.
-
-A date written onto the place is filed on the run's change set beside its other fields, so an
-object whose only write is a date reads as updated; a preview files the same without writing.
-
-### A place's periods (#2578, [ADR-0217](../decisions/0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md))
+### A place's periods (#2578, [ADR-0217](../decisions/0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md); #1719, [ADR-0214](../decisions/0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md))
 
 A period says that something was so from one date until another. A place holds its periods in
 `place_periods`, one row each, keyed by the place, what the period says and its number in time
@@ -231,18 +123,32 @@ order:
 
 | `says` | what was so | example |
 |---|---|---|
-| `stood` | the place itself stood | the Cathedral of Christ the Saviour in Moscow: 1883 → 5 December 1931, destroyed; 2000 → open |
-| `used` | what it housed or was used for | Göbekli Tepe: in use until about 7000 BC |
+| `stood` | the place itself stood | the Cathedral of Christ the Saviour in Moscow: 1883 → 5 December 1931; 2000 → open |
+| `used` | what it housed or was used for | Göbekli Tepe: in use until about 7000 BC; Bath Abbey's monastery, dissolved in 1539 |
 | `closed` | it could not be visited | the Pergamon Museum: October 2023 → 2027 |
 | `held` | an event took place there | Holy Week in Seville: 21 → 28 March 2027 |
 
-Each end of a period is a date as § A place's lifetime describes it (`from_*`, `until_*`), or is not
-known (no year). `ended` says whether the period has ended: an open period still holds and has no
-end date, and an ended one may have none either, for a place known gone with no date. A `stood`
-period that ended may say how (`ending`), and a use or a closure may carry a curator's words
-(`what`). Each end names the Wikidata property and statement it was read from, and the row the
-source its view was taken from (`source_id`, Curators with `decided_by` for a curator's). Each
-source's view of the same periods is in `record_periods`, keyed by its record (ADR-0084).
+Only the end of the place's standing says the place is gone; the end of a use never does. Each
+source's view of the same periods is in `record_periods`, keyed by its record, as its view of the
+name and the picture is its `reported_*` columns (ADR-0084).
+
+**A date.** Each end of a period is a date (`from_*`, `until_*`), or is not known (no year). A date
+is not a Postgres `date`, which stops at 4713 BC. It is a year with a month and a day where
+known, a `span` (`decade`, `century`, `millennium`) where the source knows the year no closer, and
+`circa`. The year is numbered as the subset gives it from Wikidata's JSON: 250 BC is −250, and
+there is no year zero; a BC year read from the query service at a year's precision or finer is one
+higher there and is shifted back before it is written. A day is a day of the proleptic Gregorian
+calendar, which `isValidPlaceDate` counts in: Wikidata keeps a date to the day in its source's
+calendar, Julian for most dates before 1582, and `julianToGregorian` turns such a date into the
+Gregorian day it is (29 February 1500 Julian is 10 March 1500), or answers null for a day the
+Julian calendar does not have (30 February, 31 April). Each end names the Wikidata property and
+statement it was read from.
+
+**A period.** `ended` says whether the period has an end: an open period still holds and has no end
+date, and an end may have no date either, for a place known gone with no date. A `stood` period
+that ended may say how (`ending`: `destroyed`, `demolished`, `removed`, `collapsed`), and a use or
+a closure may carry a curator's words (`what`). The row names the source its view was taken from
+(`source_id`, Curators with `decided_by` for a curator's).
 
 Beside its ends a period keeps the outer days it may cover: `from_first`, the first day its start
 may be, and `until_last`, the last day its end may be, in the count of days `periodOf` orders dates
@@ -253,15 +159,17 @@ cathedral's first period and before the `from_first` of its second.
 **The shape is held three times, each by what it can say.**
 
 - The schema: `period_ok()` is the one CHECK of a period on both tables (each end a date by
-  `approx_date_ok()`, an end date only on an ended period, an outer day exactly where its end has a
-  year, the start's first day never after the end's last), beside the CHECK lists of `says`, the
-  spans and the endings, and `idx_place_periods_standing`, which lets a place hold one open
-  standing period at most.
+  `approx_date_ok()`, an end date only on a period that has one, an outer day exactly where its
+  end has a year, the start's first day never after the end's last), beside the CHECK lists of
+  `says`, the spans and the endings, and `idx_place_periods_standing`, which lets a place hold one
+  open standing period at most.
 - The shared rule, `periodsFault` in `@tyr/shared/lifetime`, checks a list of periods that say one
-  thing: the days a month has, the list in time order, standing periods that do not overlap and
-  of which only the last may be open, and no standing period or use in the future
-  (`latestDayOnEarth`); a closure and an occurrence may lie ahead. `PERIOD_SAYS` is the vocabulary,
-  which `curationLogActions.test.ts` holds to the schema's.
+  thing: each date by `isValidPlaceDate` (a month only within a year, a day only within a month
+  the month has, a BC leap year one later than an AD one, a year from 100,000 BC), the list in
+  time order, standing periods that do not overlap and of which only the last may be open, and no
+  standing period or use in the future (`latestDayOnEarth`); a closure and an occurrence may lie
+  ahead. `PERIOD_SAYS` is the vocabulary, which `curationLogActions.test.ts` holds to the
+  schema's, and `REPORTED_SAYS` what a run reports of it (`stood` and `used`).
 - The writer, `db/placePeriodsWriter.ts`, the only module that writes the two tables (ADR-0069,
   `PLACE_PERIOD_WRITE_RULES`), under the place's `LockedExperience`: `writePlacePeriods` replaces
   the place's whole list of periods that say one thing, and `writeRecordPeriods` a record's whole
@@ -275,7 +183,103 @@ other write of it, so the trigger is its one writer. Nelson's Pillar in Dublin (
 1966) reads false; a place with no period, or with only a use that ended, stands. No reader reads
 the column yet: `existence` still hides a lost place.
 
-Both tables are serving tables (ADR-0124). No run or curator writes them yet.
+Both tables are serving tables (ADR-0124). No curator screen writes them yet; the runs write them
+as § How a run writes a place's periods says.
+
+**How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
+derives a record's periods from the statements the gone rules already read (`fetchStandingFacts`,
+whose answer carries every best-rank dated statement, `dated`, through the subset's reader
+`subset/standing.ts` or its live twin in `places/gone.ts`), given the gone rules' reason for the
+place. It writes nothing itself. It reads four dates and reports them as the periods in which the
+place stood and the end of a use.
+
+- The beginning is the earliest inception (`P571`) or official opening (`P1619`), so Notre-Dame's
+  reopening of 7 December 2024 never reads as its beginning (1163).
+- A rebuild is the first start after the latest end the place outlived, and the two make a gap:
+  the Cathedral of Christ the Saviour in Moscow, opened in 1883 and blown up on 5 December 1931,
+  states an inception of 19 August 2000, and reads as two standing periods, 1883 → 5 December
+  1931 and 19 August 2000 → open. One gap is read, the latest; a gap stated only as dated events
+  (`P793`) is not read.
+- The end of the place is read only where the gone rules read the place as gone: its last
+  standing period ends at its latest end (`P576`, `P3999`) or at no date, and says how where the
+  reason does. Nelson's Pillar "destroyed in 1966" stood until 8 March 1966, destroyed. A start
+  wholly after that end is no rebuild of a place read as gone.
+- The end of a use is the latest end no start follows on a place not read as gone, reported as a
+  use that ended then and began at a date not known: Göbekli Tepe, standing from about the 10th
+  millennium BC, is in use until the 7th; the Registan's 1420 ends a role.
+- An end before the beginning ends an earlier building and is dropped: Bath Abbey stands from
+  1572, and its monastery's dissolution in 1539 is not its end.
+- Start and end times (`P580`, `P582`) are read only on an item that states none of the four
+  above (Mohenjo-daro's end about 1700 BC); otherwise they time something else, such as the
+  Dohány Street Synagogue's building.
+- An end before the beginning is dropped only where it is wholly before it: an end in the same
+  period is kept, as a work set up in 2019 and removed on 14 June 2019 keeps its date.
+- A place with a beginning or an end stood in one period, or in two around a gap; an item that
+  states neither reports no standing period.
+- A date still ahead has not come (`readDated`, against `latestDayOnEarth`): a demolition
+  announced for next month or next year is no end yet, so the place keeps its beginning and its
+  standing period stays open. Where no end has come, an end still ahead also overrules the gone
+  rules, which read the item's state and not its dates: an item marked demolished whose only end
+  is dated ahead stands until that day, and the run after it reads the end. An end that has come
+  keeps the place gone, whatever is dated after it. A list `periodsFault` refuses all the same is
+  not reported.
+
+A time becomes a date as precisely as the item states it, a precision coarser than a year being a
+`span` and ten millennia or coarser a millennium, except a date after AD 1000 stated coarser than
+a century, an entry error read as its year (the Tomb of the Unknown Soldier in Paris). Two dates
+are ordered by the one order of dates, `comparePlaceDates` in `@tyr/shared/lifetime`, which a trip
+is compared with a place's date by too (#2008): one follows another only where the days they may
+be do not overlap, a span covering every year within one span either side of its stated year, since
+a century is stated both by its first and by its last year. An end in the same period as the
+beginning is kept. Where a start besides the beginning shares the period of the last end, the item
+leaves unsaid which came first: no end of use is read from that end, and it makes a gap only with
+a start wholly after it. An end in the 1950s beside an opening in 1955, or the Arch of Neutrality,
+taken down and set up again in 2010, reads neither; a place begun in 1800, ended in 1900 and
+started again in 1950 keeps its gap from 1900 to 1950 beside an end and a start in 2010. A Julian
+date to the day becomes the Gregorian day (`julianToGregorian`), and one the Julian calendar lacks
+is skipped. Start and end times stand in only where the item states no inception, opening, end or
+closure at all, whether or not its date could be read. The live reader turns a BC year back into
+the item's numbering with `itemYearOf` (`services/sync/wikidataYears.ts`), and the service has
+already written a Julian day as the Gregorian one. The live works and public-art queries read their
+inception's year the same way (§ Reading Wikidata from the local subset, the paragraph on a year
+before the common era).
+
+**How a run writes a place's periods** (`services/sync/lifetimeWrites.ts`, ADR-0217 decision 3).
+The orchestrator reads every item's periods once, before the first item is written
+(`runLifetimes` in `syncOrchestrator.ts`, `readLifetimes`), through the source's own door to
+Wikidata, from the item the source names (`lifetimeItem`): the six place kinds, Art Museums and
+Archaeology read each place's own item, and World Heritage the site's one item, the one its picture
+comes from; a site of several items has no one lifetime. Only a kind that runs a gone rule
+(`lifetimeGone`: the five landmark kinds, Places of worship) can derive an end of the place, which
+Archaeology and World Heritage never do, since Basilica Aemilia's end of 410 ends a use of a ruin
+that stands. A door that does not answer leaves every record as it stands, and the run goes on.
+
+The upsert then writes, under the place's lock, the run's view on its own record
+(`writeRecordPeriods`) and the place's periods through the gate (`decideLifetime`). The gate
+decides a list whole per thing it says, the standing periods as one field (`stood`) and the use as
+another (`used`):
+
+- a view that only fills in what the place holds is written and filed as passed (`first-date`):
+  it has no period fewer, keeps every start the place holds as a start and every end as an end,
+  told the same way where the place says how it ended, and leaves the place standing or not as it
+  was. The cathedral held as "1883 → open" and reported as "1883 → 1931, 2000 → open" is one;
+- any other difference on a place a reader sees, under a gated source, is held back: not written,
+  its record keeps the view it reports, and the run's log names nothing for a curator yet. A view
+  that drops a held date, moves 1883 to 1881 or tells an end another way is one;
+- the end of the place's last standing period is never a fill, since it takes the place off
+  today's lists: under a gated source it is held back on a place a reader sees, and written with
+  the arrival on a place no reader sees yet, as Nelson's Pillar arrives with its end of 1966. A
+  trusted source writes it on either;
+- a curator's admission pin on the run's membership keeps the place standing: the run reads its
+  last standing period as open, whatever end its source reports;
+- periods another source set, a curator set or a curator claimed (`curated_fields` names `stood`
+  or `used`) are left as they are;
+- periods the source no longer reports are taken off only where the source wrote them, by the same
+  gate.
+
+A list written onto the place is filed on the run's change set beside its other fields, the list
+the place held and the list written, so an object whose only write is a period reads as updated;
+a preview files the same without writing.
 
 ### Location model
 
@@ -1929,10 +1933,10 @@ countries), so the write and the record cannot disagree; a key the gate weighs a
 (ADR-0029), and every other rewrite — a name replaced, another picture, a licence changed, an area
 moved more — is held as before.
 
-An eleventh, `first-date`, is a date of the place's lifetime filled where the place held none
-(ADR-0214 decision 4, #1719). It is decided outside the diff and the upsert's statement, by
-`lifetimeWrites.ts` (§ How a run writes a place's dates), which writes the date under the place's
-lock and files it with its class beside the run's other fields; like the others it raises no
+An eleventh, `first-date`, is a view of the place's periods that only fills in what the place
+holds (ADR-0217 decision 3, #2578, #1719). It is decided outside the diff and the upsert's
+statement, by `lifetimeWrites.ts` (§ How a run writes a place's periods), which writes the list
+under the place's lock and files it with its class beside the run's other fields; like the others it raises no
 question, sets no held pointer and demotes no verified membership.
 
 **And a field of a part readers can already see is held the same way**
