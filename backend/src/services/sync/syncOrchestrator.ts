@@ -40,6 +40,10 @@ import type { SyncProgress, RunVerdict, ErrorDetail, SyncRunOptions } from './ty
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
 import { passOf } from './passes.js';
 import { refreshRobotsForRun } from '../robots/robotsSignals.js';
+import type { RecordDates } from '../../db/placeDatesWriter.js';
+import { readLifetimes } from './places/lifetime.js';
+import { wikidataRunDoor } from './subset/runDoor.js';
+import { SPARQL_WAIT_BUDGET_MS, WaitBudget, wikidataDoor } from './wikidataUtils.js';
 
 // =============================================================================
 // Orchestrator
@@ -82,6 +86,36 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
     logId: null,
     dryRun,
   };
+}
+
+/**
+ * Each item's place's lifetime as the source sees it (#1719), read through the
+ * source's own door to Wikidata, the subset or the live service, in one pass
+ * before the first item is written. A source that names no item reads none. A
+ * door that does not answer leaves every record's view as it stands: the run
+ * goes on, as for any answer Wikidata did not give.
+ */
+async function runLifetimes<T>(config: SyncServiceConfig<T>, items: T[], progress: SyncProgress): Promise<ReadonlyMap<string, RecordDates>> {
+  const { lifetimeItem } = config;
+  if (!lifetimeItem) return new Map();
+  const asked = items.flatMap((item) => {
+    const qid = lifetimeItem(item);
+    return qid ? [{ key: config.getItemId(item), qid }] : [];
+  });
+  // An item the source read and found no one item for has an empty view, so
+  // the dates its source wrote before are taken off through the gate.
+  const empty = items.filter((item) => lifetimeItem(item) === null).map((item) => [config.getItemId(item), {}] as const);
+  try {
+    progress.statusMessage = 'Reading when each place began and ended...';
+    const sparql = await wikidataRunDoor(config.sourceId, progress, () => {
+      const door = wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), config.logPrefix);
+      return (query) => door(query);
+    });
+    return new Map([...empty, ...await readLifetimes(sparql, asked, config.lifetimeGone)]);
+  } catch (error) {
+    console.error('%s Could not read the places\' lifetimes; their records keep what they hold:', config.logPrefix, error);
+    return new Map();
+  }
 }
 
 async function processItemsLoop<T>(
@@ -300,6 +334,7 @@ export async function orchestrateSync<T>(
       syncLogId: progress.logId,
       onLocationsChanged: (experienceId) => movedExperiences.add(experienceId),
       withdrawalSkippedReason,
+      lifetimes: await runLifetimes(config, items, progress),
     };
     await processItemsLoop(config, items, progress, errorDetails, changes, context);
     // The loop reads the flag before each item, so a press during the last one

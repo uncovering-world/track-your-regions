@@ -316,6 +316,9 @@ export function archaeologySource(
     fetchItems: (progress) => fetchArchaeologyItems(progress, gather, options.refreshCache === true),
     // One item at a time, dispatched on its type by `archaeology/writer.ts`.
     processItem,
+    // Each site's and museum's lifetime, from its own item; Archaeology runs no
+    // gone rule, so it reads no end of the place: Basilica Aemilia is a ruin (#1719).
+    lifetimeItem: (item) => item.qid,
     getItemName: (item) => item.label,
     getItemId: (item) => item.qid,
   };

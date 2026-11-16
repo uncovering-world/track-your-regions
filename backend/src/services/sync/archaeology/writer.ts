@@ -224,7 +224,7 @@ async function processMuseum(
     // museum holds, where a find is what carried it over the line. A museum
     // known in its own right is admitted for its own fame and names nothing.
     admittedFor: item.admittedFor ?? null,
-  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report — as
   // against an empty delta, which says the question was asked (ADR-0026).
@@ -350,7 +350,7 @@ async function processSite(
     // A site enters on its own fame and is admitted for nothing else
     // (ADR-0058 decision 4).
     admittedFor: null,
-  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report.
   let locations: ContentsDelta | undefined;

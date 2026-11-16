@@ -51,6 +51,8 @@ import {
 } from '@tyr/shared/lifetime';
 import type { RecordDates, SourcedDate } from '../../../db/placeDatesWriter.js';
 import { LIFETIME_PROPERTIES, type DatedStatement, type LifetimeProperty, type StandingFacts } from '../subset/standing.js';
+import type { SparqlFn } from '../wikidataQueries.js';
+import { fetchStandingFacts } from './gone.js';
 
 const STARTS: readonly string[] = ['P571', 'P1619'];
 const ENDS: readonly string[] = ['P576', 'P3999'];
@@ -182,6 +184,28 @@ export function lifetimeOf(facts: StandingFacts, goneReasonOf: string | null, la
       : { year: null, month: null, day: null, span: null, circa: false, ending, property: null, statement: null });
   } else if (finalEnd && !ambiguous && (!rebuilt || compare(finalEnd, rebuilt) > 0)) {
     put('use_ended', finalEnd.date);
+  }
+  return out;
+}
+
+/**
+ * Each run item's place's lifetime as its source sees it, read in one pass
+ * before the run writes (#1719): `items` names, for each item, the key the run
+ * knows it by and the Wikidata item its dates are read from, and `goneOf` is
+ * the gone rule of a kind that runs one (`goneReason`, `goneWorkReason`);
+ * every other kind derives no end of the place. An item the door does not
+ * answer has no entry, and the run leaves its record's view as it stands.
+ */
+export async function readLifetimes(
+  sparql: SparqlFn,
+  items: readonly { key: string; qid: string }[],
+  goneOf?: (facts: StandingFacts) => string | null,
+): Promise<Map<string, RecordDates>> {
+  const facts = await fetchStandingFacts(sparql, items.map((item) => item.qid));
+  const out = new Map<string, RecordDates>();
+  for (const { key, qid } of items) {
+    const known = facts.get(qid);
+    if (known) out.set(key, lifetimeOf(known, goneOf ? goneOf(known) : null));
   }
   return out;
 }

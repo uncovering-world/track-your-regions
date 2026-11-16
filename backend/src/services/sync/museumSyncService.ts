@@ -432,7 +432,7 @@ async function upsertMuseumExperience(
     // the museum holds. On the membership rather than in metadata since #822 —
     // it is what the kind says about the place, not the place.
     admittedFor: museum.admittedFor ?? null,
-  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report — as
   // against an empty delta, which says the question was asked (ADR-0026).
@@ -542,6 +542,8 @@ export function museumSource(
       progress, options.refreshCache === true, gather ? sharedWorksOf(gather, progress) : undefined,
     ),
     processItem: processMuseum,
+    // Each museum's lifetime, from its own item, with no end of the place (#1719).
+    lifetimeItem: (m) => m.qid,
     getItemName: (m) => m.details?.museumLabel || m.label,
     getItemId: (m) => m.qid,
   };

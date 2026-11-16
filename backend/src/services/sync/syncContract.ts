@@ -11,6 +11,8 @@
 import type { ChangeSetResult } from './changeSet.js';
 import type { SourceCompleteness } from './missingDetection.js';
 import type { SyncProgress, ErrorDetail, ContentsByKind } from './types.js';
+import type { RecordDates } from '../../db/placeDatesWriter.js';
+import type { StandingFacts } from './subset/standing.js';
 
 /**
  * An entity the source offered that is not of the kind this source holds —
@@ -117,6 +119,13 @@ export interface SyncRunContext {
    * floor first, withdrawal second, never the reverse — is visible in one place.
    */
   withdrawalSkippedReason: string | null;
+  /**
+   * Each item's place's lifetime as the source sees it (#1719), keyed by the
+   * item's id (`getItemId`), read once before the first item is written. An
+   * item absent here is one the run read no lifetime of, and its record's view
+   * is left as it stands.
+   */
+  lifetimes?: ReadonlyMap<string, RecordDates>;
 }
 
 export interface ProcessItemResult {
@@ -183,6 +192,19 @@ export interface SyncServiceConfig<T> {
    * goes on, since the items' writes have landed.
    */
   afterItems?: (progress: SyncProgress, context: SyncRunContext) => Promise<void>;
+  /**
+   * The Wikidata item each item's place's lifetime is read from (#1719); null
+   * for an item the source read and found no one item to read, whose record's
+   * view is then emptied; undefined for an item the run read nothing about,
+   * whose record is left as it stands. Absent for a source that reads no
+   * lifetime.
+   */
+  lifetimeItem?: (item: T) => string | null | undefined;
+  /**
+   * The gone rule of a kind that runs one (#2259, #2280), the only reading of
+   * an end of the place a lifetime may carry; every other kind derives none.
+   */
+  lifetimeGone?: (facts: StandingFacts) => string | null;
   /** Display name for progress messages. */
   getItemName: (item: T) => string;
   /** External ID for error reporting. */
