@@ -4,7 +4,7 @@
  * chosen. Plain functions, so the section and its spec read the same words.
  */
 
-import type { PartCandidate, PartRow } from '../../../api/parts';
+import type { PartCandidate, PartRow, PartSearchRole } from '../../../api/parts';
 import { formatDay } from '../../../utils/dateFormat';
 import { distanceLabel } from '../../../utils/moveDescription';
 
@@ -44,22 +44,24 @@ function dayOf(at: string | null): string {
 }
 
 /** How near the candidate stands: "77 m from Seville Cathedral, a part", or from the place itself. */
-export function nearLine(candidate: PartCandidate, role: 'part' | 'whole'): string | null {
+export function nearLine(candidate: PartCandidate, role: PartSearchRole): string | null {
   if (candidate.distance_m === null) return null;
   const distance = distanceLabel(candidate.distance_m);
   if (candidate.near_name) return `${distance} from ${candidate.near_name}, a part`;
-  return role === 'part' ? `${distance} from it` : `${distance} from this place`;
+  return role === 'whole' ? `${distance} from this place` : `${distance} from it`;
 }
 
 /** What a place outside the caller's scope says: the word on it is another curator's. */
 export const OUTSIDE_SCOPE = 'Outside the regions you curate. A curator of its region adds it.';
 
 /** Why a candidate cannot be chosen, in the curator's words; null where it can. */
-export function takenLine(candidate: PartCandidate, role: 'part' | 'whole', selfName: string): string | null {
+export function takenLine(candidate: PartCandidate, role: PartSearchRole, selfName: string): string | null {
   switch (candidate.taken) {
     case 'self': return 'A place cannot be a part of itself.';
-    case 'already': return role === 'part' ? 'Already a part' : 'Already part of it';
-    case 'loop': return role === 'part'
+    case 'already':
+      if (role === 'line') return 'Holds a line of the list already';
+      return role === 'part' ? 'Already a part' : 'Already part of it';
+    case 'loop': return role !== 'whole'
       ? `${selfName} is one of its parts. A whole cannot become a part of its own part.`
       : `It is one of ${selfName}’s parts. A whole cannot become a part of its own part.`;
     case 'scope': return OUTSIDE_SCOPE;

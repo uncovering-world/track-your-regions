@@ -5,13 +5,14 @@
  */
 
 import {
-  getExperiencesByIdPartCandidates, getExperiencesByIdParts, postExperiencesByIdParts, postExperiencesByIdPartsTakeOut,
+  getExperiencesByIdPartCandidates, getExperiencesByIdParts, postExperiencesByIdParts, postExperiencesByIdPartsReplace,
+  postExperiencesByIdPartsTakeOut,
 } from './client.generated';
 import type {
-  PartCandidates, PartWordAnswered, PartWordBody, PlaceParts, TakeOutPartBody,
+  PartCandidates, PartLineMoved, PartWordAnswered, PartWordBody, PlaceParts, ReplacePartBody, TakeOutPartBody,
 } from './client.generated';
 
-export type { PartCandidates, PartWordAnswered, PlaceParts };
+export type { PartCandidates, PartLineMoved, PartWordAnswered, PlaceParts };
 /** One row of either section: a part of the place, or a whole it is a part of. */
 export type PartRow = PlaceParts['parts'][number];
 /** One place the search offers. */
@@ -22,9 +23,15 @@ export async function fetchPlaceParts(experienceId: number): Promise<PlaceParts>
   return getExperiencesByIdParts(experienceId);
 }
 
-/** Places to add as parts of the place (`part`), or wholes to add it to (`whole`); near it when `q` is empty. */
+/** What a part search looks for: parts to add, wholes to add the place to, or the place a list line moves to (#2527). */
+export type PartSearchRole = PartCandidates['role'];
+
+/**
+ * Places to add as parts of the place (`part`), wholes to add it to (`whole`),
+ * or places a list line of it may move to (`line`); near it when `q` is empty.
+ */
 export async function findPartCandidates(
-  experienceId: number, role: 'part' | 'whole', q: string,
+  experienceId: number, role: PartSearchRole, q: string,
 ): Promise<PartCandidates> {
   return getExperiencesByIdPartCandidates(experienceId, q.trim().length >= 2 ? { role, q: q.trim() } : { role });
 }
@@ -37,4 +44,12 @@ export async function addPart(wholeId: number, body: PartWordBody): Promise<Part
 /** Take `partId` out of the whole; one a source still names is kept out until put back. */
 export async function takeOutPart(wholeId: number, body: TakeOutPartBody): Promise<PartWordAnswered> {
   return postExperiencesByIdPartsTakeOut(wholeId, body);
+}
+
+/**
+ * Move a list line of the whole from `partId`, the place that holds it, to
+ * `withId`, the place it names (#2527); moving it back is the Undo.
+ */
+export async function replacePartLine(wholeId: number, body: ReplacePartBody): Promise<PartLineMoved> {
+  return postExperiencesByIdPartsReplace(wholeId, body);
 }

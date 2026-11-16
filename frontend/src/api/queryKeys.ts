@@ -175,7 +175,7 @@ export const queryKeys = {
     placeParts: (experienceId: Id) => ['curation', 'placeParts', experienceId] as const,
     /** The places a part section's search offers, by place, role and the name typed (#2118). */
     partCandidatesAll: ['curation', 'partCandidates'] as const,
-    partCandidates: (experienceId: Id, role: 'part' | 'whole', q: string) =>
+    partCandidates: (experienceId: Id, role: 'part' | 'whole' | 'line', q: string) =>
       ['curation', 'partCandidates', experienceId, role, q] as const,
     scopes: ['curator-scopes'] as const,
     /** Every read of the crowded-city window (#2282): what an answer invalidates, since a pin recounts its neighbours. */

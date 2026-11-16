@@ -7,13 +7,20 @@
  * (UNESCO's list, a Wikidata statement) is kept out, and no later run puts it
  * back; one only a curator named simply leaves. A kept-out row stays, greyed,
  * at the foot of the list with *Put it back*.
+ *
+ * A part that holds a line of UNESCO's list also offers *Replace with…*
+ * (#2527): the line is held by the wrong place, as Thessaloniki's "Rotunda" is
+ * by the Arch of Galerius and Rotunda, and the curator picks the place it
+ * names; the line and its count move there in one act, with the line's own
+ * point where it has one.
  */
 
 import { useState } from 'react';
 import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
 import { alpha, type Theme } from '@mui/material/styles';
-import type { PartRow as Row } from '../../../api/parts';
+import type { PartCandidate, PartRow as Row } from '../../../api/parts';
 import { DenseThumbnail } from '../../shared/DenseThumbnail';
+import { PartSearch } from './PartSearch';
 import { claimLines, keptOutLine, placeLine, sourceNames } from './partWords';
 
 /** What a row outside the caller's scope says in place of its buttons. */
@@ -25,8 +32,10 @@ function rowGround(theme: Theme, asking: boolean, keptOut: boolean): string | un
   return keptOut ? theme.palette.action.hover : undefined;
 }
 
-export function PartRow({ row, wholeName, side, pending, onTakeOut, onPutBack }: {
+export function PartRow({ row, wholeId, wholeName, side, pending, onTakeOut, onPutBack, onReplace }: {
   row: Row;
+  /** The whole the row is in: the place whose list the line is of. */
+  wholeId: number;
   /** The whole the row is in, as the take-out names it. */
   wholeName: string;
   /** `parts`: the row is a part of this place; `wholes`: a whole this place is a part of. */
@@ -34,9 +43,13 @@ export function PartRow({ row, wholeName, side, pending, onTakeOut, onPutBack }:
   pending: boolean;
   onTakeOut: (note: string) => void;
   onPutBack: () => void;
+  /** Move the row's list line to the place chosen, in one act; offered on a part that holds a line. */
+  onReplace?: (to: PartCandidate) => void;
 }) {
   const [asking, setAsking] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [note, setNote] = useState('');
+  const line = side === 'parts' && row.standing && row.in_scope && onReplace ? row.list : null;
   const keptOut = !row.standing;
   const named = sourceNames(row);
   const source = row.list ? 'UNESCO’s list' : 'Wikidata';
@@ -91,12 +104,36 @@ export function PartRow({ row, wholeName, side, pending, onTakeOut, onPutBack }:
             Put it back
           </Button>
         )}
-        {!keptOut && !asking && row.in_scope && (
-          <Button size="small" variant="outlined" color="error" onClick={() => setAsking(true)} sx={{ flexShrink: 0 }}>
-            Take out…
-          </Button>
+        {!keptOut && !asking && !replacing && row.in_scope && (
+          <Stack spacing={0.5} sx={{ flexShrink: 0 }}>
+            {line && (
+              <Button size="small" variant="outlined" onClick={() => setReplacing(true)}>Replace with…</Button>
+            )}
+            <Button size="small" variant="outlined" color="error" onClick={() => setAsking(true)}>Take out…</Button>
+          </Stack>
         )}
       </Stack>
+
+      {replacing && line && onReplace && (
+        <Stack spacing={1.25} sx={{ mt: 1.25 }}>
+          <Typography variant="body2">
+            UNESCO’s list names the line {line.reference}{line.name ? ` “${line.name}”` : ''} here. Choose the place the
+            line names: the line and its count move there, and {row.place.name} leaves {wholeName}.
+          </Typography>
+          <PartSearch
+            experienceId={wholeId}
+            selfName={wholeName}
+            role="line"
+            pending={pending}
+            prompt="Find the place the line names"
+            chooseLabel="Move the line here"
+            onChoose={(to) => { onReplace(to); setReplacing(false); }}
+          />
+          <Box>
+            <Button size="small" disabled={pending} onClick={() => setReplacing(false)}>Cancel</Button>
+          </Box>
+        </Stack>
+      )}
 
       {asking && (
         <Stack spacing={1.25} sx={{ mt: 1.25 }}>
