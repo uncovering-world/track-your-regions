@@ -79,8 +79,8 @@ import type { GroupStagings } from './crowding/crowdedGroups';
 export function visibilityCaveat(kinds: Set<RowKind>): string {
   const clauses: string[] = [];
   if (kinds.has('withdrawn')) {
-    clauses.push('the places an object lost, which readers stopped seeing the moment the'
-      + ' run noticed');
+    clauses.push('the places an object lost outside a serial site, which readers stopped seeing'
+      + ' when the run noticed');
   }
   if (kinds.has('refused')) {
     clauses.push('the rows our own rule for a list turned down, which are hidden already'

@@ -150,11 +150,9 @@ export function withdrawalStory(point: WithdrawnPoint, offeredLocations: number)
   return 'Nothing replaced it: the source’s list is one part shorter than it was.';
 }
 
-const HELP = 'A run offered the object without this part, so it was marked rather than deleted — '
-  + 'deleting it would have taken anyone’s record of having been there with it. Readers stopped '
-  + 'seeing it the moment it was marked, and that does not change when you answer: "dropped" and '
-  + '"no longer exists" both leave it hidden, and differ in what we are recording — one is about '
-  + 'the source’s list, the other about the world. Only "false alarm" puts it back on the map.';
+const HELP = 'A run offered the object without this part, so it was marked, not deleted, and every visit '
+  + 'to it is kept. A serial site’s part stays on the map until you answer "dropped" or "no longer exists". '
+  + 'Any other place was hidden when it was marked, and only "false alarm" shows it again.';
 
 /**
  * One point, one answer.
@@ -409,8 +407,8 @@ const TAKE_BACK_HELP = 'These are answered, so they are not waiting on you. They
   + 'because a point with a verdict on it is on no other screen: readers do not see it, and '
   + 'it gives nothing back at its own address — so if one of these was a mis-click, this is '
   + 'where it comes back. Each answer is taken back on its own, and the point returns to the '
-  + 'map only once nothing is left holding it. If the source still does not list it, the next '
-  + 'run will mark it again and it will come back as a question. Taking one back makes you the '
+  + 'map only once nothing is left holding it. If the source still does not list it, it comes '
+  + 'back as a question. Taking one back makes you the '
   + 'author of where the point now stands, so the note above it goes with the answer it '
   + 'explained — the wording stays in this object’s history wherever the act that wrote it is '
   + 'one your scope can see, which is the same reach that decides whether a name appears above.';
