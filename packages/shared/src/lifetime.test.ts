@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { compareApproximate } from './approximateDates.js';
-import { comparePlaceDates, isValidPlaceDate, julianToGregorian, samePlaceDate, type PlaceDate } from './lifetime.js';
+import {
+  comparePlaceDates, isValidPlaceDate, julianToGregorian, latestDayOnEarth, outerDaysOf, periodOf, periodsFault, samePlaceDate, standsBy,
+  type PlaceDate, type PlacePeriod,
+} from './lifetime.js';
 
 const date = (year: number | null, rest: Partial<Omit<PlaceDate, 'year'>> = {}): PlaceDate =>
   ({ year, month: null, day: null, span: null, circa: false, ...rest });
@@ -115,5 +118,80 @@ describe('the one order of dates (#1719, #2008)', () => {
         expect(Math.sign(compareApproximate(a, b))).toBe(comparePlaceDates(asPlace(a), asPlace(b)));
       }
     }
+  });
+});
+
+describe('a period of a place (#2578, ADR-0217)', () => {
+  const TODAY = { year: 2026, month: 11, day: 16 };
+  const open = (from: PlaceDate | null): PlacePeriod => ({ from, ended: false, until: null });
+  const ended = (from: PlaceDate | null, until: PlaceDate | null): PlacePeriod => ({ from, ended: true, until });
+  // The Cathedral of Christ the Saviour in Moscow: 1883 to 5 December 1931, and since 2000.
+  const CATHEDRAL = [ended(date(1883), date(1931, { month: 12, day: 5 })), open(date(2000))];
+  // Nelson's Pillar in Dublin: 1809 to 8 March 1966.
+  const PILLAR = [ended(date(1809), date(1966, { month: 3, day: 8 }))];
+
+  it('stands with no standing period or an open one, and not with only ended ones', () => {
+    expect(standsBy([])).toBe(true);
+    expect(standsBy(CATHEDRAL)).toBe(true);
+    expect(standsBy(PILLAR)).toBe(false);
+    expect(standsBy([ended(null, null)])).toBe(false);
+  });
+
+  it('keeps the first day its start may be and the last day its end may be', () => {
+    const [first, second] = CATHEDRAL.map(outerDaysOf);
+    expect(first.fromFirst).toBe(periodOf(date(1883, { month: 1, day: 1 }))?.first);
+    expect(first.untilLast).toBe(periodOf(date(1931, { month: 12, day: 5 }))?.last);
+    expect(second).toEqual({ fromFirst: periodOf(date(2000, { month: 1, day: 1 }))?.first, untilLast: null });
+    // A trip of 1980 falls between the two periods' outer days.
+    const trip = periodOf(date(1980));
+    expect(trip && first.untilLast !== null && second.fromFirst !== null
+      && first.untilLast < trip.first && trip.last < second.fromFirst).toBe(true);
+    // A century covers every year within a century either side of its year.
+    expect(outerDaysOf(ended(date(1250, { span: 'century' }), null))).toEqual({
+      fromFirst: periodOf(date(1151, { month: 1, day: 1 }))?.first, untilLast: null,
+    });
+  });
+
+  it('holds a gap, an end with no date and a start that is not known', () => {
+    expect(periodsFault('stood', CATHEDRAL, TODAY)).toBeNull();
+    expect(periodsFault('stood', PILLAR, TODAY)).toBeNull();
+    expect(periodsFault('stood', [ended(null, null)], TODAY)).toBeNull();
+    // Ponte Santa Trinita in Florence: two gaps.
+    expect(periodsFault('stood', [ended(date(1252), date(1557)), ended(date(1569), date(1944)), open(date(1958))], TODAY)).toBeNull();
+    // Destroyed and rebuilt within one year, both stated to the year: either may come first.
+    expect(periodsFault('stood', [ended(date(1900), date(2010)), open(date(2010))], TODAY)).toBeNull();
+  });
+
+  it('refuses standing periods that overlap, are out of order or go on after an open one', () => {
+    expect(periodsFault('stood', [ended(date(1883), date(1931)), open(date(1920))], TODAY)).toBe('two periods overlap');
+    expect(periodsFault('stood', [open(date(1883)), open(date(2000))], TODAY)).toBe('a period that has not ended is followed by another');
+    expect(periodsFault('stood', [open(date(2000)), ended(date(1883), date(1931))], TODAY)).toBe('the periods are not in time order');
+  });
+
+  it('reads today as the latest day it is anywhere on Earth', () => {
+    expect(latestDayOnEarth(new Date('2026-11-16T09:00:00Z'))).toEqual({ year: 2026, month: 11, day: 16 });
+    expect(latestDayOnEarth(new Date('2026-12-31T10:00:00Z'))).toEqual({ year: 2027, month: 1, day: 1 });
+  });
+
+  it('lets uses overlap, where standing periods may not', () => {
+    expect(periodsFault('used', [open(date(537)), ended(date(1453), date(1931))], TODAY)).toBeNull();
+  });
+
+  it('refuses a period that ends before it starts, an end date on an open period and a date no calendar has', () => {
+    expect(periodsFault('stood', [ended(date(2000), date(1931))], TODAY)).toBe('it ends before it starts');
+    expect(periodsFault('stood', [{ from: date(1883), ended: false, until: date(1931) }], TODAY)).toBe('it has an end date and has not ended');
+    expect(periodsFault('stood', [open(date(1931, { month: 4, day: 31 }))], TODAY)).toBe('its start is not a date');
+    expect(periodsFault('used', [ended(null, date(0))], TODAY)).toBe('its end is not a date');
+  });
+
+  it('refuses a standing period or a use in the future, and lets a closure and an occurrence lie ahead', () => {
+    expect(periodsFault('stood', [ended(date(1809), date(2026, { month: 12, day: 25 }))], TODAY)).toBe('it lies in the future');
+    expect(periodsFault('stood', [ended(date(1809), date(2026))], TODAY)).toBeNull();
+    expect(periodsFault('used', [open(date(2027))], TODAY)).toBe('its start is not a date');
+    // The Pergamon Museum: closed from October 2023 until 2027.
+    expect(periodsFault('closed', [ended(date(2023, { month: 10 }), date(2027))], TODAY)).toBeNull();
+    // Holy Week in Seville, 2027.
+    expect(periodsFault('held', [ended(date(2027, { month: 3, day: 21 }), date(2027, { month: 3, day: 28 }))], TODAY)).toBeNull();
+    expect(periodsFault('closed', [ended(date(2023), date(20227))], TODAY)).toBe('its end is not a date');
   });
 });
