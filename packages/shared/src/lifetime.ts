@@ -176,6 +176,17 @@ export function comparePlaceDates(a: PlaceDate, b: PlaceDate): -1 | 0 | 1 {
 }
 
 /**
+ * Whether `a` is stated later than `b`: wholly after it, or under a later
+ * year. A date known to a span is ordered against another only where their
+ * days cannot meet, so "the century of 1900" and 18 February 1870 may be
+ * either way round; a period from the first until the second would still
+ * read "1900 → 1870", and no list holds one.
+ */
+export function statedAfter(a: PlaceDate, b: PlaceDate): boolean {
+  return comparePlaceDates(a, b) > 0 || a.year > b.year;
+}
+
+/**
  * What a period of a place says was so (ADR-0217 decision 2), in the order a
  * card reads them: the place itself stood, it was used for something, it was
  * closed, or an event was held there.
@@ -258,7 +269,7 @@ function periodFault(period: PlacePeriod, says: PeriodSays, today: CalendarDay):
   if (from && !isValidPlaceDate(from, latestYear)) return 'its start is not a date';
   if (until && !period.ended) return 'it has an end date and has not ended';
   if (until && !isValidPlaceDate(until, latestYear)) return 'its end is not a date';
-  if (from && until && comparePlaceDates(from, until) > 0) return 'it ends before it starts';
+  if (from && until && statedAfter(from, until)) return 'it ends before it starts';
   if (ahead) return null;
   const now = dayIndex(today.year, today.month, today.day);
   if ((from && periodOf(from).first > now) || (until && periodOf(until).first > now)) return 'it lies in the future';
@@ -272,10 +283,12 @@ function periodFault(period: PlacePeriod, says: PeriodSays, today: CalendarDay):
  *
  * - Each end is a date of the calendar (`isValidPlaceDate`), an end date is
  *   only on a period that has ended, and no period ends before it starts.
- * - The list is in time order: no period starts wholly after the one that
+ * - The list is in time order: no period starts later than the one that
  *   follows it.
  * - Standing periods do not overlap: each but the last has ended, and the next
- *   does not start wholly before that end. Uses and closures may overlap.
+ *   does not start before that end.
+ * - Later and before are as the dates are stated (`statedAfter`): wholly
+ *   after, or under a later year, whatever span either is known to. Uses and closures may overlap.
  * - A standing period or a use lies wholly in the past or holds today; a
  *   closure and an occurrence may lie ahead (ADR-0217 decision 2).
  */
@@ -285,10 +298,10 @@ export function periodsFault(says: PeriodSays, periods: readonly PlacePeriod[], 
     if (fault) return fault;
     const next = periods[index + 1];
     if (!next) continue;
-    if (period.from && next.from && comparePlaceDates(period.from, next.from) > 0) return 'the periods are not in time order';
+    if (period.from && next.from && statedAfter(period.from, next.from)) return 'the periods are not in time order';
     if (says !== PLACE_STOOD) continue;
     if (!period.ended) return 'a period that has not ended is followed by another';
-    if (period.until && next.from && comparePlaceDates(period.until, next.from) > 0) return 'two periods overlap';
+    if (period.until && next.from && statedAfter(period.until, next.from)) return 'two periods overlap';
   }
   return null;
 }
