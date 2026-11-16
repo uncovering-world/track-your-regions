@@ -18,11 +18,11 @@ const rule = {
 };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-function placeView(view: CrowdingPlaceView) {
+function placeView(view: CrowdingPlaceView, found: number | null = null) {
   return (
     <QueryClientProvider client={client}>
       <PlaceView view={view} places={berlinGroup.places} rule={rule} staging={new Map()} columns={figureColumns(berlinGroup.kind)}
-        hovered={null} onHover={vi.fn()} onOpen={vi.fn()} onAnswer={vi.fn()} />
+        hovered={null} found={found} onHover={vi.fn()} onOpen={vi.fn()} onAnswer={vi.fn()} />
     </QueryClientProvider>
   );
 }
@@ -62,6 +62,11 @@ describe("a place's circle as one table (#2486)", () => {
 
   it('moves only the mark when Alexanderplatz opens after Gendarmenmarkt, and scrolls to nothing in view', () => {
     const { rerender } = render(placeView(berlinCircle(GENDARMENMARKT)));
+    // Every row mid-screen, clear of the sticky headings above and the Apply bar below.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const row = this.getAttribute('role') === 'row';
+      return { top: row ? 300 : 0, bottom: row ? 340 : 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
     const before = rowNames();
 
     rerender(placeView(berlinCircle(ALEXANDERPLATZ)));
@@ -84,6 +89,25 @@ describe("a place's circle as one table (#2486)", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
     expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByRole('row', { name: 'Potsdamer Platz, this place' }));
+  });
+
+  it("marks the row of the dot the pointer rests on and brings it into view, never the own row (#2576)", () => {
+    const { rerender } = render(placeView(berlinCircle(GENDARMENMARKT)));
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const below = this.getAttribute('role') === 'row';
+      return { top: below ? 2000 : 0, bottom: below ? 2040 : 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
+
+    rerender(placeView(berlinCircle(GENDARMENMARKT), POTSDAMER_PLATZ));
+    const potsdamer = screen.getByRole('button', { name: 'Potsdamer Platz' }).closest('[role="row"]');
+    expect(potsdamer).toHaveAttribute('data-found', 'true');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(potsdamer);
+
+    // The open place's own row is the card's: its dot finds nothing more.
+    rerender(placeView(berlinCircle(GENDARMENMARKT), GENDARMENMARKT));
+    expect(screen.getByRole('row', { name: 'Gendarmenmarkt, this place' })).not.toHaveAttribute('data-found');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
   it('scrolls nothing when the circle first opens, or reads its own place again', () => {

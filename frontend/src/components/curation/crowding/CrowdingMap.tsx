@@ -86,10 +86,13 @@ export function radiusCircle(latitude: number, longitude: number, radiusKm: numb
 /** One dot to draw: where, how, and what a hover says of it. */
 interface Drawn { id: number; name: string; latitude: number; longitude: number; look: Look; says: string; layer: number }
 
+/** What brought a dot's hover or took it away: the pointer, or keyboard focus. */
+export type DotHover = 'pointer' | 'focus';
+
 function Dot({ dot, hovered, onHover, onOpen }: {
   dot: Drawn;
   hovered: boolean;
-  onHover: (membershipId: number | null) => void;
+  onHover: (membershipId: number | null, by: DotHover) => void;
   onOpen: (membershipId: number) => void;
 }) {
   const { look } = dot;
@@ -99,10 +102,10 @@ function Dot({ dot, hovered, onHover, onOpen }: {
         component="button"
         type="button"
         aria-label={dot.name}
-        onMouseEnter={() => onHover(dot.id)}
-        onMouseLeave={() => onHover(null)}
-        onFocus={() => onHover(dot.id)}
-        onBlur={() => onHover(null)}
+        onMouseEnter={() => onHover(dot.id, 'pointer')}
+        onMouseLeave={() => onHover(null, 'pointer')}
+        onFocus={() => onHover(dot.id, 'focus')}
+        onBlur={() => onHover(null, 'focus')}
         onClick={() => onOpen(dot.id)}
         sx={{
           width: look.size, height: look.size, p: 0, borderRadius: '50%', cursor: 'pointer', boxSizing: 'border-box',
@@ -195,7 +198,7 @@ export function CrowdingMap({ view, staging, hovered, frame: frameSx, onHover, o
   frame: SxProps<Theme>;
   staging: Staging;
   hovered: number | null;
-  onHover: (membershipId: number | null) => void;
+  onHover: (membershipId: number | null, by: DotHover) => void;
   onOpen: (membershipId: number) => void;
 }) {
   const map = useRef<MapRef>(null);

@@ -23,7 +23,7 @@
  * applies and reports.
  */
 
-import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react';
 import { Alert, Box, Button, Link, Stack, Typography, type SxProps, type Theme } from '@mui/material';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CrowdingAnswer, CrowdingAnswerRow, CrowdingGroup, CrowdingPlaceView } from '../../../api/crowding';
@@ -32,7 +32,7 @@ import { queryKeys } from '../../../api/queryKeys';
 import { crowdKeyOf, type CrowdGroupRef } from '../../../utils/appUrl';
 import { plural } from '../../../utils/plural';
 import { LoadingSpinner } from '../../shared/LoadingSpinner';
-import { CrowdingLegend, CrowdingMap } from './CrowdingMap';
+import { CrowdingLegend, CrowdingMap, type DotHover } from './CrowdingMap';
 import {
   answerRows, applySummary, outcomeLines, stageAnswer, type Answerable, type Staging,
 } from './crowdingStaging';
@@ -40,6 +40,7 @@ import { PlaceView } from './PlaceView';
 import { figureColumns } from './FigureTable';
 import { RegionList } from './RegionList';
 import { countsLine, groupTitle, nounOf, type RuleWords } from './rowWords';
+import { useFoundRow } from './useFoundRow';
 
 /** What the last Apply did, by name, and why the rest did not go where some did not. */
 export interface CrowdingOutcome {
@@ -138,7 +139,7 @@ function ruleOf(read: CrowdingGroup): RuleWords {
 }
 
 /** The map and, beside it, the region's list or the open place's card; or what stands in for them while they are read. */
-function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hovered, onHover, onOpen, onAnswer }: {
+function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hovered, found, mapPane, onHover, onMapHover, onOpen, onAnswer }: {
   read: CrowdingGroup | undefined;
   /** The open place's circle; undefined on the region's list, or while it is first read. */
   circle: CrowdingPlaceView | undefined;
@@ -148,7 +149,14 @@ function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hov
   inRegion: boolean;
   staging: Staging;
   hovered: number | null;
+  /** The place whose dot the pointer rests on: its row is marked and brought into view (#2576). */
+  found: number | null;
+  /** The map's pane, whose move tells a dot that left the pointer from a pointer that left the dot. */
+  mapPane: RefObject<HTMLDivElement | null>;
+  /** A row's hover: it lights the dot, and moves no table. */
   onHover: (membershipId: number | null) => void;
+  /** A dot's hover: it lights the row, and once it rests, finds it. */
+  onMapHover: (membershipId: number | null, by: DotHover) => void;
   onOpen: (membershipId: number | null) => void;
   onAnswer: (place: Answerable, answer: CrowdingAnswer) => void;
 }) {
@@ -171,8 +179,8 @@ function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hov
   return (
     <Stack direction={{ xs: 'column', lg: 'row' }}>
       <Box sx={CROWDING_LAYOUT.mapColumn}>
-        <Box data-testid="crowding-map-pane" sx={CROWDING_LAYOUT.mapPane}>
-          <CrowdingMap view={map} staging={staging} hovered={hovered} frame={CROWDING_LAYOUT.mapFrame} onHover={onHover} onOpen={onOpen} />
+        <Box ref={mapPane} data-testid="crowding-map-pane" sx={CROWDING_LAYOUT.mapPane}>
+          <CrowdingMap view={map} staging={staging} hovered={hovered} frame={CROWDING_LAYOUT.mapFrame} onHover={onMapHover} onOpen={onOpen} />
           <Box sx={{ mt: 1 }}><CrowdingLegend view={map} /></Box>
         </Box>
       </Box>
@@ -180,13 +188,13 @@ function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hov
         {map.kind === 'region' ? (
           <RegionList
             places={read.places} rule={rule} typeExempt={read.typeExempt} staging={staging} columns={columns}
-            hovered={hovered} onHover={onHover} onOpen={onOpen} onAnswer={onAnswer}
+            hovered={hovered} found={found} onHover={onHover} onOpen={onOpen} onAnswer={onAnswer}
           />
         ) : (
           <Box sx={{ opacity: placeLoading ? 0.6 : 1 }}>
             <PlaceView
               view={map.view} places={read.places} rule={rule} staging={staging} frozen={frozen} columns={columns}
-              hovered={hovered} onHover={onHover} onOpen={onOpen} onAnswer={onAnswer}
+              hovered={hovered} found={found} onHover={onHover} onOpen={onOpen} onAnswer={onAnswer}
             />
           </Box>
         )}
@@ -247,6 +255,8 @@ export function CrowdingWindow({
 }) {
   const queryClient = useQueryClient();
   const [hovered, setHovered] = useState<number | null>(null);
+  const mapPane = useRef<HTMLDivElement>(null);
+  const { found, rest, clear } = useFoundRow(mapPane);
   const [ownOutcome, setOwnOutcome] = useState<CrowdingOutcome | null>(null);
   const outcome = onOutcome ? heldOutcome ?? null : ownOutcome;
   const setOutcome = onOutcome ?? setOwnOutcome;
@@ -307,7 +317,9 @@ export function CrowdingWindow({
   }
 
   const onAnswer = (place: Answerable, answer: CrowdingAnswer) => onStaging(current => stageAnswer(current, place, answer));
-  const open = (membershipId: number | null) => { setHovered(null); onSelect(membershipId); };
+  const open = (membershipId: number | null) => { setHovered(null); clear(); onSelect(membershipId); };
+  // A dot lights its row at once, and finds it once the pointer rests on it; a row only lights its dot.
+  const mapHover = (membershipId: number | null, by: DotHover) => { setHovered(membershipId); rest(membershipId, by); };
 
   const rule = read ? ruleOf(read) : null;
   const heading = (
@@ -320,7 +332,8 @@ export function CrowdingWindow({
     <WindowBody
       read={read} circle={circle} placeLoading={placeRead.isPlaceholderData}
       failed={groupRead.error ?? (selected === null ? null : placeRead.error)} inRegion={selected === null}
-      staging={staging} hovered={hovered} onHover={setHovered} onOpen={open} onAnswer={onAnswer}
+      staging={staging} hovered={hovered} found={found} mapPane={mapPane} onHover={setHovered} onMapHover={mapHover} onOpen={open}
+      onAnswer={onAnswer}
     />
   );
   const report = outcome && <CrowdingReport outcome={outcome} onClose={() => setOutcome(null)} sx={{ mx: 2, mt: 1 }} />;
