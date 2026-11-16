@@ -148,13 +148,14 @@ year one later than an AD one, a year from 100,000 BC to this year) and `samePla
 tables are written by `db/placeDatesWriter.ts` alone (ADR-0069, `PLACE_DATE_WRITE_RULES`), under
 the place's `LockedExperience`: `writePlaceDate` and `clearPlaceDate` for the place's own dates,
 and `writeRecordDates` for a record's whole view, which replaces the slots it reports and clears
-the rest. Both are serving tables (ADR-0124). No run and no curator screen writes them yet.
+the rest. Both are serving tables (ADR-0124). No curator screen writes them yet; the runs write
+them as § How a run writes a place's dates says.
 
 **How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
 derives a record's dates from the statements the gone rules already read (`fetchStandingFacts`,
 whose answer now carries every best-rank dated statement, `dated`, through the subset's reader
 `subset/standing.ts` or its live twin in `places/gone.ts`), given the gone rules' reason for the
-place. It writes nothing; no run calls it yet.
+place. It writes nothing itself.
 
 - `began` is the earliest inception (`P571`) or official opening (`P1619`), so Notre-Dame's
   reopening of 7 December 2024 never reads as its beginning (1163).
@@ -192,6 +193,33 @@ could be read. The new live reader turns a BC year back into the item's numberin
 (`services/sync/wikidataYears.ts`), and the service has already written a Julian day as the
 Gregorian one. The live works and public-art queries read their inception's year the same way
 (§ Reading Wikidata from the local subset, the paragraph on a year before the common era).
+
+**How a run writes a place's dates** (`services/sync/lifetimeWrites.ts`, ADR-0214 decision 4).
+The orchestrator reads every item's lifetime once, before the first item is written
+(`runLifetimes` in `syncOrchestrator.ts`, `readLifetimes`), through the source's own door to
+Wikidata, from the item the source names (`lifetimeItem`): the six place kinds, Art Museums and
+Archaeology read each place's own item, and World Heritage the site's one item, the one its picture
+comes from; a site of several items has no one lifetime. Only a kind that runs a gone rule
+(`lifetimeGone`: the five landmark kinds, Places of worship) can derive an end of the place, which
+Archaeology and World Heritage never do, since Basilica Aemilia's end of 410 ends a use of a ruin
+that stands. A door that does not answer leaves every record as it stands, and the run goes on.
+
+The upsert then writes, under the place's lock, the run's view on its own record
+(`writeRecordDates`) and the place's dates through the gate (`decideLifetime`):
+
+- a date filled where the place held none is written and filed as passed (`first-date`);
+- a change to a date a reader sees, under a gated source, is held back: not written, its record
+  keeps the date it reports, and the run's log names nothing for a curator yet;
+- an end is held back under every gated source, filled or changed, since it takes the place off
+  today's lists;
+- a curator's admission pin on the run's membership keeps the run from writing an end;
+- a date another source set, a curator set or a curator claimed (`curated_fields` names the slot)
+  is left as it is;
+- a date the source no longer reports is taken off only where the source wrote it, by the same
+  gate.
+
+A date written onto the place is filed on the run's change set beside its other fields, so an
+object whose only write is a date reads as updated; a preview files the same without writing.
 
 ### Location model
 
@@ -1817,6 +1845,12 @@ countries), so the write and the record cannot disagree; a key the gate weighs a
 (ADR-0029), and every other rewrite — a name replaced, another picture, a licence changed, an area
 moved more — is held as before.
 
+An eleventh, `first-date`, is a date of the place's lifetime filled where the place held none
+(ADR-0214 decision 4, #1719). It is decided outside the diff and the upsert's statement, by
+`lifetimeWrites.ts` (§ How a run writes a place's dates), which writes the date under the place's
+lock and files it with its class beside the run's other fields; like the others it raises no
+question, sets no held pointer and demotes no verified membership.
+
 **And a field of a part readers can already see is held the same way**
 ([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md)). A run rewrote a
 visible work's attribution or a visible place's name on the spot — 73 such changes on the dev database,
@@ -1906,7 +1940,9 @@ no chip, telling the curator that the held value was the one now live. `conflict
 the case: that word means a person
 claimed the field, so the stored value won on purpose and nothing is waiting, while a held row is
 waiting on a verdict nobody has given (#519). A row carrying both is `held`, because the held half
-is the part still unanswered. Counted as `unchanged`, exactly as a `conflict` row is, and counted
+is the part still unanswered, and so is a row on which something else passed the gate beside
+the hold, a date filled where the place held none among them (#1719). Counted in its own bucket,
+`unchanged` where nothing was written and `updated` where something passed, and counted
 again in the run's own `total_held` (#523; the counters section below), so the summary and the
 changeset rows agree on how many rows a run held; the run report's default
 view keeps them regardless of significance, since what it drops is a minor `updated` row that moved
@@ -1982,25 +2018,35 @@ curator saw it, and its row, its id and its region assignments are the same ones
 changed, and `total_unchanged` absorbs the rest. Logs 1–4 are therefore not comparable with
 later ones.
 
-**A held row is counted twice: inside `total_unchanged`, and again in `total_held`** (#523). A row
+**A held row is counted twice: in its own bucket, and again in `total_held`** (#523). A row
 a gated source proposed a change to and the gate held is one of the rows `total_unchanged` absorbs —
 nothing was written to it — and the run's totals were silent about how many such rows it left:
 UNESCO run 68 (2026-08-22) held all 1272 sites and reported `created 0 · updated 0 · unchanged
 1272`, a run that touched nothing, while every one of the 1272 was a proposal waiting in the
 curator's queue — which the admin reading the run list may not be the person watching. `total_held`
-is a subset of `unchanged` rather than a fifth bucket beside it, for the reason `total_updated`
+is counted beside the outcome buckets rather than as a fifth one, for the reason `total_updated`
 above gives: a stored counter must not acquire a second meaning. `total_curated_conflicts` is the
 precedent for counting a refusal on top of the outcome buckets rather than instead of one, and no
 more than that: it counts claimed **fields**, on `updated` rows as well as `unchanged` ones — 100
 unchanged rows carrying two claimed fields each is 200 conflicts beside 100 unchanged — where
-`total_held` counts **rows**, only inside `unchanged`. The two tiles sit side by side on the run
+`total_held` counts **rows**: inside `unchanged` where the gate kept every write out, and inside
+`updated` where something passed beside the hold — a date filled where the place held none (#1719)
+is written on a row whose renamed museum still waits, and that row is held, never an update a
+curator need not look at. The two tiles sit side by side on the run
 card, so the unit is on screen: Held 1,272 is 1,272 sites, Conflicts 3 is three fields. That
 counter stays claims-only — nobody has claimed a held field — so the two never share a field, and
 a row carrying both a claim and a hold is counted in both. The
 increment and the changeset row's `held` word come from one predicate, `wasHeld` in
-`itemOutcome.ts`: the row came through `unchanged` with something in `heldFields`. Structural
-rather than empirical — `computeChangeSet` files every unclaimed diff of a held row under
-`heldFields`, so its `changedFields` is empty and its `changeType` is `unchanged`; and an insert
+`itemOutcome.ts`: the row was not created and carries a held field (`heldFields`) or held contents
+(`contentsHeld`: a field of a point or a work readers can see, ADR-0037). `computeChangeSet` files
+a held row's unclaimed diffs that do not pass the gate under `heldFields`; one that passes (a date
+filled where the place held none, a credit re-read for the same file) is written and filed under
+`changedFields`, which makes the row's own bucket `updated`. So since #1719 `total_held` is no
+longer a subset of `total_unchanged`, which ADR-0037 decision 5 and ADR-0039 (§ Consequences)
+still state: a date passes the gate beside a held change on most of a first fill's held rows (322
+of the 411 held on the place pass's dry run of 2026-11-16), and counting such a row as only
+updated would have the run report a held question as an update. The row is held, and counted in
+`updated` as what was written to it. And an insert
 under a gate is written `pending` rather than refused, so a `created` row is never held, and the
 queue's `arrival` card already carries it. Nor is new *content* under a gate: a point or a work
 arriving on a visible object is written `pending` too (`locationWriter.ts`, `museum/treasureWriter.ts`),
