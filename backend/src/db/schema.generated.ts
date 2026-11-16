@@ -1194,6 +1194,7 @@ export interface SourceRecordsRow {
   facts: unknown;
   created_at: Date;
   updated_at: Date;
+  reported_location_rough: string | null;
   listing_ordinal: number | null;
   crowding_pin: string | null;
 }
@@ -1875,6 +1876,7 @@ export const COLUMN_WIDTHS = {
     admission_question_verdict: 10,
     curation_state: 10,
     source_membership: 10,
+    reported_location_rough: 12,
     crowding_pin: 10,
   },
   treasures: {
@@ -2057,6 +2059,7 @@ export const CHECK_VALUES = {
     admission: ["admitted", "refused"],
     crowding_pin: ["list", "shadow"],
     curation_state: ["pending", "auto", "verified"],
+    reported_location_rough: ["whole-minute", "shared"],
     source_membership: ["present", "former"],
   },
   treasures: {

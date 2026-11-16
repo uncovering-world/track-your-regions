@@ -95,7 +95,7 @@ export const ExperienceLocation = z.strictObject({
   ),
   longitude: z.number(),
   latitude: z.number(),
-  approximate: z.enum(CHECK_VALUES.experience_locations.approximate).nullable().describe(
+  approximate: z.enum(CHECK_VALUES.source_records.reported_location_rough).nullable().describe(
     'Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853):'
     + ' `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place;'
     + ' `shared`, one point several components of the site share. A reader is told (#1912).',

@@ -39,7 +39,7 @@ import {
 import { entitiesAreHeld, latestSubset } from '../dumps/wikidata/subsetTables.js';
 import { withRegisterCodes } from './componentItemRegisters.js';
 import {
-  overPlacePoints, placePointsSql, pointItemClaimedSql, pointItemSql, pointsShownSql, type PlacePointArm,
+  overPlacePoints, placePointsSql, pointItemClaimedSql, pointItemSql, pointRoughSql, pointsShownSql, type PlacePointArm,
 } from '../../db/placePoints.js';
 
 const UNESCO_SOURCE_ID = 1;
@@ -143,7 +143,8 @@ const listsPoint = (alias: string) => `(EXISTS (SELECT 1 FROM experience_locatio
  * it can still be cleared.
  */
 function sitePointsArm({ from, placeId }: PlacePointArm): string {
-  return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon, el.approximate IS NOT NULL AS approximate,
+  return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
+            ${pointRoughSql('el')} IS NOT NULL AS approximate,
             ${placeId} AS experience_id, el.external_ref, m.wikidata_items,
             ${listsPoint('el')} AS listed,
             stands_for_whole_site(el.name, el.external_ref, e.name, m.external_id,

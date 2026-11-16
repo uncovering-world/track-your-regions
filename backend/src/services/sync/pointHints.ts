@@ -26,7 +26,7 @@
 
 import { pool } from '../../db/index.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { pointItemSql, shownBySql } from '../../db/placePoints.js';
+import { pointItemSql, pointRoughSql, shownBySql } from '../../db/placePoints.js';
 import { COPIED_COORDINATE_M } from './componentItemMatching.js';
 import { VENUE_AMENITIES } from '../dumps/osm/layerSelection.js';
 
@@ -57,14 +57,13 @@ export function namedAfterSql(tags: string): string {
 const METRES_PER_DEGREE = 111000;
 
 /**
- * A component point the list placed only roughly (`experience_locations.approximate`)
- * that nobody has placed since: one a reader sees, with no curator's claim on
- * its coordinate. The review queue asks about these points, and the pass
- * works out their hints. `el` is the point's alias.
+ * A component point the list placed only roughly that nobody has placed since
+ * (`pointRoughSql`, which a curator's claim on its coordinate answers): one a
+ * reader sees. The review queue asks about these points, and the pass works
+ * out their hints. `el` is the point's alias.
  */
 export function approximatePointOpenSql(el = 'el'): string {
-  return `${el}.approximate IS NOT NULL AND NOT ${el}.curated_fields ? 'location'
-    AND ${offeredLocationSql(el)} AND ${publishedContentSql(el)}`;
+  return `${offeredLocationSql(el)} AND ${publishedContentSql(el)} AND ${pointRoughSql(el)} IS NOT NULL`;
 }
 
 /** Every hint for the point `el`, before its distance is worked out. */

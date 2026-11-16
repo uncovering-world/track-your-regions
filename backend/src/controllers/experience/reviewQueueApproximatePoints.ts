@@ -19,7 +19,7 @@ import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import { rowKindJoinSql } from '../../db/membership.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
-import { pointsShownSql } from '../../db/placePoints.js';
+import { pointRoughSql, pointsShownSql } from '../../db/placePoints.js';
 import { SITE_POINTS } from './reviewQueueComponentItems.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { approximatePointAskedSql, approximatePointsOpenSql, candidateHintsSql } from './reviewQueuePredicates.js';
@@ -51,7 +51,7 @@ const approximatePoints = (hinted: boolean) => `(SELECT jsonb_agg(jsonb_build_ob
            'ref', el.external_ref,
            'latitude', ST_Y(el.location),
            'longitude', ST_X(el.location),
-           'reason', el.approximate,
+           'reason', ${pointRoughSql('el')},
            'hints', ${HINTS_OF_POINT},
            -- Asked of the full OpenStreetMap from the card with this name and
            -- coordinate (pointNamesakes.ts, #2243): the card offers the

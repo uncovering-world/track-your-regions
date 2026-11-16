@@ -22,7 +22,7 @@ import type { z } from 'zod/v4';
 import type { PointHintSuggestions } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { pointsShownSql } from '../../db/placePoints.js';
+import { pointRoughSql, pointsShownSql } from '../../db/placePoints.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import { askJevChoices, jevConfigured, type JevChoiceAsked } from '../../services/jev/jevClient.js';
 import type { idParamSchema } from '../../types/index.js';
@@ -102,7 +102,7 @@ async function openHints(experienceId: number): Promise<{ name: string; countrie
   const result = await pool.query<{ name: string; countries: string[] | null; hints: HintRow[] | null }>(
     `SELECT e.name, e.country_names AS countries,
             (SELECT jsonb_agg(jsonb_build_object(
-                      'locationId', el.id, 'pointName', el.name, 'pointRef', el.external_ref, 'reason', el.approximate,
+                      'locationId', el.id, 'pointName', el.name, 'pointRef', el.external_ref, 'reason', ${pointRoughSql('el')},
                       'lat', round(ST_Y(el.location)::numeric, 5), 'lon', round(ST_X(el.location)::numeric, 5),
                       'source', h.source, 'ref', h.ref, 'label', h.label, 'metres', h.metres, 'tags', h.tags,
                       'hintLat', round(ST_Y(h.at)::numeric, 5), 'hintLon', round(ST_X(h.at)::numeric, 5),

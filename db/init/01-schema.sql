@@ -3187,6 +3187,15 @@ ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_name TEXT;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_subtitle TEXT;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
+-- How precisely the list gave a list line's coordinate (#1853, ADR-0213): on a
+-- record of World Heritage components, beside reported_location. See
+-- db/migrations/258.
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_location_rough VARCHAR(12)
+    CHECK (reported_location_rough IN ('whole-minute', 'shared'));
+-- The places holding a rough record, the set every reader of a point asks
+-- first (pointRoughSql): a thousand rows, read once per statement.
+CREATE INDEX IF NOT EXISTS idx_source_records_rough ON source_records(experience_id)
+    WHERE reported_location_rough IS NOT NULL;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_wikipedia_url TEXT;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_label TEXT;
@@ -3257,6 +3266,7 @@ COMMENT ON COLUMN source_records.reported_image_credit IS 'The credit of reporte
 COMMENT ON COLUMN source_records.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
 COMMENT ON COLUMN source_records.reported_label IS 'The label this membership''s source last sent for the place, before a twin''s suffix (#1967): a label another standing place of the catalogue carries is named apart, so every source of one item names it alike.';
 COMMENT ON COLUMN source_records.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
+COMMENT ON COLUMN source_records.reported_location_rough IS 'How roughly the list placed the line this record stands for, on a record of World Heritage components (#1853, ADR-0213): whole-minute, a coordinate to the whole minute (the Longmen Grottoes, 10 km off), or shared, one another line of the site under another reference also stands on (Echmiatsin''s cathedral, church and cemetery). Written with reported_location by the site''s run (approximateReasons, @tyr/shared/precision) whatever a curator made of the place; NULL where the list gives the line to the second, where it no longer gives the line, and where the line stands for its whole site of an area ten cells of its minute or more (listingRoughSql, partFieldsWriter.ts, #1903), resolved by the run that knows the area. Whether the place stands only roughly is read from it by pointRoughSql (placePoints.ts), never stored.';
 COMMENT ON COLUMN source_records.listing_ordinal IS 'Where the line this record stands for comes in its source''s list, on a record of World Heritage components (ADR-0200): the ordinal the run paired the line''s point by, written with the record''s view. NULL on a record in a kind, and where the list gives the line no point.';
 COMMENT ON COLUMN source_records.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN source_records.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
@@ -4462,13 +4472,12 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_reader
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS moved_to_location_id INTEGER
     REFERENCES experience_locations(id) ON DELETE SET NULL;
 COMMENT ON COLUMN experience_locations.moved_to_location_id IS 'The point a move replaced this one with (#1448, #1837): the old spot of the Trevi Fountain names the point 24 m away. Set by a curator''s published move, with source_membership former, which is its answer; and by a run whose move of a verified point is short (ADR-0140), which leaves the point present and marks it missing as any point the source stops listing. Either way the point raises no withdrawal question and the answered withdrawals leave it out; a run that lists the old spot again, or a curator who answers it still listed, clears it.';
--- How roughly the World Heritage list placed a component (#1853): to the whole
--- minute, or on a point another component of the property shares. Recorded by
--- the World Heritage run (approximateReasons, @tyr/shared/precision); null for
--- a point given to the second, and for one a curator placed.
+-- How roughly the World Heritage list placed a component (#1853), as the run
+-- read it before the line's record held it (reported_location_rough, #2123):
+-- kept for the catalogue check that compares the two until the points go.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS approximate VARCHAR(12)
     CHECK (approximate IN ('whole-minute', 'shared'));
-COMMENT ON COLUMN experience_locations.approximate IS 'Why the World Heritage list''s point for this component only says roughly where it is (#1853): whole-minute, a coordinate to the whole minute (the Longmen Grottoes, 10 km off), or shared, a point another component of the property under another reference also stands on (Echmiatsin''s cathedral, church and cemetery). Null for a point given to the second and for one a curator placed (curated_fields location). Written by the World Heritage run.';
+COMMENT ON COLUMN experience_locations.approximate IS 'Why the World Heritage list''s point for this component only says roughly where it is (#1853), as the run read it before the line''s record held it (source_records.reported_location_rough, #2123). Read for one case only: a point a move held for a curator leaves at the list''s old coordinate, which an unread arrival names (pointRoughSql). The catalogue check point-rough-out-of-step compares it with what the record says, and both go with the points (#2124). Written by the World Heritage run.';
 CREATE TABLE IF NOT EXISTS experience_merges (
     id SERIAL PRIMARY KEY,
     survivor_id INTEGER NOT NULL REFERENCES experiences(id),
@@ -4615,7 +4624,7 @@ CREATE TABLE IF NOT EXISTS experience_point_hints (
     tags JSONB
 );
 CREATE INDEX IF NOT EXISTS idx_experience_point_hints_location ON experience_point_hints(location_id);
-COMMENT ON TABLE experience_point_hints IS 'Where a component the World Heritage list placed only roughly (experience_locations.approximate) may really stand (#1853): the coordinate of its own Wikidata item (item, ref the item), an OpenStreetMap object carrying its World Heritage reference ref:whc (osm-ref, ref like W194252618), or one within 2 km named like it (osm-name), with its distance from the point in metres. Worked out by the Find component items pass from the subset, the OpenStreetMap layer and the full OpenStreetMap''s answers a curator asked for from the card (experience_point_name_asks, #2243), and replaced per point on each pass, so the curator''s card reads no workbench table (ADR-0124).';
+COMMENT ON TABLE experience_point_hints IS 'Where a component the World Heritage list placed only roughly (its line''s record, source_records.reported_location_rough, read by pointRoughSql) may really stand (#1853): the coordinate of its own Wikidata item (item, ref the item), an OpenStreetMap object carrying its World Heritage reference ref:whc (osm-ref, ref like W194252618), or one within 2 km named like it (osm-name), with its distance from the point in metres. Worked out by the Find component items pass from the subset, the OpenStreetMap layer and the full OpenStreetMap''s answers a curator asked for from the card (experience_point_name_asks, #2243), and replaced per point on each pass, so the curator''s card reads no workbench table (ADR-0124).';
 
 COMMENT ON COLUMN experience_point_hints.tags IS 'An OpenStreetMap hint''s tags as the layer holds them, or as the full OpenStreetMap answered a curator''s question from the card (#2243), which Jev reads to judge whether the object is the component (#1913); null on an item.';
 

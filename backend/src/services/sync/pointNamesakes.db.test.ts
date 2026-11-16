@@ -38,7 +38,13 @@ async function clear(): Promise<void> {
   await pool.query("DELETE FROM osm_objects WHERE osm_type = 'W' AND osm_id = 1095868935");
 }
 
+/** A point on the site, and its line's record saying the list gave it on a shared coordinate, as a run writes both. */
 async function point(name: string): Promise<number> {
+  await pool.query(
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, reported_location, reported_location_rough)
+     VALUES ($1, $1, 10, '9856-003', ST_SetSRID(ST_MakePoint($2, $3), 4326), 'shared')`,
+    [SITE, SHARED.lon, SHARED.lat],
+  );
   return (await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state, approximate)
      VALUES ($1, $2, '9856-003', ST_SetSRID(ST_MakePoint($3, $4), 4326), 'verified', 'shared') RETURNING id`,

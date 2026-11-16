@@ -21,7 +21,13 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM wikidata_claims WHERE subject = $1', [OWN_ITEM]);
 }
 
+/** A point on the site, and its line's record saying the list gave it on a shared coordinate, as a run writes both. */
 async function point(ref: string, name: string, at: { lon: number; lat: number }): Promise<number> {
+  await pool.query(
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, reported_location, reported_location_rough)
+     VALUES ($1, $1, 10, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), 'shared')`,
+    [SITE, ref, at.lon, at.lat],
+  );
   return (await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state, approximate)
      VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), 'verified', 'shared') RETURNING id`,
@@ -80,8 +86,8 @@ describe('where a roughly placed component may stand', () => {
     const gayaneh = await point('9855-002', 'Church Saint Gayaneh and surrounding buildings', SHARED);
     // Its item, on the site's record of the line (ADR-0200).
     await pool.query(
-      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items)
-       VALUES ($1, $1, 10, '9855-002', ARRAY[$2])`,
+      `UPDATE source_records SET wikidata_items = ARRAY[$2]
+        WHERE experience_id = $1 AND whole_id = $1 AND source_id = 10`,
       [SITE, OWN_ITEM],
     );
 

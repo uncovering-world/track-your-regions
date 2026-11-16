@@ -42,7 +42,9 @@
  * counts as visited when its own place is.
  */
 
-import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql, placeOfferedSql, siteMembershipSql } from './membership.js';
+import {
+  MEMBERSHIPS, componentRecordSql, kindRecordSql, placeHoldsKindSql, placeOfferedSql, siteMembershipSql,
+} from './membership.js';
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
@@ -453,6 +455,73 @@ export function pointItemSql(point = 'el'): string {
  */
 export function pointItemClaimedSql(point = 'el'): string {
   return `COALESCE(${pointRecordSql(point, 'pc_rec', "pc_rec.curated_fields ? 'wikidata_items'")}, false)`;
+}
+
+/**
+ * The point `point` is a line point of a part of the whole `whole` (an SQL
+ * expression): `is_part_line_point()`'s rule, placed by the whole's own record
+ * in a kind or by nothing, written out so the planner runs it as two index
+ * probes. A SQL function holding a sub-select is not inlined, and called once
+ * per rough point it cost about 70 µs, most of what `pointRoughSql` added to a
+ * hot read (#2123). The spec of `pointRoughSql` holds the two to each other.
+ */
+export function partLinePointSql(point: string, whole: string): string {
+  return `(NOT EXISTS (SELECT 1 FROM experience_location_placements line_any WHERE line_any.location_id = ${point}.id)
+           OR EXISTS (SELECT 1 FROM experience_location_placements line_own
+                        JOIN ${MEMBERSHIPS} line_site ON line_site.id = line_own.membership_id
+                       WHERE line_own.location_id = ${point}.id AND line_site.experience_id = ${whole}
+                         AND ${kindRecordSql('line_site')}))`;
+}
+
+/**
+ * Why the point `point` stands only roughly where its component is, as an SQL
+ * expression, `whole-minute` or `shared`, or NULL where it stands well enough
+ * (#1853, ADR-0213 decision 5): "approximate", the one statement every reader
+ * composes, the ring a visitor's map draws and the *Where is it?* card alike.
+ * How roughly the list placed the line is its record's
+ * (`reported_location_rough`, read through `pointRecordSql`), resolved by the
+ * site's run for the site's area (`listingRoughSql`, `partFieldsWriter.ts`),
+ * never stored on the place. The point is rough while it carries no curator's
+ * claim on its coordinate (a curator who placed it, or kept the list's point,
+ * answered where it stands), still stands at the record's coordinate (to the
+ * sixth decimal, as the list is read), and is the line's own point
+ * (`partLinePointSql`: another kind's point on a part is that kind's). Only
+ * a point whose place holds a rough record, or which keeps a stored reason
+ * (below), looks for its record, and the line test runs only for a rough
+ * line's point, so a hot read pays next to nothing for every other point.
+ *
+ * A move the list made waits for a curator under a gated source: the point a
+ * reader sees keeps the list's old coordinate while the record already holds
+ * the new one, and an unread arrival names the point it replaces
+ * (`withdrawal_deferred_for_location_id`). The record says nothing of the old
+ * coordinate, so such a point keeps the reason the run stored when it was the
+ * list's (`experience_locations.approximate`): the coordinate on screen is
+ * still the rough one, until the arrival is published, or for good once it is
+ * refused. The point's claim, coordinate and stored reason stand for the
+ * place's until the points go (#2124).
+ */
+export function pointRoughSql(point = 'el'): string {
+  const rec = 'rough_rec';
+  const sixth = (axis: 'X' | 'Y', geom: string) => `round(ST_${axis}(${geom})::numeric, 6)`;
+  const heldBack = `EXISTS (SELECT 1 FROM experience_locations rough_arrival
+                             WHERE rough_arrival.withdrawal_deferred_for_location_id = ${point}.id
+                               AND rough_arrival.merged_into_id IS NULL)`;
+  const reason = pointRecordSql(point, rec, `CASE
+      WHEN ${sixth('X', `${point}.location`)} <> ${sixth('X', `${rec}.reported_location`)}
+        OR ${sixth('Y', `${point}.location`)} <> ${sixth('Y', `${rec}.reported_location`)}
+        OR ${rec}.reported_location IS NULL
+        THEN CASE WHEN ${point}.approximate IS NOT NULL AND ${heldBack} THEN ${point}.approximate END
+      WHEN ${rec}.reported_location_rough IS NULL THEN NULL
+      WHEN ${rec}.whole_id <> ${rec}.experience_id AND NOT ${partLinePointSql(point, `${rec}.whole_id`)} THEN NULL
+      ELSE ${rec}.reported_location_rough END`);
+  // The place holds a rough record, or the point a stored reason: an
+  // uncorrelated set, hashed once per statement, so every other point is
+  // answered without a lookup.
+  return `CASE WHEN ${point}.curated_fields ? 'location' THEN NULL
+               WHEN ${point}.approximate IS NOT NULL
+                 OR ${point}.experience_id IN (SELECT rough_place.experience_id FROM ${MEMBERSHIPS} rough_place
+                                                WHERE rough_place.reported_location_rough IS NOT NULL)
+               THEN ${reason} END`;
 }
 
 /**

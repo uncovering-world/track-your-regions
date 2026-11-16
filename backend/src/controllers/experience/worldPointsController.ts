@@ -59,7 +59,7 @@ import { pool } from '../../db/index.js';
 import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeShownSql, shownKindsByPlaceSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { overPlacePoints, pointNameSql, type PlacePointArm } from '../../db/placePoints.js';
+import { overPlacePoints, pointNameSql, pointRoughSql, type PlacePointArm } from '../../db/placePoints.js';
 
 /**
  * Decimals a coordinate is rounded to, per tier.
@@ -153,7 +153,7 @@ function selectSql(detail: PointsDetail, arm: number, placeId: string, kindsJoin
       kindsJoined ? `COALESCE(wk.kinds, '[]'::json) AS kinds` : `${placeKindsSql('e', true)} AS kinds`,
       // Whether the source placed the point only roughly (#1912), which the pin
       // draws as a ring.
-      'el.approximate IS NOT NULL AS approximate',
+      `${pointRoughSql('el')} IS NOT NULL AS approximate`,
     );
   }
   return columns.join(',\n        ');
