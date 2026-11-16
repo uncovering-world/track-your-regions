@@ -13,10 +13,12 @@
  *
  * A date is a trip's approximate date (`@tyr/shared/approximateDates`, ADR-0202
  * decision 2: a month only within a year, a day only within a month the month
- * has), so `compareApproximate` reads one, with two fields a history needs and
- * a trip does not: a `span` where the source knows the year no closer than a
+ * has), with two fields a history needs and a trip does not: a `span` where the source knows the year no closer than a
  * decade, a century or a millennium (Göbekli Tepe's start is known to the
- * millennium, Stonehenge's to the century), and `circa`.
+ * millennium, Stonehenge's to the century), and `circa`. Two dates are ordered
+ * by the periods they may be (`comparePlaceDates`): one follows another only
+ * where the periods do not overlap. That is the one order of dates: a place's
+ * own, and a trip's against a place's (#2008).
  *
  * The year is numbered as the subset gives it, from Wikidata's JSON: 250 BC is
  * -250, and there is no year zero. The query service numbers a BC year at a
@@ -142,6 +144,47 @@ export function isValidPlaceDate(date: PlaceDate, slot: LifetimeSlot, latestYear
   if (day !== null && (month === null || !isWhole(day, 1, daysIn(year, month)))) return false;
   if (span !== null && (month !== null || !DATE_SPANS.includes(span))) return false;
   return true;
+}
+
+/** Days in order, a month counted as 31 of them: only the order matters. */
+const dayIndex = (year: number, month: number, day: number): number => (year * 12 + (month - 1)) * 31 + (day - 1);
+
+/** The years one span is wide. */
+const SPAN_YEARS: Readonly<Record<DateSpan, number>> = { decade: 10, century: 100, millennium: 1000 };
+
+/**
+ * The first and the last day a date may be, as a count that orders days: a
+ * day is itself, a month or a year all its days, and a span every year within
+ * one span either side of its year, since a century is stated both by its
+ * first year and by its last. Null for a date with no year.
+ */
+export function periodOf(date: PlaceDate): { first: number; last: number } | null {
+  const { year, month, day, span } = date;
+  if (year === null) return null;
+  if (span !== null) {
+    const width = SPAN_YEARS[span];
+    return { first: dayIndex(year - width + 1, 1, 1), last: dayIndex(year + width - 1, 12, 31) };
+  }
+  if (month === null) return { first: dayIndex(year, 1, 1), last: dayIndex(year, 12, 31) };
+  if (day === null) return { first: dayIndex(year, month, 1), last: dayIndex(year, month, 31) };
+  const index = dayIndex(year, month, day);
+  return { first: index, last: index };
+}
+
+/**
+ * The one order of two dates (#1719, #2008): -1 where `a` is wholly before
+ * `b`, 1 where wholly after, and 0 where the periods they may be overlap and
+ * either may be the other (1859 and 6 September 1859, the 1950s and 1955), or
+ * where either has no year. A place's dates are ordered by it, and a trip is
+ * compared with them by it.
+ */
+export function comparePlaceDates(a: PlaceDate, b: PlaceDate): -1 | 0 | 1 {
+  const left = periodOf(a);
+  const right = periodOf(b);
+  if (!left || !right) return 0;
+  if (left.last < right.first) return -1;
+  if (left.first > right.last) return 1;
+  return 0;
 }
 
 /** Whether two dates are the same date, every field compared. */

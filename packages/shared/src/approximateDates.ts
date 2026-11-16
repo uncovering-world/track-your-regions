@@ -2,8 +2,10 @@
  * A date known to a day, a month or a year, or not known at all (#773,
  * #2120): a trip to a place, "May 2015", "2015", or "I don't remember". The
  * precision is which of the three are set, so there is no precision beside
- * them to disagree. A place's lifetime (#1719) reads dates the same way and
- * is compared with a trip through `compareApproximate` (#2008).
+ * them to disagree. A place's lifetime (#1719) reads dates the same way, with a
+ * span and circa a trip has no use for, and a trip is compared with a place's
+ * date by the lifetime's one order, `comparePlaceDates` in
+ * `@tyr/shared/lifetime` (#2008).
  */
 export interface ApproximateDate {
   year: number | null;
@@ -46,9 +48,15 @@ export function isValidTripDate(date: ApproximateDate, latestYear: number): bool
 }
 
 /**
- * Which of two dates is earlier, read at the coarser of their precisions:
- * May 2015 and 2015 are the same at a year (0), and an unknown date is
- * comparable with nothing (0). Negative where `a` is earlier.
+ * Which of two trips' dates is earlier, read at the coarser of their
+ * precisions: May 2015 and 2015 are the same at a year (0), and an unknown
+ * date is comparable with nothing (0). Negative where `a` is earlier.
+ *
+ * Its own function because a module here imports no sibling, and a trip
+ * needs no span. On every date a trip can hold it agrees in sign with
+ * `comparePlaceDates` (`@tyr/shared/lifetime`), which is the one order once a
+ * place's date is in the comparison, a decade, a century or a BC year
+ * included; `lifetime.test.ts` holds the two to each other.
  */
 export function compareApproximate(a: ApproximateDate, b: ApproximateDate): number {
   const parts = ['year', 'month', 'day'] as const;
