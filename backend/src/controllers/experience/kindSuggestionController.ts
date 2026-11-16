@@ -11,7 +11,7 @@
  * (`kindReading.ts`), and the answer is stored with its confidence and what it
  * was about (`kindSuggestions.ts`). A deployment without Jev answers that it
  * has none. The reading is shown beside the arrival and never applied: a
- * curator decides — through the arrival's own "Belongs in another kind…"
+ * curator decides — through the arrival's own "Another kind…"
  * where it names a live kind, or by saying whether the place belongs to the
  * planned one, which is recorded (`plannedKindAnswers.ts`) so the kind's
  * candidates can be listed when it is built. A POST because a call may be

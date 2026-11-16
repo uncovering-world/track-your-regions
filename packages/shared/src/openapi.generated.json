@@ -17409,6 +17409,56 @@
         }
       }
     },
+    "/api/experiences/review/article-leads": {
+      "get": {
+        "operationId": "getExperiencesReviewArticleLeads",
+        "summary": "The first sentence of the English Wikipedia article of each asked place a page of review cards shows",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "type": "string",
+              "maxLength": 1100,
+              "pattern": "^[1-9]\\d{0,8}(?:,[1-9]\\d{0,8}){0,99}$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewArticleLeads"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/geocode/search": {
       "get": {
         "operationId": "getGeocodeSearch",
@@ -38270,6 +38320,49 @@
         ],
         "additionalProperties": false,
         "description": "A reviewer's answer, handed to the colour-match run waiting on it."
+      },
+      "ReviewArticleLeads": {
+        "type": "object",
+        "properties": {
+          "leads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "placeId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The article's title as a reader reads it, spaces and not underscores."
+                },
+                "url": {
+                  "type": "string",
+                  "description": "The article, as the place holds it."
+                },
+                "sentence": {
+                  "type": "string",
+                  "description": "The first sentence of the article's lead, as Wikipedia's extract gives it in plain text."
+                }
+              },
+              "required": [
+                "placeId",
+                "title",
+                "url",
+                "sentence"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The asked places this curator has an open question about, with an English article whose lead was read. A place outside the scope, one with no English article, or one whose article Wikipedia did not answer for is left out."
+          }
+        },
+        "required": [
+          "leads"
+        ],
+        "additionalProperties": false,
+        "description": "The first sentence of the Wikipedia article of each place a page of review cards shows (#2185)."
       },
       "ReviewFinalized": {
         "type": "object",

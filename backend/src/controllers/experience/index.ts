@@ -42,3 +42,4 @@ export * from './publishController.js';
 export * from './experienceNewBadge.js';
 export { getPlaceIdentifiers, settlePlaceIdentifier } from './placeIdentifierController.js';
 export { getGuideArticles } from './guideArticlesController.js';
+export { getReviewArticleLeads } from './reviewArticleLeads.js';
