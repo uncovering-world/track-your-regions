@@ -129,6 +129,33 @@ describe('the pool parse', () => {
   });
 });
 
+describe("a work's year read live (#2564)", () => {
+  // The Lion Capital of Ashoka (Q3595955) states an inception of -0250, 250 BC,
+  // to the year; the query service numbers that year astronomically, -249.
+  const lionCapital = (precision: string) => ({
+    ...row('Q3595955', 'Lion Capital of Ashoka'), year: { value: '-249' }, inceptionPrecision: { value: precision },
+  });
+
+  it('reads a BC year given to the year in the item\'s own numbering', async () => {
+    const [work] = await fetchClassPool(answering([lionCapital('9')]), ['Q3305213']);
+    expect(work.year).toBe(-250);
+  });
+
+  it('keeps a BC year given to the century as the service gave it', async () => {
+    const [work] = await fetchClassPool(answering([lionCapital('7')]), ['Q3305213']);
+    expect(work.year).toBe(-249);
+  });
+
+  it('asks for the precision beside the best-ranked inception', async () => {
+    const asked: string[] = [];
+    await fetchClassPool((query) => { asked.push(query); return answering([])(query); }, ['Q3305213']);
+    const pool = asked.find((query) => query.includes('YEAR(?inception)'));
+    expect(pool).toMatch(/SELECT[^{]*\(YEAR\(\?inception\) AS \?year\) \?inceptionPrecision/);
+    expect(pool).toContain('a wikibase:BestRank');
+    expect(pool).toContain('wikibase:timePrecision ?inceptionPrecision');
+  });
+});
+
 describe('the entity edges', () => {
   it('reads where an entity is located beside what it is part of', async () => {
     // The Egyptian Museum of Berlin is located in (P276) and part of (P361) the Neues Museum,

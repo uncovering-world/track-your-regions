@@ -44,6 +44,7 @@ import {
   type SparqlFn,
 } from '../wikidataQueries.js';
 import { readsSubset } from '../subset/reader.js';
+import { inceptionYearOf } from '../wikidataYears.js';
 import { DISSOLVED_UNKNOWN } from './venueTest.js';
 import {
   subsetEntityDetails, subsetEntityEdges, subsetMuseumParts, subsetVenueStatements, subsetWorkPool,
@@ -178,7 +179,9 @@ export const POOL_BANDS: Band[] = [
 export const POOL_DETAILS = `
       OPTIONAL { ?w wdt:P18 ?img }
       OPTIONAL { ?w wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "${ENTITY_PREFIX}Q")) }
-      OPTIONAL { ?w wdt:P571 ?inception }
+      # The best-ranked inception with its precision, so a BC year comes back in the item's own numbering (#2564).
+      OPTIONAL { ?w p:P571 ?inceptionStatement . ?inceptionStatement a wikibase:BestRank ;
+                 psv:P571 [ wikibase:timeValue ?inception ; wikibase:timePrecision ?inceptionPrecision ] }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
 /**
@@ -193,7 +196,7 @@ export const POOL_DETAILS = `
  */
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
-    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) WHERE {
+    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?inceptionPrecision WHERE {
       hint:Query hint:optimizer "None" .
       ?w wikibase:sitelinks ?sl .
       hint:Prior hint:rangeSafe true .
@@ -213,7 +216,7 @@ function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
  */
 function classPoolQuery(classQids: string[], limit: number): string {
   return `
-    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
+    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?inceptionPrecision ?cls ?clsLabel WHERE {
       VALUES ?cls { ${values(classQids)} }
       ?w wdt:P31 ?cls ; wikibase:sitelinks ?sl .
       FILTER(?sl >= ${POOL_MIN_SITELINKS})${POOL_DETAILS}
@@ -313,7 +316,7 @@ export function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQ
         sitelinks: parseInt(row.sl?.value || '0', 10),
         imageUrl: row.img?.value || null,
         creators: [],
-        year: row.year?.value ? parseInt(row.year.value, 10) : null,
+        year: inceptionYearOf(row),
         type: typeOf(row, fallbackType),
         typeQid: typeQidOf(row, fallbackQid),
       };

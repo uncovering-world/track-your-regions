@@ -115,8 +115,9 @@ describe('fetchWorksByIds', () => {
     // The Ishtar Gate is `city gate` (Q82117) and `arch` (Q12277) on Wikidata:
     // one row per class, and the answer's order is the planner's, not ours.
     const out = await fetchWorksByIds(answering([
-      detail('Q26082', 'Ishtar Gate', { qid: 'Q82117', label: 'city gate' }, { year: { value: '-575' } }),
-      detail('Q26082', 'Ishtar Gate', { qid: 'Q12277', label: 'arch' }, { year: { value: '-575' } }),
+      // 575 BC to the year in Wikidata (-0575, precision 9), which the query service gives as -574.
+      detail('Q26082', 'Ishtar Gate', { qid: 'Q82117', label: 'city gate' }, { year: { value: '-574' }, inceptionPrecision: { value: '9' } }),
+      detail('Q26082', 'Ishtar Gate', { qid: 'Q12277', label: 'arch' }, { year: { value: '-574' }, inceptionPrecision: { value: '9' } }),
     ]), ['Q26082']);
     const gate = out.get('Q26082');
     expect([...gate!.classes]).toEqual([['Q82117', 'city gate'], ['Q12277', 'arch']]);

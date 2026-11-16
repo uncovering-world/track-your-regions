@@ -174,7 +174,7 @@ export async function fetchWorksByIds(
 /** The pool's row and the classes of each object, as the query service answers them, untyped. */
 async function liveWorksByIds(sparql: SparqlFn, asked: string[]): Promise<Map<string, WorkDetails>> {
   const rows = await sparql(`
-    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
+    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?inceptionPrecision ?cls ?clsLabel WHERE {
       VALUES ?w { ${values(asked)} }
       ?w wikibase:sitelinks ?sl .
       OPTIONAL { ?w wdt:P31 ?cls }${POOL_DETAILS}
