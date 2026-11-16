@@ -177,7 +177,7 @@ describe("a whole's leaves (ADR-0206)", () => {
     await points(SHELTERS, 'auto');
 
     await inTransaction(async client => {
-      // 'all' counts the SQL function whole_shape_of as well as the PL/pgSQL one.
+      // 'all' counts the SQL function default_shape_of as well as the PL/pgSQL one.
       await client.query("SET LOCAL track_functions = 'all'");
       await client.query(
         `INSERT INTO experience_parts (whole_id, part_id, reason)
@@ -186,11 +186,11 @@ describe("a whole's leaves (ADR-0206)", () => {
       );
       const calls = await client.query<{ funcname: string; calls: string }>(
         `SELECT funcname, calls FROM pg_stat_xact_user_functions
-          WHERE funcname IN ('refresh_whole_leaves', 'whole_shape_of') ORDER BY funcname`,
+          WHERE funcname IN ('refresh_whole_leaves', 'default_shape_of') ORDER BY funcname`,
       );
       expect(calls.rows).toEqual([
+        { funcname: 'default_shape_of', calls: '1' },
         { funcname: 'refresh_whole_leaves', calls: '1' },
-        { funcname: 'whole_shape_of', calls: '1' },
       ]);
     });
     expect(await leaves(ROCK_ART)).toEqual({ ids: SHELTERS, offered: 758 });

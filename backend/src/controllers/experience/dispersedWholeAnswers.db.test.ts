@@ -6,7 +6,7 @@ import { acceptSourceUnderLock } from './acceptSourceController.js';
 /**
  * A question about the point of a place that has since become a dispersed
  * whole, answered (ADR-0210, #2122), executed against PostgreSQL: the row
- * constraint `experiences_location_iff_not_dispersed` refuses a point on such
+ * constraint `experiences_shape_holds` refuses a point on such
  * a whole, so each writer of an answer releases the coordinate rather than
  * writing it, and the card closes.
  *
@@ -59,9 +59,9 @@ async function proposal(how: 'held' | 'conflict'): Promise<number> {
   return logId;
 }
 
-async function site(): Promise<{ whole_shape: string | null; lon: number | null; curated_fields: string[]; pointer: number | null }> {
+async function site(): Promise<{ shape: string; lon: number | null; curated_fields: string[]; pointer: number | null }> {
   return (await pool.query(
-    `SELECT e.whole_shape, ST_X(e.location) AS lon, e.curated_fields, m.pending_change_sync_log_id AS pointer
+    `SELECT e.shape, ST_X(e.location) AS lon, e.curated_fields, m.pending_change_sync_log_id AS pointer
        FROM experiences e JOIN source_records m ON m.id = $2 WHERE e.id = $1`,
     [SITE, siteMembership],
   )).rows[0];
@@ -107,7 +107,7 @@ afterAll(async () => {
 
 describe("a question about a dispersed whole's point", () => {
   it('is published by releasing the held coordinate, and the card closes', async () => {
-    expect(await site()).toMatchObject({ whole_shape: 'dispersed', lon: null });
+    expect(await site()).toMatchObject({ shape: 'none', lon: null });
     const logId = await proposal('held');
 
     const { result, refusal } = await publishUnderLock(SITE, userId, null, {
@@ -116,7 +116,7 @@ describe("a question about a dispersed whole's point", () => {
 
     expect(refusal).toBeUndefined();
     expect(result?.appliedFields).toEqual([]);
-    expect(await site()).toMatchObject({ whole_shape: 'dispersed', lon: null, pointer: null });
+    expect(await site()).toMatchObject({ shape: 'none', lon: null, pointer: null });
   });
 
   it("is answered with the source's value by releasing a claim the whole held from before, writing no point", async () => {
@@ -128,7 +128,7 @@ describe("a question about a dispersed whole's point", () => {
 
     expect(refusal).toBeUndefined();
     expect(result).toMatchObject({ applied: [], released: ['location'] });
-    expect(await site()).toMatchObject({ whole_shape: 'dispersed', lon: null, curated_fields: [] });
+    expect(await site()).toMatchObject({ shape: 'none', lon: null, curated_fields: [] });
   });
 
   it("takes the claim off with the point when a place becomes a dispersed whole", async () => {
@@ -139,11 +139,11 @@ describe("a question about a dispersed whole's point", () => {
     );
     await pool.query('DELETE FROM source_records WHERE whole_id = $1', [SITE]);
     await pool.query(`UPDATE experiences SET curated_fields = '["location", "name"]' WHERE id = $1`, [SITE]);
-    expect(await site()).toMatchObject({ whole_shape: null, lon: STORED.lon });
+    expect(await site()).toMatchObject({ shape: 'point', lon: STORED.lon });
     await pool.query(
       `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $2, $3, '9790-001')`,
       [POLAND, SITE, components],
     );
-    expect(await site()).toMatchObject({ whole_shape: 'dispersed', lon: null, curated_fields: ['name'] });
+    expect(await site()).toMatchObject({ shape: 'none', lon: null, curated_fields: ['name'] });
   });
 });

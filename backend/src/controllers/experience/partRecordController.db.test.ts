@@ -548,10 +548,10 @@ describe('what the sections read', () => {
          VALUES ($1, $2, 11, $3, 'admitted', 'verified', NOW())`, [p, w, `curator-1-${w}${p}`],
       );
     }
-    const shapes = await pool.query<{ id: number; whole_shape: string }>(
-      'SELECT id, whole_shape FROM experiences WHERE id = ANY($1::int[]) ORDER BY id', [[container, serial]],
+    const shapes = await pool.query<{ id: number; shape: string }>(
+      'SELECT id, shape FROM experiences WHERE id = ANY($1::int[]) ORDER BY id', [[container, serial]],
     );
-    expect(shapes.rows).toEqual([{ id: container, whole_shape: 'container' }, { id: serial, whole_shape: 'dispersed' }]);
+    expect(shapes.rows).toEqual([{ id: container, shape: 'area' }, { id: serial, shape: 'none' }]);
 
     const near = await findPartCandidates({ params: { id: container }, query: { role: 'part' }, caller: admin() });
     expect(near.candidates.find(row => row.place.id === GIRALDA)).toMatchObject({ near_name: null, taken: null });

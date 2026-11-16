@@ -772,7 +772,7 @@ export interface ExperiencesRow {
   state_note: string | null;
   stands_today: boolean;
   merged_into_id: number | null;
-  whole_shape: string | null;
+  shape: string;
 }
 
 /** The table `find_site_links`. */
@@ -1838,7 +1838,7 @@ export const COLUMN_WIDTHS = {
     status: 20,
     source_membership: 10,
     existence: 10,
-    whole_shape: 10,
+    shape: 5,
   },
   geometry_computations: {
     status: 20,
@@ -2041,9 +2041,9 @@ export const CHECK_VALUES = {
   },
   experiences: {
     existence: ["extant", "lost"],
+    shape: ["point", "area", "line", "none"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
-    whole_shape: ["dispersed", "container"],
   },
   find_site_links: {
     origin: ["coordinate", "curator"],

@@ -276,16 +276,16 @@ describe('every line of a serial site is a part, the one named like the site too
 });
 
 describe("a whole's shape and point follow its parts (ADR-0210)", () => {
-  const shapeOf = async (id: number) => (await pool.query<{ whole_shape: string | null; lon: number | null }>(
-    'SELECT whole_shape, ST_X(location) AS lon FROM experiences WHERE id = $1', [id],
+  const shapeOf = async (id: number) => (await pool.query<{ shape: string; lon: number | null }>(
+    'SELECT shape, ST_X(location) AS lon FROM experiences WHERE id = $1', [id],
   )).rows[0];
 
   it('makes a new serial site dispersed with no point, in the write that parts it', async () => {
     await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
-    expect(await shapeOf(THEBES)).toEqual({ whole_shape: 'dispersed', lon: null });
+    expect(await shapeOf(THEBES)).toEqual({ shape: 'none', lon: null });
     // A site of one component stays a place, at its point.
     await writeExperienceLocations(GIZA, [{ name: 'Great Pyramid', externalRef: '86-001', lon: 31.1342, lat: 29.9792 }], run);
-    expect(await shapeOf(GIZA)).toEqual({ whole_shape: null, lon: 32.65 });
+    expect(await shapeOf(GIZA)).toEqual({ shape: 'point', lon: 32.65 });
   });
 
   it("writes the run's anchor to its record alone, and no point to the site or move of one", async () => {
@@ -309,9 +309,9 @@ describe("a whole's shape and point follow its parts (ADR-0210)", () => {
     await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
     await expect(pool.query(
       'UPDATE experiences SET location = ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326) WHERE id = $1', [THEBES],
-    )).rejects.toThrow(/experiences_location_iff_not_dispersed/);
-    await expect(pool.query("UPDATE experiences SET whole_shape = 'dispersed' WHERE id = $1", [GIZA]))
-      .rejects.toThrow(/experiences_location_iff_not_dispersed/);
+    )).rejects.toThrow(/experiences_shape_holds/);
+    await expect(pool.query("UPDATE experiences SET shape = 'none' WHERE id = $1", [GIZA]))
+      .rejects.toThrow(/experiences_shape_holds/);
   });
 
   it("puts a whole that loses its last part back at its record's point", async () => {
@@ -323,7 +323,7 @@ describe("a whole's shape and point follow its parts (ADR-0210)", () => {
     const made = (await parts(THEBES)).map(p => p.part_id);
     await pool.query('DELETE FROM source_records WHERE whole_id = $1 AND experience_id <> $1', [THEBES]);
 
-    expect(await shapeOf(THEBES)).toEqual({ whole_shape: null, lon: 32.6511 });
+    expect(await shapeOf(THEBES)).toEqual({ shape: 'point', lon: 32.6511 });
     // No longer parts, so clear() would not find them.
     await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [made]);
   });
@@ -351,11 +351,11 @@ describe("a whole's shape and point follow its parts (ADR-0210)", () => {
         [north, south, karnak.part_id],
       );
       // Shaped by its first part, a container; dispersed, as the check whole-shape-drift asks of parts 2 km apart.
-      await pool.query(`UPDATE experiences SET whole_shape = 'dispersed', location = NULL WHERE id = $1`, [karnak.part_id]);
+      await pool.query(`UPDATE experiences SET shape = 'none', location = NULL WHERE id = $1`, [karnak.part_id]);
 
       await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
 
-      expect(await shapeOf(karnak.part_id)).toEqual({ whole_shape: 'dispersed', lon: null });
+      expect(await shapeOf(karnak.part_id)).toEqual({ shape: 'none', lon: null });
       expect(await partsBehind(THEBES)).toBe(false);
     } finally {
       await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[north, south]]);
@@ -369,7 +369,7 @@ describe("a whole's shape and point follow its parts (ADR-0210)", () => {
       `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission)
        VALUES ($1, $2, ${CURATOR_SOURCE_ID}, $3, 'admitted')`, [THEBES, GIZA, `curator-1-${THEBES}`],
     );
-    expect(await shapeOf(GIZA)).toEqual({ whole_shape: 'container', lon: 32.65 });
+    expect(await shapeOf(GIZA)).toEqual({ shape: 'area', lon: 32.65 });
   });
 });
 

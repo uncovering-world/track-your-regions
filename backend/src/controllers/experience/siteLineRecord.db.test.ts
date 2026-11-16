@@ -169,8 +169,8 @@ describe("a site whose lines all carry its name, as Ohrid's do, is a whole of th
     expect((await records()).map(rec => [rec.external_id, rec.experience_id === SITE])).toEqual([
       [NORTH.externalRef, false], [SOUTH.externalRef, false],
     ]);
-    expect((await pool.query('SELECT whole_shape, location FROM experiences WHERE id = $1', [SITE])).rows[0])
-      .toEqual({ whole_shape: 'dispersed', location: null });
+    expect((await pool.query('SELECT shape, location FROM experiences WHERE id = $1', [SITE])).rows[0])
+      .toEqual({ shape: 'none', location: null });
   });
 
   it("keeps a curator's item on the line it was chosen for when the list gives the other line first", async () => {
