@@ -5835,16 +5835,25 @@ CREATE OR REPLACE FUNCTION whole_shape_follows_parts() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    -- whole_shape_of measures every two parts' points against each other, so
+    -- it is asked once for each whole with no shape yet, in a MATERIALIZED
+    -- CTE: a subquery on the inner side of a nested loop is run again for
+    -- every outer row, and the planner picks that loop, experiences outside,
+    -- whenever its statistics say the table is nearly empty.
+    WITH shaped AS MATERIALIZED (
+      SELECT e.id, whole_shape_of(e.id) AS shape
+        FROM experiences e
+       WHERE e.whole_shape IS NULL AND e.id IN (SELECT n.whole_id FROM new_parts n)
+    )
     UPDATE experiences e
        SET whole_shape = shaped.shape,
            location = CASE WHEN shaped.shape = 'dispersed' THEN NULL ELSE e.location END,
            curated_fields = CASE WHEN shaped.shape = 'dispersed' THEN e.curated_fields - 'location' ELSE e.curated_fields END,
            updated_at = NOW()
-      -- OFFSET 0 keeps the subquery whole, so whole_shape_of runs once per
-      -- whole rather than once for every column that reads its answer.
-      FROM (SELECT w.whole_id, whole_shape_of(w.whole_id) AS shape
-              FROM (SELECT DISTINCT n.whole_id FROM new_parts n) w OFFSET 0) shaped
-     WHERE e.id = shaped.whole_id AND e.whole_shape IS NULL;
+      FROM shaped
+     -- Asked again here, not only in the CTE: a row another statement shaped
+     -- while this one waited on its lock is rechecked by this clause alone.
+     WHERE e.id = shaped.id AND e.whole_shape IS NULL;
   ELSE
     UPDATE experiences e
        SET whole_shape = NULL, location = back.location, updated_at = NOW()

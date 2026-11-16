@@ -172,21 +172,26 @@ describe("a whole's leaves (ADR-0206)", () => {
     expect(above.rows.map(row => row.id)).toEqual([LOOP_A, LOOP_B]);
   });
 
-  it('refreshes a whole of 758 parts once for the statement that writes them all', async () => {
+  it('refreshes and shapes a whole of 758 parts once for the statement that writes them all', async () => {
     await places([ROCK_ART, ...SHELTERS]);
     await points(SHELTERS, 'auto');
 
     await inTransaction(async client => {
-      await client.query("SET LOCAL track_functions = 'pl'");
+      // 'all' counts the SQL function whole_shape_of as well as the PL/pgSQL one.
+      await client.query("SET LOCAL track_functions = 'all'");
       await client.query(
         `INSERT INTO experience_parts (whole_id, part_id, reason)
          SELECT $1, g, 'component' FROM unnest($2::int[]) AS g`,
         [ROCK_ART, SHELTERS],
       );
-      const calls = await client.query<{ calls: string }>(
-        `SELECT calls FROM pg_stat_xact_user_functions WHERE funcname = 'refresh_whole_leaves'`,
+      const calls = await client.query<{ funcname: string; calls: string }>(
+        `SELECT funcname, calls FROM pg_stat_xact_user_functions
+          WHERE funcname IN ('refresh_whole_leaves', 'whole_shape_of') ORDER BY funcname`,
       );
-      expect(calls.rows).toEqual([{ calls: '1' }]);
+      expect(calls.rows).toEqual([
+        { funcname: 'refresh_whole_leaves', calls: '1' },
+        { funcname: 'whole_shape_of', calls: '1' },
+      ]);
     });
     expect(await leaves(ROCK_ART)).toEqual({ ids: SHELTERS, offered: 758 });
   });
