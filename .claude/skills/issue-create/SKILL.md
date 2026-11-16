@@ -100,6 +100,11 @@ files, symbols, PRs, ADRs, measured numbers}
 
 **Hierarchy**: say whether the issue is a slice of an open epic (then it is created as that epic's sub-issue), whether it cannot start before another issue closes (a blocked-by dependency), and whether it belongs to the open milestone. For a slice, read the Epic's body first — `gh issue view <epic#> --json body -q .body` — and say which of its listed slices the new issue covers, or that it covers none: then it is either a new slice of the Epic's own work (a checkbox item is appended to the Epic's list and marked) or a spin-off the umbrella produced (a bug, a decision — the list is left alone and no mark is written), and the user decides which at confirmation.
 
+**ADRs**: before the draft is shown, find the ADRs the issue would be built to. For a slice, ask for its parent (`scripts/adr-issues.sh for <parent>`), then search its own area as for any issue, since a slice can touch a decision its parent does not; for every issue, read the index (`docs/decisions/README.md`) and search the directory for the area's own words (`grep -l -i "<table, column or term>" docs/decisions/*.md`). Read each one's Status first: a Superseded ADR is followed to its replacement, one narrowed by another is read with it, and an ADR that only mentions the area is not its design. Read the related issues whole, every comment included: a later comment can carry a decision the body never took in. Then compare the draft with the decisions in force:
+- **they agree** — the body carries `**Built to:** ADR-NNNN decisions …` at the top of its Description, one line naming every such ADR;
+- **the draft asks for what an ADR decided differently** — neither outranks the other (`docs/decisions/README.md` § An ADR names the issues built to it). Do not reshape the draft to the ADR and do not file it as if the ADR were not there: show the user both sentences in § 3, with the analysis and verdict its four steps ask for, and file what the user decides. An issue filed to change a decision says so in its Description and names the ADR; it carries no `**Built to:**` line for the decision it disputes;
+- **no ADR governs it** — no line.
+
 ### 3. Show the draft to the user
 
 Display the full issue (title, type, body, labels) **and the proposed fields and hierarchy** (Priority, Size, Theme, AI fit; parent, blockers, milestone — and, for a slice of an epic, which of the Epic's listed slices it covers — or, when it covers none, whether it is a new slice, appended to the Epic's list and marked, or a spin-off left off the list, which is the user's call to make here) and **ask for confirmation** before creating it: the Epic mark is terminal and lands on another issue's body, so that judgement is shown here, not made afterwards. The user may want to adjust the wording — or the fields, since they land on the shared board exactly as proposed. One carve-out: inside `/pr-create` § "Babysit the PR until it is mergeable", filing a follow-up for a verified pre-existing review finding proceeds without this confirmation — the loop has already applied the test (*would this problem exist if this branch were not merged, and is the changed path correct while it stands?*) and searched the open issues, and it records both, with the new number, in the round's `dispositions` comment on the PR, where the maintainer reads it and can close it (#924). A slice of an epic is never filed that way.
@@ -121,6 +126,8 @@ gh issue create --title "<title>" --type Feature --label "front,back" --parent 2
 EOF
 )"
 ```
+
+An issue filed with a `**Built to:**` line is added to that ADR's `**Built by:**` field, which is a pointer and not a decision, so an Accepted ADR takes the edit (`docs/decisions/README.md`). When this session has a branch open that touches `docs/decisions/`, make the edit there now. Otherwise say in § 6 that the field still lacks the issue: `npm run adr:issues` reports it until the next pull request that touches the ADR adds it, and that report is the ledger.
 
 ### 5. Add to the board
 

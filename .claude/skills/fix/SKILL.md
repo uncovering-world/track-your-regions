@@ -71,6 +71,13 @@ The board update is best-effort: if it fails because the token lacks the `projec
   | Experience system (sync, sources) | `docs/tech/experiences.md` |
   | Auth flows (JWT, OAuth, tokens) | `docs/tech/authentication.md` |
 
+- **Find the ADRs this issue is built to**, as `/feature` § 4 does, and read them the way it says:
+
+  ```bash
+  scripts/adr-issues.sh for $ARGUMENTS <parent>   # with no parent: scripts/adr-issues.sh for $ARGUMENTS
+  ```
+
+  "Is built to" is the issue's design; "is mentioned by" is a text search that also prints ADRs naming the bug in passing, which are not its design. Read each one's Status first: a Superseded ADR is followed to its replacement, and one narrowed by another is read with it. Code that does what no ADR and no issue asks is the bug, and the fix restores what was decided. When instead the **issue** and an **ADR** say different things, stop: neither outranks the other. Analyse it the way `/feature` § 4 lists (a real named case and what each side would show the person; what decides it, in the code, the linked issues, the ADR's alternatives, the vision or a read-only measurement; the traveller's, the product manager's and the engineer's judgement; one verdict with its confidence and the strongest argument against it). Then tell the user at once with both sentences quoted and that verdict, post the same as a comment on the issue, and wait for the decision. Then the side it names changes (the issue's body, or the ADR in this fix's pull request), with the decision and its reason recorded on the issue. Do not rewrite either to match the other without it; a missing `**Built to:**` line where the two agree is added without asking
 - Search the codebase for the relevant code based on the issue description
 - Read the files involved to understand the current behavior
 - Identify the root cause of the bug

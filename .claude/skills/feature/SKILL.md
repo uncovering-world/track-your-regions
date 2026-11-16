@@ -87,7 +87,31 @@ This is a feature — it requires proper planning. Enter plan mode to:
 
   Read **all** docs that apply — most features touch 2-3 areas. Skip only areas that are clearly irrelevant.
 
-- **Check `docs/decisions/`** for existing ADRs that apply to this feature — mention them in the plan ("This follows ADR-0064")
+- **Find the ADRs this issue is built to.** An ADR names the issues built to it in its `**Built by:**` field, and the issue names the ADR in its body's `**Built to:**` line (`docs/decisions/README.md` § An ADR names the issues built to it). Ask for the issue, and for its parent when it has one:
+
+  ```bash
+  scripts/adr-issues.sh for <issue> <parent>   # with no parent: scripts/adr-issues.sh for <issue>
+  ```
+
+  It prints two lists, each ADR with its Status, and they are read differently:
+  - **"is built to"** is the precise link: these ADRs are the issue's design, a Draft included (the pull request that finds a Draft wrong amends it).
+  - **"is mentioned by"** is the fallback, a search of the text for the number. It is how an ADR older than the field is found, and it also prints every ADR that names the issue in passing. An ADR that only mentions the issue is not its design: read why it names it before following it.
+
+  The script reads the ADRs, not the issue: also read the `**Built to:**` line of the issue and of its parent, and open every ADR it names that the script did not print.
+
+  **Read each ADR's Status before its decisions.** A `Superseded by ADR-XXXX` one is followed through to the ADR that replaced it, and is not the design. One whose Status says a decision is narrowed or replaced by another ADR is read together with that one, and the later ADR stands for the decisions it names (ADR-0214 is printed for #2128, and its Status hands decisions 1 and 3 to ADR-0217). Then look through the index (`docs/decisions/README.md`) for any other ADR about the area. Name each in the plan ("This follows ADR-0217 decisions 1 to 3").
+
+  **A disagreement stops the work until it is decided.** Compare the issue's body and its comments with each ADR it is built to. Neither outranks the other: the issue may hold an argument, a measurement or a named case the ADR never saw, and the ADR a reason the issue never read. Where they say different things, do not pick one, and do not rewrite either to match the other:
+  1. analyse it before raising it (`docs/decisions/README.md` § An ADR names the issues built to it; the same four steps hold for any mismatch between two records of intent):
+     - walk it on a real named case, and say what each side would show the person;
+     - look for what decides it: the code, the linked issues, the ADR's alternatives, the vision, a read-only measurement where a number settles it;
+     - judge it from each role that bears on it: at least the seasoned traveller, the product manager and the engineer (`CLAUDE.md` § Three Chairs), plus the curator or privacy where they matter;
+     - give one verdict, with its confidence and the strongest argument against it;
+  2. tell the user now, in the chat: the issue's sentence and the ADR's decision, both quoted, then that analysis and the verdict;
+  3. post the same as a comment on the issue, so the question outlives this session;
+  4. wait for the user's decision. Then change the side it names: correct the issue's body, or put the ADR's amendment (a Draft, in place) or an ADR that narrows or supersedes it (an Accepted one) into this work's plan and pull request. Record the decision and its reason on the issue and, where the ADR changes, in the ADR.
+
+  Where the two agree and only the link is missing, add it without asking: the issue's `**Built to:**` line, and the issue in the ADR's `Built by` field in this work's pull request.
 - Explore the relevant parts of the codebase
 - Understand existing patterns and architecture
 - **Search for existing code to reuse** — check shared utilities, hooks, and components before planning new ones (see "Reuse Before You Create" in the development guide)

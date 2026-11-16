@@ -1,15 +1,15 @@
 ---
 name: docs-sweep
-description: "Sweep Local Documents: List what has drifted from `docs/README.md` § Where things live (ADR-0079): local plans whose work is over, local files no issue owns, stale drafts and session files, an inbox nobody emptied, and agent memory that holds project status."
+description: "Sweep Local Documents: List what has drifted from `docs/README.md` § Where things live (ADR-0079): local plans whose work is over, local files no issue owns, stale drafts and session files, an inbox nobody emptied, agent memory that holds project status, and open issues and ADRs that do not name each other (`npm run adr:issues`)."
 ---
 
 # Sweep Local Documents
 
-List what has drifted from `docs/README.md` § Where things live (ADR-0079): local plans whose work is over, local files no issue owns, stale drafts and session files, an inbox nobody emptied, and agent memory that holds project status. Propose one action per item, and act only on what the user confirms.
+List what has drifted from `docs/README.md` § Where things live (ADR-0079): local plans whose work is over, local files no issue owns, stale drafts and session files, an inbox nobody emptied, agent memory that holds project status, and open issues and ADRs that do not name each other (`npm run adr:issues`). Propose one action per item, and act only on what the user confirms.
 
 ## Arguments
 
-$ARGUMENTS — optional: a part to sweep (`plans`, `research`, `sessions`, `inbox`, `archive`, `memory`, `links`). Without one, sweep all of them.
+$ARGUMENTS — optional: a part to sweep (`plans`, `research`, `sessions`, `inbox`, `archive`, `memory`, `links`, `adr`). Without one, sweep all of them.
 
 ## Instructions
 
@@ -44,6 +44,7 @@ The issue list is read once, with a limit above the repository's issue count (ra
 | `docs/local/` | anything outside the five folders above | Move it into one of them |
 | memory | an entry that records project status (what a slice shipped, a roadmap, "next steps", a design's progress), which git, the PRs and the issues already hold | Delete it, and drop its line from the memory index. Feedback, gotchas and references stay |
 | links | `docs/tech/planning` and `docs/inbox`, the symlinks into `docs/local/` | Remove them once no session or command uses the old paths. `git grep -n "docs/tech/planning\|docs/inbox"` then finds only records plus the files that name the links themselves: `.gitignore`, `docs/README.md` § Where things live, and this file. Those three are edited in the same change that removes the links. § 1 keeps checking the old paths afterwards, since a file tracked there would still be a defect |
+| adr | a line `npm run adr:issues` prints: an open issue and an ADR that do not name each other (`docs/decisions/README.md` § An ADR names the issues built to it) | Compare the issue's body and its comments with the ADR. Where they agree, add the missing link. Where they disagree, analyse it in the four steps that section lists and show the user both sentences with the verdict; nothing is rewritten before the user decides. Exit 2 means GitHub was not read: report the part as not swept |
 
 The memory directory is the agent's own, where it has one. For Claude Code it is `~/.claude/projects/<repository path>/memory/`, with its index `MEMORY.md`. An agent with no memory skips that row.
 
