@@ -23,6 +23,7 @@ const BRIDGE = 'Q12280';
 const DAM = 'Q12323';
 const LOCK = 'Q105731';
 const DESTROYED = 'Q19860854';
+const PROPOSED = 'Q811683';
 const none = new Set<string>();
 const trees: BridgeTrees = {
   place: new Set([BRIDGE, DAM, LOCK]),
@@ -30,7 +31,7 @@ const trees: BridgeTrees = {
     aqueduct: none, bridge: new Set([BRIDGE]), dam: new Set([DAM]), 'inclined-plane': none, 'boat-lift': none,
     'lock-flight': none, lock: new Set([LOCK]), tunnel: none,
   },
-  kills: { destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: none, underConstruction: none, ruins: none },
+  destroyed: new Set([DESTROYED]), kills: { proposed: new Set([PROPOSED]), proposedTunnel: none, underConstruction: none, ruins: none },
   others: { river: none, railwayLine: none },
   noClass: {}, shared: {},
   named: { archaeologicalSite: none, powerStation: none },
@@ -52,11 +53,13 @@ const CAEN_HILL = entity('Q3577623', 'Caen Hill Locks', 3);
 const WELL_READ = Array.from({ length: 4 }, (_, i) => entity(`Q90001${i}`, 'A viaduct read 15,000 times a year in 5 editions', 5));
 const TAIL = Array.from({ length: 40 }, (_, i) => entity(`Q9100${100 + i}`, "A bridge in the pool's tail", 3));
 const POLCEVERA = entity('Q3907993', 'Polcevera Viaduct', 37);
+// Not an item: a bridge proposed and never built.
+const UNBUILT = entity('Q9000099', 'A bridge proposed and never built', 37);
 
 const CLASSES: Record<string, string[]> = {
-  [KUROBE.qid]: [DAM], [WIVENHOE.qid]: [DAM], [CAEN_HILL.qid]: [LOCK], [POLCEVERA.qid]: [BRIDGE, DESTROYED],
+  [KUROBE.qid]: [DAM], [WIVENHOE.qid]: [DAM], [CAEN_HILL.qid]: [LOCK], [POLCEVERA.qid]: [BRIDGE, DESTROYED], [UNBUILT.qid]: [BRIDGE, PROPOSED],
 };
-const WORKS = [CHARLES, FORTY, HELD, KHAJU, KUROBE, WIVENHOE, CAEN_HILL, ...WELL_READ, ...TAIL, POLCEVERA];
+const WORKS = [CHARLES, FORTY, HELD, KHAJU, KUROBE, WIVENHOE, CAEN_HILL, ...WELL_READ, ...TAIL, UNBUILT];
 const READERS: Record<string, number> = {
   Q204871: 518_395, Q9000040: 200_000, Q9000033: 3_000, Q1740490: 43_351, Q1208749: 146_576, Q1801107: 9_015, Q3577623: 20_544,
   ...Object.fromEntries(WELL_READ.map((e) => [e.qid, 15_000])),
@@ -66,17 +69,17 @@ const GUIDED = [CHARLES.qid, KHAJU.qid, KUROBE.qid, WIVENHOE.qid];
 // The second highest editions (40) and readers (200,000), the sixth highest readers (15,000).
 const BARS: WorldBars = { editions: 40, readers: 200_000, guidedReaders: 15_000, pool: 51 };
 
-const share = (): KindShare<BridgeTrees> => ({
+const share = (works = WORKS): KindShare<BridgeTrees> => ({
   trees,
-  pool: new Map(WORKS.map((e) => [e.qid, e])),
+  pool: new Map(works.map((e) => [e.qid, e])),
   byId: new Set(),
-  facts: new Map(WORKS.map((e) => [e.qid, { classes: CLASSES[e.qid] ?? [BRIDGE] }])) as never,
+  facts: new Map(works.map((e) => [e.qid, { classes: CLASSES[e.qid] ?? [BRIDGE] }])) as never,
   containers: emptyContainment(),
   subjects: new Map(),
   entered: new Set(),
   enteredOnly: new Set(),
   enteredBy: new Map(),
-  admissionPool: new Set(WORKS.map((e) => e.qid)),
+  admissionPool: new Set(works.map((e) => e.qid)),
 });
 const sparql: SparqlFn = () => Promise.reject(new Error('no question reaches Wikidata here'));
 const signals: WorldRead = { readers: new Map(Object.entries(READERS)), guided: new Set(GUIDED), atlas: new Set() };
@@ -95,7 +98,14 @@ describe('classifyBridges', () => {
     expect(result.items.find((item) => item.qid === KUROBE.qid)?.readershipNote)
       .toBe(guidedBarNote({ qid: KUROBE.qid, editions: 15 }, signals, BARS));
     expect(result.fetched).toBe(52);
-    expect(result.filtered).toEqual([{ externalId: POLCEVERA.qid, name: 'Polcevera Viaduct', reason: 'destroyed or demolished' }]);
+    expect(result.filtered).toEqual([{ externalId: UNBUILT.qid, name: UNBUILT.label, reason: 'proposed, not built' }]);
+  });
+
+  it('admits a destroyed bridge as the rule reads any, saying it is gone, so the run writes its end (ADR-0214)', async () => {
+    const result = await classifyBridges(share([...WORKS, POLCEVERA]), new Set([HELD.qid]), sparql, signals);
+    expect(result.items.find((item) => item.qid === POLCEVERA.qid)).toMatchObject({ type: 'bridge', goneByClass: 'destroyed or demolished' });
+    expect(result.items.find((item) => item.qid === CHARLES.qid)).not.toHaveProperty('goneByClass');
+    expect(result.filtered.map((entity) => entity.externalId)).not.toContain(POLCEVERA.qid);
   });
 
   it('reads the year and the guides itself, and keeps a held work a guide would decide while no usage build is in place', async () => {

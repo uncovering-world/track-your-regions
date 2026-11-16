@@ -21,7 +21,7 @@ describe('classifySquares', () => {
   const trees: SquareTrees = {
     place: new Set([SQUARE]),
     types: { stairway: none, square: new Set([SQUARE]), promenade: none, street: none },
-    kills: { destroyed: none, proposed: none, underConstruction: none },
+    destroyed: none, kills: { proposed: none, underConstruction: none },
     others: {
       worship: none, palace: none, bridge: none, archaeologicalSite: none, agora: none, bullring: new Set([BULLRING]),
       railwayLine: none, motorway: none, river: none,

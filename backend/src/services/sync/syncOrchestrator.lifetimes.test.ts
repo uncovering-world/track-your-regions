@@ -86,7 +86,12 @@ describe('the places\' lifetimes a run reads (#1719)', () => {
     expect(wikidataRunDoor).toHaveBeenCalledTimes(1);
     expect(vi.mocked(wikidataRunDoor).mock.calls[0][0]).toBe(TEST_SOURCE_ID);
     expect(readLifetimes).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(readLifetimes).mock.calls[0].slice(1)).toEqual([[{ key: '1', qid: 'Q214944' }], gone]);
+    const [, asked, goneOf] = vi.mocked(readLifetimes).mock.calls[0];
+    expect(asked).toEqual([{ key: '1', qid: 'Q214944' }]);
+    // The kind's gone rule, handed the run's item by its key (`goneByClass`).
+    const facts = {} as Parameters<NonNullable<typeof goneOf>>[0];
+    goneOf?.(facts, '1');
+    expect(gone).toHaveBeenCalledWith(facts, expect.objectContaining({ id: '1' }));
     const contexts = processItem.mock.calls.map((call) => call[2] as SyncRunContext);
     expect(contexts.map((context) => context.lifetimes?.get('1'))).toEqual([{ began: BEGAN }, { began: BEGAN }]);
   });

@@ -203,8 +203,10 @@ export interface SyncServiceConfig<T> {
   /**
    * The gone rule of a kind that runs one (#2259, #2280), the only reading of
    * an end of the place a lifetime may carry; every other kind derives none.
+   * Given the item too, for a kind whose rule read it as gone from its classes
+   * (`goneByClass`, a destroyed building or structure).
    */
-  lifetimeGone?: (facts: StandingFacts) => string | null;
+  lifetimeGone?: (facts: StandingFacts, item: T) => string | null;
   /** Display name for progress messages. */
   getItemName: (item: T) => string;
   /** External ID for error reporting. */

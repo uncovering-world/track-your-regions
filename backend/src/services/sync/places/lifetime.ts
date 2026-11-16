@@ -12,7 +12,7 @@
  *   states its inception as 2000; Ponte Santa Trinita, destroyed in 1557 and
  *   in 1944, reopened in 1958.
  * - **ended**: only where the gone rules read the place as gone (`goneReason`,
- *   `goneWorkReason`): the latest end (`P576` dissolved or demolished, `P3999`
+ *   `goneWorkReason`, or a declared kind's `DESTROYED` class): the latest end (`P576` dissolved or demolished, `P3999`
  *   official closure), or a place gone with no date.
  * - **use_ended**: the latest end not followed by a start, on a place the gone
  *   rules do not read as gone. Göbekli Tepe was abandoned about 7000 BC and
@@ -52,7 +52,7 @@ import {
 import type { RecordDates, SourcedDate } from '../../../db/placeDatesWriter.js';
 import { LIFETIME_PROPERTIES, type DatedStatement, type LifetimeProperty, type StandingFacts } from '../subset/standing.js';
 import type { SparqlFn } from '../wikidataQueries.js';
-import { fetchStandingFacts } from './gone.js';
+import { fetchStandingFacts, neverBuilt } from './gone.js';
 
 const STARTS: readonly string[] = ['P571', 'P1619'];
 const ENDS: readonly string[] = ['P576', 'P3999'];
@@ -138,7 +138,7 @@ function endingOf(reason: string): PlaceEnding | null {
 }
 
 /** Whether a gone rule's reason says the place stood and then went, rather than that it was never built. */
-const readsAsGone = (reason: string | null): reason is string => reason !== null && !reason.startsWith('never built');
+const readsAsGone = (reason: string | null): reason is string => reason !== null && !neverBuilt(reason);
 
 /**
  * A place's dates as its item states them, given what the gone rules read of
@@ -192,20 +192,21 @@ export function lifetimeOf(facts: StandingFacts, goneReasonOf: string | null, la
  * Each run item's place's lifetime as its source sees it, read in one pass
  * before the run writes (#1719): `items` names, for each item, the key the run
  * knows it by and the Wikidata item its dates are read from, and `goneOf` is
- * the gone rule of a kind that runs one (`goneReason`, `goneWorkReason`);
+ * the gone rule of a kind that runs one (`goneReason`, `goneWorkReason`),
+ * given the item's facts and its key;
  * every other kind derives no end of the place. An item the door does not
  * answer has no entry, and the run leaves its record's view as it stands.
  */
 export async function readLifetimes(
   sparql: SparqlFn,
   items: readonly { key: string; qid: string }[],
-  goneOf?: (facts: StandingFacts) => string | null,
+  goneOf?: (facts: StandingFacts, key: string) => string | null,
 ): Promise<Map<string, RecordDates>> {
   const facts = await fetchStandingFacts(sparql, items.map((item) => item.qid));
   const out = new Map<string, RecordDates>();
   for (const { key, qid } of items) {
     const known = facts.get(qid);
-    if (known) out.set(key, lifetimeOf(known, goneOf ? goneOf(known) : null));
+    if (known) out.set(key, lifetimeOf(known, goneOf ? goneOf(known, key) : null));
   }
   return out;
 }

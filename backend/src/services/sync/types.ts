@@ -365,6 +365,12 @@ export interface WikidataLandmark {
   /** The tier that admitted it where it is not the world's: ADR-0171's surroundings tier (#2178). */
   tier?: 'surroundings';
   /**
+   * Why the kind's rule read the place as gone from its classes, a destroyed
+   * building or structure (`DESTROYED`, `places/declaredKind.ts`): the run
+   * writes its end rather than refusing it (ADR-0214). Absent otherwise.
+   */
+  goneByClass?: string;
+  /**
    * Every `P31` the entity carries, as the rule read them. Stored on the run's
    * membership (`facts.wikidataClasses`) so that Catalogue Checks can ask, of what is
    * admitted, whether a class the rule refuses is among them.

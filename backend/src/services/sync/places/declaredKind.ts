@@ -8,7 +8,7 @@
  * proposed Parks & gardens (#2254).
  *
  * The verdict reads, in order, the same for every kind:
- * 1. what is no place to visit (`GONE` and the kind's own `kills`);
+ * 1. what is no place to visit (`UNBUILT` and the kind's own `kills`);
  * 2. what another kind offers (`others`), unless a type of the kind's names it;
  * 3. a candidate no class of the kind names (`noClass`);
  * 4. what the kind shares with another kind, refused unless a class of the
@@ -42,16 +42,23 @@ export interface Refusal {
 }
 
 /**
- * The gone and the unbuilt, refused by every kind before anything else: the
- * Hanging Gardens of Babylon are destroyed, a tower that is a proposal is no
- * tower to climb. Declared once (#2318); a kind adds what else is no place to
- * visit for it (ruins) in its own `kills`.
+ * The unbuilt, refused by every kind before anything else: a tower that is a
+ * proposal is no tower to climb. Declared once (#2318); a kind adds what else
+ * is no place to visit for it (ruins) in its own `kills`.
  */
-export const GONE: Readonly<Record<string, Refusal>> = {
-  destroyed: { root: 'Q19860854', reason: 'destroyed or demolished' },
+export const UNBUILT: Readonly<Record<string, Refusal>> = {
   proposed: { root: 'Q811683', reason: 'proposed, not built' },
   underConstruction: { root: 'Q12377751', reason: 'under construction' },
 };
+
+/**
+ * A destroyed building or structure: not refused but read as gone, so the run
+ * writes the place's end (ADR-0214, the maintainer, 2026-11-16) and the place
+ * is offered in the catalogue of its past (#2008) and the gone kind (#2009).
+ * The Polcevera Viaduct, collapsed in 2018, ends that year rather than being
+ * turned down. The reason is the gone reading the end says how by.
+ */
+export const DESTROYED: Refusal = { root: 'Q19860854', reason: 'destroyed or demolished' };
 
 /** A kind's exception, read after the classes of the kind named the candidate. */
 export type KindException<Type extends string> =
@@ -89,7 +96,7 @@ export interface PlaceKindDeclaration<Type extends string> {
   place: ClassRef;
   /** The classes each type is read from; a type absent here has none of its own (the last). */
   typeClasses: Readonly<Partial<Record<Type, ClassRef & { minus?: ClassRef }>>>;
-  /** What else is no place to visit for this kind, after `GONE`. */
+  /** What else is no place to visit for this kind, after `UNBUILT`. */
   kills?: Readonly<Record<string, Refusal>>;
   /** What another kind offers, unless a type of `unlessTyped` names it. */
   others: Readonly<Record<string, Refusal & { unlessTyped?: readonly Type[] }>>;
@@ -116,6 +123,8 @@ export interface DeclaredTrees<Type extends string> {
   noClass: Readonly<Record<string, ReadonlySet<string>>>;
   shared: Readonly<Record<string, ReadonlySet<string>>>;
   named: Readonly<Record<string, ReadonlySet<string>>>;
+  /** The destroyed buildings and structures (`DESTROYED`), read as gone. */
+  destroyed: ReadonlySet<string>;
 }
 
 export interface PlaceFacts {
@@ -126,14 +135,14 @@ export interface PlaceFacts {
 }
 
 export type DeclaredVerdict<Type extends string> =
-  | { pass: true; type: Type }
+  | { pass: true; type: Type; gone?: string }
   | { pass: false; reason: string };
 
 const EMPTY: ReadonlySet<string> = new Set();
 const carries = (classes: readonly string[], set: ReadonlySet<string> | undefined) => !!set && classes.some((c) => set.has(c));
 
-/** Every refusal before the kind's classes are read: the gone, then the kind's own kills. */
-const killsOf = <Type extends string>(decl: PlaceKindDeclaration<Type>) => ({ ...GONE, ...decl.kills });
+/** Every refusal before the kind's classes are read: the unbuilt, then the kind's own kills. */
+const killsOf = <Type extends string>(decl: PlaceKindDeclaration<Type>) => ({ ...UNBUILT, ...decl.kills });
 
 /** Walk every tree the declaration names, each root asked once, each its own step. */
 export async function fetchDeclaredTrees<Type extends string>(decl: PlaceKindDeclaration<Type>, run: QueryRunner): Promise<DeclaredTrees<Type>> {
@@ -174,7 +183,8 @@ export async function fetchDeclaredTrees<Type extends string>(decl: PlaceKindDec
   const shared = await byKey(decl.shared ?? {});
   const named: Record<string, ReadonlySet<string>> = {};
   for (const [name, ref] of Object.entries(decl.trees ?? {})) named[name] = await classesOf(ref, name);
-  return { place, types, kills, others, noClass, shared, named };
+  const destroyed = await tree(DESTROYED.root, 'destroyed classes');
+  return { place, types, kills, others, noClass, shared, named, destroyed };
 }
 
 /** The most telling type its classes name: the first of the kind's types whose classes it carries, else the kind's fallback. */
@@ -228,7 +238,8 @@ export function declaredVerdict<Type extends string>(decl: PlaceKindDeclaration<
   const reason = refusedByItsClasses(decl, facts.classes, trees) ?? refusedByTheKind(decl, facts.classes, trees);
   if (reason) return { pass: false, reason };
   if (!facts.onEarth || facts.lat === null || facts.lon === null) return { pass: false, reason: 'no point on Earth' };
-  return { pass: true, type: declaredType(decl, facts.classes, trees) };
+  const type = declaredType(decl, facts.classes, trees);
+  return carries(facts.classes, trees.destroyed) ? { pass: true, type, gone: DESTROYED.reason } : { pass: true, type };
 }
 
 /** A declared kind with what the place pass, the surroundings tier and the coverage report read of it. */

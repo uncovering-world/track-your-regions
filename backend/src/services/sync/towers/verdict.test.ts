@@ -73,7 +73,7 @@ const trees: TowerTrees = {
     skyscraper: new Set([SKYSCRAPER]),
     officeBuilding: none, towerBlock: none,
   },
-  kills: { destroyed: new Set([DESTROYED]), proposed: none, ruins: none },
+  destroyed: new Set([DESTROYED]), kills: { proposed: none, ruins: none },
   noClass: {}, shared: {},
   named: {
     publicClock: new Set(Object.keys(PUBLIC_CLOCK_CLASSES)),
@@ -111,6 +111,10 @@ describe('towerVerdict', () => {
     expect(towerVerdict(at(classes), trees)).toEqual({ pass: true, type });
   });
 
+  it('admits the Warsaw radio mast, collapsed in 1991, as gone: its end is written, not a refusal (ADR-0214)', () => {
+    expect(towerVerdict(at([TOWER, GUYED_MAST, DESTROYED]), trees)).toEqual({ pass: true, type: 'mast', gone: 'destroyed or demolished' });
+  });
+
   it.each([
     ['Bologna\'s Two Towers, a complex of inclined towers', [INCLINED_TOWER, BUILDING_COMPLEX], 'tower'],
     ['the Kharaqan Towers, twin tower tombs', [MAUSOLEUM, TOWER, TWIN_TOWERS], 'tower'],
@@ -120,7 +124,6 @@ describe('towerVerdict', () => {
   });
 
   it.each([
-    ['the Warsaw radio mast, collapsed in 1991', [TOWER, GUYED_MAST, DESTROYED], 'destroyed or demolished'],
     ['the Tower of Hercules, a lighthouse', [ANCIENT_LIGHTHOUSE, MONUMENT, FORTIFIED_TOWER, LIGHTHOUSE], 'a lighthouse, not a tower'],
     ['the Burj Khalifa, a skyscraper', [SKYSCRAPER, LANDMARK], 'a skyscraper, not a tower'],
     ['Hagia Sophia, a mosque with minarets', [MINOR_BASILICA, MOSQUE, MUSEUM, CHURCH_BUILDING, MINARET], 'a place of worship with a tower, not a tower'],

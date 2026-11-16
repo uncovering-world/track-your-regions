@@ -38,7 +38,7 @@ import type { WorldMemory } from './worldBars.js';
  * the catalogue checks read the rule's own answer.
  */
 export type SurroundingsRuleVerdict =
-  | { pass: true; type: string; artwork?: boolean; creators?: string[]; note?: string; wikipediaCategories?: string[] }
+  | { pass: true; type: string; artwork?: boolean; creators?: string[]; note?: string; wikipediaCategories?: string[]; gone?: string }
   | { pass: false; reason: string };
 
 /** A passing verdict, as a builder reads it. */
@@ -108,6 +108,7 @@ export const surroundingsLandmark: SurroundingsBuilder<WikidataLandmark> = (enti
   ...(verdict.artwork === undefined ? {} : { artwork: verdict.artwork }),
   ...(verdict.creators === undefined ? {} : { creators: verdict.creators }),
   ...(verdict.wikipediaCategories === undefined ? {} : { wikipediaCategories: verdict.wikipediaCategories }),
+  ...(verdict.gone === undefined ? {} : { goneByClass: verdict.gone }),
   tier: 'surroundings',
   readershipNote: verdict.note ? `${verdict.note} ${note}` : note,
 });

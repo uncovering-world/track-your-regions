@@ -105,8 +105,13 @@ export async function openWorldTier(
   };
 }
 
-/** A kind's verdict on one candidate: the type it is filed under, or why it is refused. */
-export type PlaceVerdict<Type extends WikidataLandmark['type']> = { pass: true; type: Type } | { pass: false; reason: string };
+/**
+ * A kind's verdict on one candidate: the type it is filed under, with why its
+ * classes read it as gone where they do (`goneByClass`), or why it is refused.
+ */
+export type PlaceVerdict<Type extends WikidataLandmark['type']> =
+  | { pass: true; type: Type; gone?: string }
+  | { pass: false; reason: string };
 
 /** What a kind with one rule and one type decides by. */
 export interface WorldKind<Trees, Type extends WikidataLandmark['type']> {
@@ -162,7 +167,10 @@ export async function classifyByWorldBars<Trees, Type extends WikidataLandmark['
       continue;
     }
     const note = tier.noteOf(c, stands);
-    items.push({ ...placeLandmark(entity, classes, verdict.type), ...(note ? { readershipNote: note } : {}) });
+    items.push({
+      ...placeLandmark(entity, classes, verdict.type), ...(note ? { readershipNote: note } : {}),
+      ...(verdict.gone ? { goneByClass: verdict.gone } : {}),
+    });
   }
   console.log(`${kind.logPrefix} Pool of ${pool.size}: ${items.length} admitted, ${filtered.length} refused`);
   return { items, fetched: pool.size, filtered };

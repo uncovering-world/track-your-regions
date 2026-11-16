@@ -27,7 +27,7 @@ const trees: TowerTrees = {
     lighthouse: none, bridge: none, gate: none, gateTower: none, sculpture: none,
     skyscraper: new Set([SKYSCRAPER]), officeBuilding: none, towerBlock: none,
   },
-  kills: { destroyed: none, proposed: none, ruins: none },
+  destroyed: none, kills: { proposed: none, ruins: none },
   noClass: {}, shared: {},
   named: { publicClock: none, buildingComplex: none, plainTower: none, worship: none, archaeologicalSite: none, worshipParts: none, seaFort: none },
 };

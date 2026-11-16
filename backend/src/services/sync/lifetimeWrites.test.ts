@@ -38,9 +38,16 @@ describe('the gate over a place\'s dates (#1719)', () => {
     expect(decideLifetime(stored, view, gate({ held: false })).write).toEqual(view);
   });
 
-  it('holds every end under a gated source, filled or changed, and writes one under a trusted source', () => {
-    expect(decideLifetime({}, { ended: ENDED }, gate({ held: false })).heldBack).toEqual(['ended']);
-    expect(decideLifetime({}, { ended: ENDED }, gate({ gated: false, held: false })).write).toEqual({ ended: ENDED });
+  it('holds every end a reader would lose the place to under a gated source, and writes one under a trusted source', () => {
+    expect(decideLifetime({}, { ended: ENDED }, gate()).heldBack).toEqual(['ended']);
+    expect(decideLifetime({ ended: held(ENDED) }, { ended: { ...ENDED, year: 1967 } }, gate()).heldBack).toEqual(['ended']);
+    expect(decideLifetime({}, { ended: ENDED }, gate({ gated: false })).write).toEqual({ ended: ENDED });
+  });
+
+  it('writes an end on a place no reader sees under a gated source: it takes nothing off any list', () => {
+    const decision = decideLifetime({}, { ended: ENDED }, gate({ held: false }));
+    expect(decision.write).toEqual({ ended: ENDED });
+    expect(decision.heldBack).toEqual([]);
   });
 
   it('writes no end of a place a curator\'s pin keeps', () => {

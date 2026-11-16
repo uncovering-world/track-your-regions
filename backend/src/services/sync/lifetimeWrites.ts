@@ -10,8 +10,13 @@
  *   a reader sees the place: the run does not write it, and its record keeps
  *   the date it reports for the curator's answer. Under a trusted source, or on
  *   a place no reader sees yet, it is written as any other field is.
- * - **An end is always asked under a gated source**, since it takes the place
- *   off today's lists: never written by such a run, filled or changed.
+ * - **An end on a place a reader sees is asked under a gated source**, since
+ *   it moves the place from today's catalogue to the catalogue of its past
+ *   (#2008) and the gone kind (#2009): never written by such a run, filled or
+ *   changed. On a place no reader sees today, an arrival or a place its kinds
+ *   keep out, an end is a first date and passes with it: Nelson's Pillar
+ *   arrives with its end of 8 March 1966 and its arrival card (the
+ *   maintainer, 2026-11-16, ADR-0214 decision 4).
  * - **A curator's admission pin wins over a derived end**: the curator kept the
  *   place where its item says it is gone (the Barmaley Fountain, whose replica
  *   stands since 2013), so the run writes no end of it.
@@ -76,7 +81,7 @@ function slotAction(slot: LifetimeSlot, next: SourcedDate | undefined, held: Hel
   if (gate.claimed.includes(slot)) return 'keep';
   if (held && (held.sourceId !== gate.sourceId || held.decidedBy !== null)) return 'keep';
   if (next === undefined ? held === undefined : held !== undefined && sameSourcedDate(next, held)) return 'keep';
-  if (gate.gated && (slot === PLACE_END || (held !== undefined && gate.held))) return 'hold';
+  if (gate.gated && gate.held && (slot === PLACE_END || held !== undefined)) return 'hold';
   return next === undefined ? 'clear' : 'write';
 }
 

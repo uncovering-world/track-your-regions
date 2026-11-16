@@ -32,7 +32,7 @@ import {
 import { categoryNote, filedAsMonument, readMonumentCategories } from './publicArt/monumentCategories.js';
 import type { FiledAsMonument } from './publicArt/publicArtTest.js';
 import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
-import { goneReason, goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
+import { goneReason, goneWorkReason, refuseNeverBuilt, type StandingFacts } from './places/gone.js';
 import { commemorationWiki, readCommemorates } from './places/commemorates.js';
 import { leadDedicationReader } from './places/leadDedication.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
@@ -476,9 +476,11 @@ async function fetchLandmarkItems(
     // Not read this run (`surroundings.skipped`): its rows stay as they are.
     if (surroundings.skipped) spareTier = 'surroundings';
   }
-  // A place Wikidata says is gone is refused whichever tier admitted it (#2259).
-  // A work removed, destroyed or taken down is refused too, where the kind holds works (#2280).
-  await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
+  // A place Wikidata says was never built is refused whichever tier admitted it
+  // (#2259). One it says is gone, or a work removed, destroyed or taken down
+  // (#2280), stays: the run writes its end, which takes it off today's lists
+  // (ADR-0214).
+  await refuseNeverBuilt(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
     classifier.gone);
   await classifier.retype?.(items, sparql);
   // Whom or what each admitted place commemorates, and the people and figures
@@ -550,7 +552,8 @@ export function placeSource(
     processItem: (landmark, _progress, context) => upsertLandmarkExperience(sourceId, classifier, credits, landmark, context),
     // Each place's lifetime, from its own item, with the end the kind's gone rule reads (#1719).
     lifetimeItem: (lm) => lm.qid,
-    lifetimeGone: classifier.gone ?? goneReason,
+    // A kind that read the place as gone from its classes says so on the item (`goneByClass`).
+    lifetimeGone: (facts, lm) => lm.goneByClass ?? (classifier.gone ?? goneReason)(facts),
     getItemName: (lm) => lm.label,
     getItemId: (lm) => lm.qid,
   };

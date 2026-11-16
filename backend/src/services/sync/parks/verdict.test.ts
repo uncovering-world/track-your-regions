@@ -54,7 +54,7 @@ const trees: ParkTrees = {
     AMUSEMENT_PARK, THEME_PARK, ZOO, NATIONAL_PARK, ...botanical, ...gardens,
   ]),
   types: { 'botanical-garden': botanical, garden: gardens },
-  kills: { destroyed: new Set([DESTROYED]), proposed: none, underConstruction: none },
+  destroyed: new Set([DESTROYED]), kills: { proposed: none, underConstruction: none },
   others: {
     nationalPark: new Set([NATIONAL_PARK]), statePark: none, provincialPark: none,
     worship: new Set([BUDDHIST_TEMPLE]), cemetery: new Set([CEMETERY]),
@@ -95,8 +95,11 @@ describe('parkVerdict', () => {
     expect(parkVerdict(at(classes), trees)).toEqual({ pass: true, type });
   });
 
+  it('admits the Hanging Gardens of Babylon as gone: their end is written, not a refusal (ADR-0214)', () => {
+    expect(parkVerdict(at([HANGING_GARDEN, WONDER, DESTROYED]), trees)).toEqual({ pass: true, type: 'garden', gone: 'destroyed or demolished' });
+  });
+
   it.each([
-    ['the Hanging Gardens of Babylon, destroyed', [HANGING_GARDEN, WONDER, DESTROYED], 'destroyed or demolished'],
     ['the Simien Mountains National Park, a national park and a park', [NATIONAL_PARK, PARK], 'a national park: a reserve, not a park'],
     ['Kinkaku-ji, a Japanese garden and a Buddhist temple', [JAPANESE_GARDEN, BUDDHIST_TEMPLE], 'a place of worship, not a garden'],
     ['Ohlsdorf Cemetery, a cemetery and a park', [CEMETERY, PARK], 'a cemetery, not a park'],

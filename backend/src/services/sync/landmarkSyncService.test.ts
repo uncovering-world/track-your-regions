@@ -58,7 +58,7 @@ const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), gu
 vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => history) }));
 vi.mock('./places/surroundingsPool.js', () => ({ readSurroundingsPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
-vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0), goneWorkReason: vi.fn(() => null), goneReason: vi.fn(() => null) }));
+vi.mock('./places/gone.js', () => ({ refuseNeverBuilt: vi.fn(async () => 0), goneWorkReason: vi.fn(() => null), goneReason: vi.fn(() => null) }));
 // Whom or what a place commemorates is its own module's (`places/commemorates.test.ts`, #2144); here it names nobody.
 const readCommemorates = vi.hoisted(() => vi.fn(async () => new Map()));
 vi.mock('./places/commemorates.js', () => ({ readCommemorates, commemorationWiki: vi.fn(async () => ({})) }));
@@ -163,7 +163,7 @@ import { gatherPlaces } from './places/gather.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { syncPlacePass } from './places/placePass.js';
-import { publicArtSurroundings } from './landmarkSyncService.js';
+import { placeSource, publicArtSurroundings } from './landmarkSyncService.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
 import type { PublicArtTrees } from './publicArt/classes.js';
 import { surroundingsGroupKey, surroundingsGroups } from './places/surroundingsTier.js';
@@ -274,10 +274,10 @@ describe('public art in the place pass', () => {
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
     // And what it admits is asked whether it still stands, through the gather's door (#2259).
-    const { goneWorkReason, refuseGone } = await import('./places/gone.js');
-    expect((vi.mocked(refuseGone).mock.calls[0][0] as WikidataLandmark[]).map((i) => i.qid)).toEqual(['Q337179']);
+    const { goneWorkReason, refuseNeverBuilt } = await import('./places/gone.js');
+    expect((vi.mocked(refuseNeverBuilt).mock.calls[0][0] as WikidataLandmark[]).map((i) => i.qid)).toEqual(['Q337179']);
     // Read as works are: an end of existence is a removal unless the item says it stands again (#2280).
-    expect(vi.mocked(refuseGone).mock.calls[0][5]).toBe(goneWorkReason);
+    expect(vi.mocked(refuseNeverBuilt).mock.calls[0][5]).toBe(goneWorkReason);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
   });
 
@@ -640,5 +640,13 @@ describe('Public art\'s and Monuments\' part in the surroundings tier (#2178)', 
     expect(art.classes?.has(MONUMENT)).toBe(false);
     expect(monuments.classes).toBe(trees.admitting);
     expect(surroundingsGroupKey(publicArtSurroundings(PUBLIC_ART_RULE), trees, [SCULPTURE], cut)).toBe(art.key);
+  });
+});
+
+describe('a place source\'s reading of a place\'s end (#1719, ADR-0214)', () => {
+  it('reads a place its kind\'s classes call destroyed as gone, and asks the kind\'s gone rule of every other', () => {
+    const config = placeSource(7, async () => ({}) as never, { classify: vi.fn(), types: [], tag: 'tower' } as never);
+    expect(config.lifetimeGone?.({} as never, { goneByClass: 'destroyed or demolished' } as never)).toBe('destroyed or demolished');
+    expect(config.lifetimeGone?.({} as never, {} as never)).toBeNull();
   });
 });

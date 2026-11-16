@@ -309,16 +309,21 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
   }]));
 }
 
+/** Whether a gone rule's reason says the place was never built, rather than that it stood and then went. */
+export const neverBuilt = (reason: string | null): boolean => reason !== null && reason.startsWith('never built');
+
 /**
  * Refuse, by name and with the reason, every item the run would write that
- * Wikidata says is gone, after the kind's rule and its tiers have decided: the
- * items leave `items` and join `filtered`, so a place the catalogue already
- * offers is refused as any refusal of it is — held for a curator, never
- * deleted. `reasonOf` is the kind's reading: a place's (`goneReason`) unless
- * the kind holds works (`goneWorkReason`). Returns how many it refused, for
- * the run's log.
+ * Wikidata says was never built, after the kind's rule and its tiers have
+ * decided: the items leave `items` and join `filtered`, so a place the
+ * catalogue already offers is refused as any refusal of it is — held for a
+ * curator, never deleted. A place the kind's reading (`reasonOf`: a place's,
+ * `goneReason`, unless the kind holds works, `goneWorkReason`) says stood and
+ * then went is not refused: the run writes its end (`lifetimeOf`, ADR-0214),
+ * so it keeps its dates and leaves today's lists. Returns how many it refused,
+ * for the run's log.
  */
-export async function refuseGone<T>(
+export async function refuseNeverBuilt<T>(
   items: T[], filtered: FilteredEntity[], sparql: SparqlFn,
   of: { id: (item: T) => string; name: (item: T) => string; type?: (item: T) => string | null | undefined },
   logPrefix: string,
@@ -326,16 +331,16 @@ export async function refuseGone<T>(
 ): Promise<number> {
   const facts = await fetchStandingFacts(sparql, items.map(of.id));
   const kept: T[] = [];
-  const gone: string[] = [];
+  const unbuilt: string[] = [];
   for (const item of items) {
     const known = facts.get(of.id(item));
     const reason = known ? reasonOf(known) : null;
-    if (!reason) { kept.push(item); continue; }
+    if (!reason || !neverBuilt(reason)) { kept.push(item); continue; }
     const type = of.type?.(item);
     filtered.push({ externalId: of.id(item), name: of.name(item), reason, ...(type ? { type } : {}) });
-    gone.push(of.name(item));
+    unbuilt.push(of.name(item));
   }
   items.splice(0, items.length, ...kept);
-  if (gone.length) console.log(`${logPrefix} Refused as gone: ${gone.join(', ')}`);
-  return gone.length;
+  if (unbuilt.length) console.log(`${logPrefix} Refused as never built: ${unbuilt.join(', ')}`);
+  return unbuilt.length;
 }

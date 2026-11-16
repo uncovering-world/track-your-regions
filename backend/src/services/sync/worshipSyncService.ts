@@ -58,7 +58,7 @@ import { shareOf, type PlaceGather } from './places/gather.js';
 import { sharedWorksOf } from './places/sharedWorks.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { mergeSurroundings, surroundingsArrivals, type SurroundingsKind } from './places/surroundingsTier.js';
-import { goneReason, refuseGone } from './places/gone.js';
+import { goneReason, refuseNeverBuilt } from './places/gone.js';
 import { worldHistory } from './places/worldMemory.js';
 import { typeOf, worshipVerdict } from './worship/worshipTest.js';
 import type { WorshipTrees } from './worship/classes.js';
@@ -270,8 +270,10 @@ async function fetchWorshipItems(
   mergeSurroundings(items, filtered, surroundings, (place) => place.qid, surroundingsHeld);
   // Not read this run (`surroundings.skipped`): its rows stay as they are.
   const spareTier = surroundings.skipped ? 'surroundings' as const : undefined;
-  // A place Wikidata says is gone is refused whichever door or tier admitted it (#2259).
-  await refuseGone(items, filtered, sparql, { id: (place) => place.qid, name: (place) => place.label, type: (place) => place.type }, LOG_PREFIX);
+  // A place Wikidata says was never built is refused whichever door or tier
+  // admitted it (#2259). One it says is gone stays: the run writes its end,
+  // which takes it off today's lists (ADR-0214).
+  await refuseNeverBuilt(items, filtered, sparql, { id: (place) => place.qid, name: (place) => place.label, type: (place) => place.type }, LOG_PREFIX);
 
   // Whether the run saw enough of what the catalogue holds to be believed about
   // what left it (ADR-0044) — measured here, before a single place is written,

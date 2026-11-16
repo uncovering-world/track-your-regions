@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { SparqlBinding } from '../wikidataUtils.js';
-import { fetchStandingFacts, goneReason, refuseGone, type StandingFacts } from './gone.js';
+import { fetchStandingFacts, goneReason, refuseNeverBuilt, type StandingFacts } from './gone.js';
 
 const DEMOLISHED = 'Q56556915';
 const PERMANENTLY_CLOSED = 'Q104664889';
@@ -139,21 +139,33 @@ describe('the dated statements of a lifetime on the live service (#1719, #2564)'
   });
 });
 
-describe('refuseGone', () => {
-  it('moves a gone place from the run\'s items to its refusals, with the reason and its type', async () => {
-    const e = (qid: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/${qid}` });
-    const rows = [{ e: e('Q381648'), use: e(DEMOLISHED) }] as SparqlBinding[];
+describe('refuseNeverBuilt', () => {
+  const e = (qid: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/${qid}` });
+  const of = { id: (i: { qid: string }) => i.qid, name: (i: { label: string }) => i.label, type: (i: { type: string }) => i.type };
+
+  it('moves a place never built from the run\'s items to its refusals, with the reason and its type', async () => {
+    const rows = [{ e: e('Q9719101'), use: e(PROPOSED) }] as SparqlBinding[];
     const items = [
-      { qid: 'Q381648', label: 'St. Francis Dam', type: 'dam' },
+      // Not an item: a tower proposed and never built.
+      { qid: 'Q9719101', label: 'A tower proposed and never built', type: 'tower' },
       { qid: 'Q204871', label: 'Charles Bridge', type: 'bridge' },
     ];
     const filtered = [{ externalId: 'Q3907993', name: 'Polcevera Viaduct', reason: 'destroyed or demolished' }];
-    const refused = await refuseGone(items, filtered, () => Promise.resolve(rows),
-      { id: (i) => i.qid, name: (i) => i.label, type: (i) => i.type }, '[Bridges]');
+    const refused = await refuseNeverBuilt(items, filtered, () => Promise.resolve(rows), of, '[Bridges]');
     expect(refused).toBe(1);
     expect(items.map((i) => i.qid)).toEqual(['Q204871']);
     expect(filtered).toContainEqual({
-      externalId: 'Q381648', name: 'St. Francis Dam', reason: "gone: Wikidata's state of use says demolished or destroyed", type: 'dam',
+      externalId: 'Q9719101', name: 'A tower proposed and never built',
+      reason: "never built: Wikidata's state of use says proposed building or structure", type: 'tower',
     });
+  });
+
+  it('keeps a place that stood and went, whose end the run writes instead (ADR-0214): the St. Francis Dam', async () => {
+    const rows = [{ e: e('Q381648'), use: e(DEMOLISHED) }] as SparqlBinding[];
+    const items = [{ qid: 'Q381648', label: 'St. Francis Dam', type: 'dam' }];
+    const filtered: { externalId: string; name: string; reason: string }[] = [];
+    expect(await refuseNeverBuilt(items, filtered, () => Promise.resolve(rows), of, '[Bridges]')).toBe(0);
+    expect(items.map((i) => i.qid)).toEqual(['Q381648']);
+    expect(filtered).toEqual([]);
   });
 });

@@ -42,6 +42,7 @@ import { passOf } from './passes.js';
 import { refreshRobotsForRun } from '../robots/robotsSignals.js';
 import type { RecordDates } from '../../db/placeDatesWriter.js';
 import { readLifetimes } from './places/lifetime.js';
+import type { StandingFacts } from './subset/standing.js';
 import { wikidataRunDoor } from './subset/runDoor.js';
 import { SPARQL_WAIT_BUDGET_MS, WaitBudget, wikidataDoor } from './wikidataUtils.js';
 
@@ -111,7 +112,10 @@ async function runLifetimes<T>(config: SyncServiceConfig<T>, items: T[], progres
       const door = wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), config.logPrefix);
       return (query) => door(query);
     });
-    return new Map([...empty, ...await readLifetimes(sparql, asked, config.lifetimeGone)]);
+    const byKey = new Map(items.map((item) => [config.getItemId(item), item]));
+    const { lifetimeGone } = config;
+    const goneOf = lifetimeGone && ((facts: StandingFacts, key: string) => lifetimeGone(facts, byKey.get(key) as T));
+    return new Map([...empty, ...await readLifetimes(sparql, asked, goneOf)]);
   } catch (error) {
     console.error('%s Could not read the places\' lifetimes; their records keep what they hold:', config.logPrefix, error);
     return new Map();

@@ -62,8 +62,8 @@ const trees: BridgeTrees = {
     aqueduct: aqueducts, bridge: bridges, dam: dams, 'inclined-plane': inclinedPlanes, 'boat-lift': lifts,
     'lock-flight': flights, lock: locks, tunnel: tunnels,
   },
-  kills: {
-    destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: new Set([PROPOSED_TUNNEL]),
+  destroyed: new Set([DESTROYED]), kills: {
+    proposed: none, proposedTunnel: new Set([PROPOSED_TUNNEL]),
     underConstruction: new Set([UNDER_CONSTRUCTION]), ruins: none,
   },
   others: { river: new Set([RIVER]), railwayLine: new Set([RAILWAY_LINE, RAPID_TRANSIT_LINE]) },
@@ -94,8 +94,11 @@ describe('bridgeVerdict', () => {
     expect(bridgeVerdict(at(classes), trees)).toEqual({ pass: true, type });
   });
 
+  it('admits the Polcevera Viaduct, collapsed in 2018, as gone: its end is written, not a refusal (ADR-0214)', () => {
+    expect(bridgeVerdict(at([CONCRETE_BRIDGE, DESTROYED]), trees)).toEqual({ pass: true, type: 'bridge', gone: 'destroyed or demolished' });
+  });
+
   it.each([
-    ['the Polcevera Viaduct, collapsed in 2018', [CONCRETE_BRIDGE, DESTROYED], 'destroyed or demolished'],
     ['the Brenner Base Tunnel, not open yet', [RAILWAY_TUNNEL, PROPOSED_TUNNEL], 'proposed, not built'],
     ['the Fehmarn Belt link, being built', [RAILWAY_TUNNEL, UNDER_CONSTRUCTION], 'under construction'],
     ['the Amstel, a river', [RIVER, GRACHT], 'a river, not an engineering work'],

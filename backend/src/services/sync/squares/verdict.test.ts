@@ -44,7 +44,7 @@ const streets = new Set([STREET, PEDESTRIAN_ZONE, SHOPPING_STREET, AVENUE, AVENU
 const trees: SquareTrees = {
   place: new Set([THOROUGHFARE, DESCENT, ...stairways, ...squares, ...promenades, ...streets]),
   types: { stairway: stairways, square: squares, promenade: promenades, street: streets },
-  kills: { destroyed: new Set([DESTROYED]), proposed: none, underConstruction: none },
+  destroyed: new Set([DESTROYED]), kills: { proposed: none, underConstruction: none },
   others: {
     worship: new Set([MOSQUE]), palace: none, bridge: new Set([STONE_BRIDGE]),
     archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]), agora: new Set([AGORA]), bullring: new Set([BULLRING]),
@@ -81,7 +81,7 @@ describe('squareVerdict', () => {
   });
 
   it.each([
-    ['the Gemonian stairs, gone', [STAIRS, ARCHAEOLOGICAL_SITE, DESTROYED], 'destroyed or demolished'],
+    ['the Gemonian stairs, gone and an archaeological site', [STAIRS, ARCHAEOLOGICAL_SITE, DESTROYED], 'an archaeological site, not a square'],
     ['the Charles Bridge, which Prague files as a street', [STONE_BRIDGE, STREET], 'a bridge, not a street'],
     ['Al-Aqsa, a mosque Wikidata files under squares', [MOSQUE], 'a place of worship, not a square'],
     ['the Roman Forum', [SQUARE, ARCHAEOLOGICAL_SITE], 'an archaeological site, not a square'],

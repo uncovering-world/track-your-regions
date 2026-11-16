@@ -21,7 +21,7 @@ describe('classifyParks', () => {
   const trees: ParkTrees = {
     place: new Set([URBAN_PARK]),
     types: { 'botanical-garden': none, garden: none },
-    kills: { destroyed: none, proposed: none, underConstruction: none },
+    destroyed: none, kills: { proposed: none, underConstruction: none },
     others: { nationalPark: none, statePark: none, provincialPark: none, worship: none, cemetery: new Set([CEMETERY]) },
     shared: {
       protectedArea: none, zoo: none, amusementPark: none, miniaturePark: none, square: none, sportsVenue: none,

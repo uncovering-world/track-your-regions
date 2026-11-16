@@ -84,8 +84,11 @@ is kept as `use_ended` or as the end before a rebuild. `ended` replaces `existen
 
 **4. A date filled where the place held none passes the gate** (the maintainer, 2026-11-15), as a
 Wikidata item, a subtitle and a picture's credit do (ADR-0129, ADR-0133, ADR-0151). A change to
-a date the place holds is asked under a gated source, and so is every `ended`, since it takes the
-place off today's lists.
+a date the place holds is asked under a gated source, and so is every `ended` on a place readers
+see today, since it moves the place from today's catalogue to the catalogue of a past date
+(#2008) and the gone kind (#2009). An `ended` on a place no reader sees today, an arrival or a
+place its kinds keep out, is a first date and passes with it: Nelson's Pillar arrives with its
+end and an arrival card like any arrival.
 
 **5. The inception year is the place's `began`,** not a kind fact: one value on the place, each
 source's view on its record. The kind facts keep their own decision (#2127).
@@ -117,6 +120,13 @@ source's view on its record. The kind facts keep their own decision (#2127).
   one year to different precisions disagree and a curator is asked.
 - Wikidata's own words for a coarse date ("10th millennium BC") are not the catalogue's; the
   card writes "c. 10,000 BC".
+
+**Amended while Draft (#1719, the pull request that turns the gone refusals into ends):** decision
+4 asked every `ended` under a gated source. The maintainer decided on 2026-11-16 (#1719) how an
+end meets the gate: an ended place stays in the catalogue and moves to the catalogue of a past
+date and the gone kind, so an end on a place no reader sees today is a first date that passes
+with its arrival or with the place its kinds keep out, and an end on a place readers see is
+asked.
 
 ## References
 
