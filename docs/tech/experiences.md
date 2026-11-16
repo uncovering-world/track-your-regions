@@ -7872,8 +7872,27 @@ offering the place (its membership refused, by a rule or a curator), the card co
 refusal then decides whether the place stays at all: Amber Fort, Prora, the Groeningemuseum and the
 Kelpies. Every count and the answer that checks a card is open compose the same predicate.
 
-**An arrival can be answered with the kind it belongs in** (#2213). Beside *Publish* and *Keep it
-out*, an arrival's card offers *Belongs in another kind…* (`ArrivalKindChoice`, whose form is a
+**An arrival's card asks its kind's question first** (#2185, interface-writing rules 8 and 10). It
+opens with "Is this a tower?" (`kindQuestion`, `utils/experienceTypes.ts`, one noun a kind; a card two
+kinds ask on puts each question over its own section), then the place itself: its picture with its
+credit and the first sentence of its English Wikipedia article, the article linked by its title
+(`ObjectContext`'s `lead`), or the source's description where no sentence was read. The sentence is
+read when the card opens, from `GET /api/experiences/review/article-leads?ids=`
+(`reviewArticleLeads.ts`), which answers only places the caller has an open question about
+(`scopedQuestionsSql`), asks Wikipedia's extracts API through `articleLeads` for articles not read in
+the last day, keeps each article's first sentence in the process (`Intl.Segmenter`, an abbreviation
+such as "St." not taken for a sentence's end, a bracket the extract emptied of its pronunciation
+dropped, "Buckingham Palace (UK: ) is…", and one holding a name in another script or a pronunciation
+in square brackets, as Kyaiktiyo Pagoda's Burmese, while "(German: Lötschberg-Basistunnel)" and
+"(1883)" stay), waits at most 5 s for Wikipedia in all, its turn behind another Wikimedia read
+included (an answer that comes later is still kept, and two cards asking at once share one read),
+answers no sentence older than a day, and leaves out a place Wikipedia did not answer for; the card
+asks again a minute after an empty answer.
+Under the place stands its type ("Type: Bell tower") where its kind files types, and the answers are
+the question's: *Keep*, *Not a tower* (`notOfKind`) and *Another kind…*.
+
+**An arrival can be answered with the kind it belongs in** (#2213). Beside *Keep* and *Not a
+tower*, an arrival's card offers *Another kind…* (`ArrivalKindChoice`, whose form is a
 chunk of its own): the Monument to Peter I before St Michael's Castle arrives in Public art as a
 `sculpture`, and a traveller looks for it under Monuments & memorials, whose rule never reads it.
 The curator picks a kind the place is not in, World Heritage Sites aside, a type from that kind's
@@ -7908,7 +7927,7 @@ answered during the call are kept for what they cost, as the visit reading's are
 `coverage_kinds` is a serving table for this reason (migration 220, ADR-0124 decision 3); the rest
 of the survey stays in the workbench. The line draws nothing where Jev names the kind the place is
 arriving in, since an echo of the card is a line curators learn to skip (#1926). The line is words
-alone, with no control of its own: a live kind is the one the card's *Belongs in another kind…*
+alone, with no control of its own: a live kind is the one the card's *Another kind…*
 opens with (`suggestedKindOf`, the card and the line sharing one query, `useKindReading`), and the
 form opens with nothing chosen where the curator's scope does not reach it (`addableKinds`), so the
 line promises nothing of it. A place with a membership in that kind already (`kind.held`, any state,
@@ -9614,7 +9633,7 @@ membership alone (its publish button names the kind: *Publish everything Art Mus
 batch answer sends one answer row per section (`toAnswerRows`), a held one against its own run. An
 arrival under a second kind is not a place nobody can see, so an arrival carries the kinds readers
 already see the place in (`seen_in`, every other offered membership's kind) and its section says so
-— "Readers already see this place under Art Museums", *Publish — list it under Archaeology* —
+— "Readers already see this place under Art Museums", answered *Keep* —
 rather than that readers see nothing at its address. A place in one kind reads exactly as before.
 
 **A fact two kinds' runs propose alike is asked once** (#1599). Most of what a run holds is a fact
@@ -9938,7 +9957,7 @@ What the card does that is not a free choice:
   at the endpoint: naming no contents applies the held fields, marks the row read *and* releases
   every unread point and work under it, and the label says what the click covers ("Publish
   everything on this card", or *Use all proposed* on a card of proposed values alone; an
-  arrival's reads "Publish — readers may see it"). It is the card's only publish: a "change only"
+  arrival's reads *Keep*, the answer to its question, #2185). It is the card's only publish: a "change only"
   button and a card-level no to the contents went with #524, since every row now answers on its
   own. A card of proposed values alone, with no arrived point or work and no moved point, gains
   *Keep all current* beside it (#2222), which refuses every held field, the parts' included, as one
