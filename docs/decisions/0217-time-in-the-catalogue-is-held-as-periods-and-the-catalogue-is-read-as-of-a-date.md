@@ -74,11 +74,12 @@ Statements are the best-ranked ones unless said otherwise.
 
 **1. Time is held as periods.** A period says that something was so from one date until another.
 Each end is a date of ADR-0214 decision 2 (a year with a month and a day where known, a span,
-circa, BC as the subset numbers it), or is not known. A period also says whether it has ended: an
-open period still holds, and an ended one may have no date ("gone, when is not known"). Beside
-each end the period keeps the outer days that end may be, written by the one writer from the
-shared rule of dates (`periodOf`, `@tyr/shared/lifetime`); every read compares those. One shape
-and one CHECK serve every table below.
+circa, BC as the subset numbers it), or is not known. A period also says whether it has an end: an
+open period holds with no end in sight, and an end may have no date ("gone, when is not known").
+Beside its ends the period keeps the outer days it may cover, the first day its start may be and
+the last day its end may be, written by the one writer from the shared rule of dates (`periodOf`,
+`@tyr/shared/lifetime`); every read compares those. One shape and one CHECK serve every table
+below.
 
 **2. A place holds its periods** (`place_periods`, which replaces `place_dates`), each saying one
 of four things:
@@ -93,20 +94,24 @@ of four things:
 A place's standing periods do not overlap, and none ends in the future; a closure may. A use's
 name is a curator's words, and runs propose none: Wikidata dates an item's classes on 49 to 129
 offered places, and Hagia Sophia's are two "current" values at once. A run still reports the end
-of a use, unnamed, as ADR-0214 had it. A closed place stays in its lists with its mark. The words
+of a use, unnamed and with a start that is not known, as ADR-0214 had it. A closed place stays in its lists with its mark. The words
 a card prints (built, destroyed, rebuilt, in use until) are read from the periods and stored
 nowhere.
 
 **3. Each source's view of a place's periods is on its record** (`record_periods`, which replaces
-`record_dates`), written whole by its run. The gate of ADR-0214 decision 4 stands, said for a list:
+`record_dates`), written whole by its run. The gate of ADR-0214 decision 4 stands, said for a list,
+but for the end of a place no reader sees yet, which it asked and this writes:
 
 - a view that leaves every date the place holds as it is, and leaves the place standing or not as
-  it was, is a fill and passes. Christ the Saviour held as "1883 → open" and reported as
-  "1883 → 1931, 2000 → open" is one;
+  it was, is a fill and passes: it has no period fewer, and each start the place holds is still a
+  start and each end still an end, told the same way. Christ the Saviour held as "1883 → open" and
+  reported as "1883 → 1931, 2000 → open" is one;
 - any other difference is asked under a gated source on a place readers see, as one question
   showing the place's periods beside the source's;
-- the end of a place's last standing period is always asked on a place readers see, and passes
-  with the arrival card on a new place (Nelson's Pillar).
+- the end of a place's last standing period is never a fill: under a gated source it is always
+  asked on a place readers see, and is written with the arrival on a new place, whose arrival card
+  is the question (Nelson's Pillar). ADR-0214 decision 4 asked every end under a gated source, a
+  new place's included; the maintainer's decision of 2026-11-16 on #1719 narrows it there.
 
 A run reads a gap from dated destruction and rebuilding events as well as from inceptions and ends.
 
@@ -177,6 +182,16 @@ to decision 1 here, where either end of a period may be not known), decision 4 (
 a list) and decision 5 (the inception year is the place's, not a kind fact) stand. Decision 1
 (four slots) is replaced by decision 2 here, and decision 3 (the `ended` slot hides the place) by
 decision 5: only the end of the place's standing hides it, and the end of a use never does.
+
+**Amended as a Draft, from what its first slice built (#2578):** decision 1 says that a period has an
+end, not that it has ended, since a closure's end may lie ahead, and names the two outer days a
+period keeps, one per end; decision 2 says that a run's use has no known start; decision 3 says
+what "leaves every date as it is" compares, and that the end of the last standing period is asked
+under a gated source on a place readers see and written with the arrival on a new place, which
+narrows ADR-0214 decision 4, where every end was asked. Accepted with decisions 1, 2, 3 and the
+derived column of decision 5 built; `existence` (decision 5), the listing periods (decision 4),
+the read as of a date (decisions 6 to 8), seasons, the intake of delisted sites and past positions
+(decisions 9 to 11) are built by later slices of #2578.
 
 ## Alternatives Considered
 
