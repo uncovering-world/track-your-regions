@@ -50,10 +50,9 @@ const KIND_NOTE: Record<RowKind, string> = {
   missing: 'A run that finished without errors stopped finding this. That can mean the source '
     + 'delisted it, that it no longer exists, or that the source was simply wrong — and only '
     + 'the first two change anything.',
-  withdrawn: 'The object is still listed; one or more of the places it is made of are not. '
-    + 'Visitors stopped seeing them the moment the run noticed, so this asks what to record '
-    + 'about each — not whether to hide it. Nothing was deleted: anyone who had been there '
-    + 'keeps that.',
+  withdrawn: 'The object is still listed, but one or more of its places are not. '
+    + 'A serial site’s part stays on the map until you answer, and any other place was hidden when the run noticed. '
+    + 'Nothing was deleted, and anyone who had been there keeps that.',
   'component-items': 'Some parts of this serial site have no Wikidata entry recording their UNESCO number, and '
     + 'the search found entries that stand beside them or say they are part of the site. A match by place and '
     + 'name is a guess until you say otherwise. Confirming one makes it the part’s entry — its picture and '
