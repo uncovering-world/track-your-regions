@@ -125,6 +125,21 @@ describe('ReviewQueue', () => {
     expect(mockedState.mock.calls[0][1]).not.toHaveProperty('membership');
   });
 
+  it('sends the year it went with "lost", and only with it (ADR-0214)', async () => {
+    renderQueue();
+    await openRow(/Dresden Elbe Valley/);
+
+    fireEvent.change(await screen.findByLabelText(/Year it went/), { target: { value: '1966' } });
+    fireEvent.click(screen.getByRole('button', { name: /former/i }));
+    await waitFor(() => expect(mockedState).toHaveBeenCalledTimes(1));
+    expect(mockedState.mock.calls[0][1]).not.toHaveProperty('endedYear');
+
+    fireEvent.click(screen.getByRole('button', { name: /lost/i }));
+    await waitFor(() => {
+      expect(mockedState).toHaveBeenLastCalledWith(77, expect.objectContaining({ existence: 'lost', endedYear: 1966 }));
+    });
+  });
+
   it('treats "false alarm" as restoring presence, which clears the flag', async () => {
     renderQueue();
     await openRow(/Dresden Elbe Valley/);

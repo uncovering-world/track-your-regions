@@ -23,6 +23,7 @@ import {
 } from '../../api/curation';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
+import { YearField } from '../shared/YearField';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
@@ -39,13 +40,17 @@ import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
  * Delisted, destroyed, or the source hiccupped — and the first two are different
  * facts that can both be true, which is why they are two buttons and not one
  * status. Nothing here has changed what visitors see; the card is the asking.
+ * "Lost" writes the place's end (ADR-0214), with the year it went where the
+ * curator knows it.
  */
 export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
+  const [endedYear, setEndedYear] = useState<number | null>(null);
   const decide = useMutation({
     mutationFn: (decision: { membership?: SourceMembership; existence?: Existence }) =>
       setExperienceState(item.id, {
         ...decision,
+        ...(decision.existence === 'lost' && endedYear !== null ? { endedYear } : {}),
         note: note || undefined,
         // What this card is showing, flag included. The server compares it
         // with what is stored, which is the only way it can tell a card drawn
@@ -82,6 +87,14 @@ export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
           onChange={(e) => setNote(e.target.value)}
           sx={{ mb: 2 }}
         />
+        <Box sx={{ mb: 2 }}>
+          <YearField
+            value={endedYear}
+            onChange={setEndedYear}
+            label="Year it went (optional)"
+            helperText="Kept with a Lost answer, and empty where you do not know it."
+          />
+        </Box>
 
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           <Button
