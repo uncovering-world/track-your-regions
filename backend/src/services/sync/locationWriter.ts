@@ -96,7 +96,6 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { proposeHeldParts, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
-import { approximateReasons } from '@tyr/shared/precision';
 import { settleShortMoves, shortMoveChange, type ShortMove } from './shortMoveWriter.js';
 import { sameTypographySql } from './labelFold.js';
 import type { ContentsDelta } from './types.js';
@@ -118,7 +117,9 @@ import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { foldedPointsSql, pointItemClaimedSql, pointItemSql, shownBySql } from '../../db/placePoints.js';
 import { writePartItems } from '../../db/partFieldsWriter.js';
-import { lineWithdrawnOnItsRecordSql, listingsDrift, partsBehind, writeParts } from './componentListings.js';
+import {
+  lineWithdrawnOnItsRecordSql, listingRoughness, listingsDrift, partsBehind, writeParts,
+} from './componentListings.js';
 import { completePairing } from './locationMatching.js';
 
 
@@ -201,9 +202,8 @@ const APPROXIMATE_DRIFTS = `NOT el.curated_fields ? 'location' AND el.approximat
 
 /** The parameters `APPROXIMATE_REASONS` reads. */
 function approximateParams(experienceId: number, incoming: readonly IncomingLocation[], sourceId: number): unknown[] {
-  const reasons = approximateReasons(incoming.map(point => ({ ref: point.externalRef, lon: point.lon, lat: point.lat })));
   return [experienceId, incoming.map(point => point.externalRef), incoming.map(point => point.lon),
-    incoming.map(point => point.lat), reasons, incoming.length, sourceId];
+    incoming.map(point => point.lat), listingRoughness(incoming), incoming.length, sourceId];
 }
 
 /**
@@ -1265,7 +1265,7 @@ export async function writeExperienceLocations(
         [experienceId, run.sourceId],
       );
     }
-    if (locked) await writeParts(client, locked.lock, run, cte, params);
+    if (locked) await writeParts(client, locked.lock, run, cte, params, incoming);
 
     await client.query('COMMIT');
 

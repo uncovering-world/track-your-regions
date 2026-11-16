@@ -37,6 +37,7 @@ import { claimablePlaceSql, claimableToReaderSql, experienceOfferedToReaderSql, 
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
+import { pointRoughSql } from '../../db/placePoints.js';
 
 /** The user routes these specs answer through (ADR-0071). */
 const getVisitedLocationIdsRoute = routeAt(userRoutes, '/me/visited-locations/ids', 'get');
@@ -210,7 +211,7 @@ describe('reads that show a point', () => {
       mockedQuery.mockClear();
       res = makeRes();
       await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), { params: { regionId: '7' }, query } as never, res as never);
-      expect(locationRead()).toMatch(/el\.approximate/);
+      expect(locationRead()).toContain(`${pointRoughSql('el')} AS approximate`);
       expect(res.json.mock.calls[0][0].locationsByExperience[42][0].approximate).toBe('whole-minute');
     }
   });

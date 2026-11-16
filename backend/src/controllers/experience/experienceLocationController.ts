@@ -15,7 +15,7 @@ import {
 import { pool } from '../../db/index.js';
 import {
   overPlacePoints, placePointsSql, pointArticleSql, pointClaimsSql, pointItemSql, pointNameSql, pointOfPartSql, pointPictureSql,
-  pointSubtitleSql,
+  pointRoughSql, pointSubtitleSql,
 } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
@@ -163,7 +163,7 @@ export async function getRegionExperienceLocations(
         ${pointNameSql('el')} AS name,
         el.external_ref,
         el.ordinal,
-        el.approximate,
+        ${pointRoughSql('el')} AS approximate,
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
@@ -220,7 +220,7 @@ export async function getRegionExperienceLocations(
         ${pointNameSql('el')} AS name,
         el.external_ref,
         el.ordinal,
-        el.approximate,
+        ${pointRoughSql('el')} AS approximate,
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
@@ -336,7 +336,7 @@ export async function getExperienceLocations(
       ${pointNameSql('el')} AS name,
       el.external_ref,
       el.ordinal,
-      el.approximate,
+      ${pointRoughSql('el')} AS approximate,
       ST_X(el.location) as longitude,
       ST_Y(el.location) as latitude,
       el.created_at,

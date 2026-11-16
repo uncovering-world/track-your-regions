@@ -26,10 +26,12 @@
  */
 
 import type { PoolClient } from 'pg';
+import type { ApproximateReason } from '@tyr/shared/precision';
 import type { LockedExperience } from './experienceWriter.js';
+import { inscribedAreaSql } from './inscription.js';
 import {
-  COMPONENT_SOURCE_ID, MEMBERSHIPS, WORLD_HERITAGE_SOURCE_ID, componentRecordSql, partRecordSql, placeHoldsKindSql,
-  siteMembershipSql,
+  COMPONENT_SOURCE_ID, MEMBERSHIPS, WORLD_HERITAGE_SOURCE_ID, componentRecordSql, kindRecordSql, partRecordSql,
+  placeHoldsKindSql, siteMembershipSql,
 } from './membership.js';
 import { pointOfComponentSql, pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
 import { publishedContentSql } from './readerPredicates.js';
@@ -340,34 +342,67 @@ export async function writePartItems(
   return result.rows.map(row => row.point_id);
 }
 
-/** What the site's list gives one line: its name, coordinate and position, for the record they are written on. */
+/**
+ * What the site's list gives one line: its name, coordinate and position, and
+ * how roughly the coordinate places it, for the record they are written on.
+ */
 export interface PartListing {
   recordId: number;
   name: string | null;
   lon: number;
   lat: number;
   ordinal: number;
+  rough: ApproximateReason | null;
+}
+
+/**
+ * How roughly the listing `l` of the record `rec` places its line, as the
+ * record holds it (`reported_location_rough`): the list's precision (`l.rough`,
+ * `approximateReasons`), except for a line that stands for its whole site
+ * (`stands_for_whole_site`: the list's one line, `standing` the count of its
+ * lines, or one under the site's reference or name) of an area ten cells of
+ * its minute or more (`outsizes_its_minute`, #1903), which stands for it well
+ * enough anywhere in the minute: the Okavango Delta and Virunga, never the
+ * Longmen Grottoes (331 ha, 10 km off). Resolved here, where the run knows the
+ * site's area, so a reader compares only the point with its record; a site
+ * whose area crosses the ten cells is marked again by its next run, whose fast
+ * path gives way to the change.
+ */
+function listingRoughSql(rec: string, l: string, standing: string): string {
+  return `CASE WHEN ${l}.rough IS NULL THEN NULL
+               WHEN outsizes_its_minute(${inscribedAreaSql('rough_site')}, ${l}.lat)
+                AND stands_for_whole_site(${l}.name, ${rec}.external_id, rough_site.name,
+                                          (SELECT rough_wh.external_id FROM ${MEMBERSHIPS} rough_wh
+                                            WHERE rough_wh.experience_id = rough_site.id
+                                              AND rough_wh.source_id = ${WORLD_HERITAGE_SOURCE_ID} AND ${kindRecordSql('rough_wh')}
+                                            ORDER BY rough_wh.id LIMIT 1),
+                                          ${standing})
+               THEN NULL
+               ELSE ${l}.rough END`;
 }
 
 /**
  * The records of the site `$1`'s list lines whose view the listings `listed`
  * change -- its parts' records in it and its record of itself (ADR-0200) --
- * as rows `(id, name, location, ordinal)` of what each is to hold: the name,
- * coordinate and position of its listing, or none for a record no listing
- * names, since a line the list no longer gives has no place in it. `listed`
- * is a relation of `(record_id, name, lon, lat, ordinal)`. The one statement of
+ * as rows `(id, name, location, ordinal, rough)` of what each is to hold: the
+ * name, coordinate, position and precision of its listing, or none for a
+ * record no listing names, since a line the list no longer gives has no place
+ * in it. `listed` is a relation of `(record_id, name, lon, lat, ordinal,
+ * rough)`, and `standing` the count of the list's lines. The one statement of
  * what the site's run changes on the records (`writePartListings`), and of
  * whether it has anything to change (the run's fast path, `locationWriter.ts`).
  */
-export function partListingChangesSql(listed: string): string {
+export function partListingChangesSql(listed: string, standing: string): string {
+  const rough = listingRoughSql('rec', 'l', standing);
   const missing = `CASE WHEN rec.whole_id = rec.experience_id OR NOT given.line THEN rec.missing_since
                         WHEN given.listed THEN NULL ELSE COALESCE(rec.missing_since, NOW()) END`;
   const membership = `CASE WHEN rec.whole_id <> rec.experience_id AND given.line AND given.listed THEN 'present'
                            ELSE rec.source_membership END`;
   return `SELECT rec.id, l.name,
                  CASE WHEN l.record_id IS NOT NULL THEN ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326) END AS location,
-                 l.ordinal, ${missing} AS missing_since, ${membership} AS source_membership
+                 l.ordinal, ${rough} AS rough, ${missing} AS missing_since, ${membership} AS source_membership
             FROM ${MEMBERSHIPS} rec
+            JOIN experiences rough_site ON rough_site.id = rec.whole_id
             LEFT JOIN ${listed} l ON l.record_id = rec.id
             CROSS JOIN LATERAL (
               -- Whether the list gives the line: a listing names it, or one of
@@ -386,16 +421,18 @@ export function partListingChangesSql(listed: string): string {
                   OR rec.listing_ordinal IS DISTINCT FROM l.ordinal
                   OR (rec.reported_location IS NULL) <> (l.record_id IS NULL)
                   OR NOT ST_Equals(rec.reported_location, ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326))
+                  OR rec.reported_location_rough IS DISTINCT FROM ${rough}
                   OR (rec.missing_since IS NULL) <> (${missing} IS NULL)
                   OR rec.source_membership IS DISTINCT FROM ${membership})`;
 }
 
 /**
  * Write the site's source's view of each of its list lines on the line's
- * record (`reported_name`, `reported_location`, `listing_ordinal`, ADR-0156
- * decision 2, ADR-0200), under the site's lock: the name, coordinate and
- * position its list gives the line, as the list gives them, whatever a curator
- * made of the point. The record of a component the list no longer gives
+ * record (`reported_name`, `reported_location`, `reported_location_rough`,
+ * `listing_ordinal`, ADR-0156 decision 2, ADR-0200, ADR-0213), under the
+ * site's lock: the name, coordinate, its precision and the position its list
+ * gives the line, as the list gives them, whatever a curator made of the
+ * point. The record of a component the list no longer gives
  * loses its view, since a source that stopped listing a component says nothing
  * of it (`viewStandsSql`). Only the records of the parts whose relation names
  * the locked site are written, so a part merged into another kind's place
@@ -405,21 +442,25 @@ export async function writePartListings(
   client: PoolClient,
   lock: LockedExperience,
   listings: readonly PartListing[],
+  standing: number,
 ): Promise<number> {
   const rows = listings.map(listing => (
-    { record_id: listing.recordId, name: listing.name, lon: listing.lon, lat: listing.lat, ordinal: listing.ordinal }));
+    { record_id: listing.recordId, name: listing.name, lon: listing.lon, lat: listing.lat, ordinal: listing.ordinal,
+      rough: listing.rough }));
   const result = await client.query(
     `WITH listed AS (
-       SELECT * FROM jsonb_to_recordset($2::jsonb) AS l(record_id int, name text, lon float8, lat float8, ordinal int)
+       SELECT * FROM jsonb_to_recordset($2::jsonb)
+                AS l(record_id int, name text, lon float8, lat float8, ordinal int, rough text)
      ),
-     view AS (${partListingChangesSql('listed')})
+     view AS (${partListingChangesSql('listed', '$3::int')})
      UPDATE ${MEMBERSHIPS} rec
-        SET reported_name = view.name, reported_location = view.location, listing_ordinal = view.ordinal,
+        SET reported_name = view.name, reported_location = view.location, reported_location_rough = view.rough,
+            listing_ordinal = view.ordinal,
             missing_since = view.missing_since, source_membership = view.source_membership,
             updated_at = NOW()
        FROM view
       WHERE rec.id = view.id`,
-    [lock.id, JSON.stringify(rows)],
+    [lock.id, JSON.stringify(rows), standing],
   );
   return result.rowCount ?? 0;
 }

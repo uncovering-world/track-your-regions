@@ -12,8 +12,10 @@
  * the Church of Saint Gayaneh and the Cemetery of Congregation of Echmiatsin
  * share 40.15931 N 44.29514 E, a street 340 m from Saint Gayane church.
  *
- * The run records the reason on each point it writes, and the curator's card
- * draws the minute cell around a rounded one, so both sides read this.
+ * The run records the reason on each line's record, beside the coordinate the
+ * list gave it (`reported_location_rough`), every reader asks it of the record
+ * (`pointRoughSql`), and the curator's card draws the minute cell around a
+ * rounded point, so both sides read this.
  */
 
 /**

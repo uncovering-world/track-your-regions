@@ -358,7 +358,7 @@ export const ApproximatePoint = z.strictObject({
   ref: z.string().nullable().describe("The component's reference in the list."),
   latitude: z.number(),
   longitude: z.number(),
-  reason: z.enum(CHECK_VALUES.experience_locations.approximate).describe(
+  reason: z.enum(CHECK_VALUES.source_records.reported_location_rough).describe(
     'Why the point is rough: given to the whole minute, or shared with another component of the property.',
   ),
   hints: z.array(ApproximatePointHint).describe("Where it may really stand, the component's own reference first."),

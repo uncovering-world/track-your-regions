@@ -9,7 +9,7 @@
  * and the module's own doc comment records what it measured.
  */
 
-import { itemHeldSql, pointItemClaimedSql } from '../../db/placePoints.js';
+import { itemHeldSql, pointItemClaimedSql, pointRoughSql } from '../../db/placePoints.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
@@ -156,7 +156,7 @@ describe('queryQueueKeys', () => {
     const [sql] = lastCall();
     const rough = between(sql, "SELECT 'approximate-points'", "SELECT 'approximate-unhinted'");
     expect(rough).toContain(`'approximate-points', ${KIND_RANK['approximate-points']}, e.id, e.name`);
-    expect(rough).toContain("el.approximate IS NOT NULL AND NOT el.curated_fields ? 'location'");
+    expect(rough).toContain(`${pointRoughSql('el')} IS NOT NULL`);
     expect(rough).toContain('AND (EXISTS (SELECT 1 FROM experience_point_hints hint');
     expect(rough).not.toContain('AND NOT (EXISTS (SELECT 1 FROM experience_point_hints hint');
     // The points nothing says more about are listed apart, after them (#1903).

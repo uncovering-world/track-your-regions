@@ -8,6 +8,7 @@
  */
 
 import type { PoolClient } from 'pg';
+import { approximateReasons, type ApproximateReason } from '@tyr/shared/precision';
 import { pool } from '../../db/index.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS, componentRecordSql, membershipVisibleSql, partRecordSql } from '../../db/membership.js';
@@ -46,6 +47,23 @@ export const COMPONENT_LISTINGS = `(SELECT DISTINCT ON (rec.id) rec.id AS record
     JOIN incoming i ON i.ordinal = c.ordinal AND i.external_ref = c.external_ref
    WHERE rec.whole_id = $1 AND rec.experience_id = $1 AND ${componentRecordSql('rec')}
    ORDER BY rec.id, c.id)`;
+
+/**
+ * How roughly the run's list places each of its points, in the list's order
+ * (#1853, `approximateReasons`): what a line's record holds beside the
+ * coordinate (`reported_location_rough`), read whatever a curator made of the
+ * point, since it is the list's view.
+ */
+export function listingRoughness(incoming: readonly IncomingLocation[]): (ApproximateReason | null)[] {
+  return approximateReasons(incoming.map(point => ({ ref: point.externalRef, lon: point.lon, lat: point.lat })));
+}
+
+/**
+ * The listings of `COMPONENT_LISTINGS` with how roughly each places its line
+ * (`rough`), off the run's roughness by ordinal, bound as `roughParam`.
+ */
+const roughListingsSql = (roughParam: string) =>
+  `SELECT cl.*, (${roughParam}::text[])[cl.ordinal] AS rough FROM (${COMPONENT_LISTINGS}) cl`;
 
 /**
  * The point `alias` is the line point of a part of the site `$1` that the
@@ -95,12 +113,15 @@ export function lineWithdrawnOnItsRecordSql(alias: string): string {
  * to the write, which records it under the site's lock.
  */
 export async function listingsDrift(experienceId: number, incoming: IncomingLocation[]): Promise<boolean> {
+  const params = [...bindParams(experienceId, incoming), listingRoughness(incoming), incoming.length];
+  const listed = roughListingsSql(`$${params.length - 1}`);
+  const standing = `$${params.length}::int`;
   const drift = await pool.query(
-    `WITH ${incomingCte(incoming.length)}, listed AS (${COMPONENT_LISTINGS})
-     SELECT 1 FROM (${partListingChangesSql('listed')}) changed
+    `WITH ${incomingCte(incoming.length)}, listed AS (${listed})
+     SELECT 1 FROM (${partListingChangesSql('listed', standing)}) changed
       UNION ALL ${siteLineBehindSql()}
      LIMIT 1`,
-    bindParams(experienceId, incoming),
+    params,
   );
   return (drift.rowCount ?? 0) > 0;
 }
@@ -129,6 +150,7 @@ export async function writeParts(
   run: { components?: boolean },
   cte: string,
   params: unknown[],
+  incoming: readonly IncomingLocation[],
 ): Promise<void> {
   if (run.components) {
     // The site's record of its own line first, so its listing is written with the parts'.
@@ -136,8 +158,10 @@ export async function writeParts(
     const listings = await client.query<{ record_id: number; name: string | null; lon: number; lat: number; ordinal: number }>(
       `WITH ${cte} ${COMPONENT_LISTINGS}`, params,
     );
+    const rough = listingRoughness(incoming);
     await writePartListings(client, lock, listings.rows.map(row => (
-      { recordId: row.record_id, name: row.name, lon: row.lon, lat: row.lat, ordinal: row.ordinal })));
+      { recordId: row.record_id, name: row.name, lon: row.lon, lat: row.lat, ordinal: row.ordinal,
+        rough: rough[row.ordinal - 1] ?? null })), incoming.length);
   }
   await followTheirPoints(client, lock, null);
 }

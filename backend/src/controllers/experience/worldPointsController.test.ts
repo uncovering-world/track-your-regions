@@ -33,6 +33,7 @@ import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/r
 import { placeKindsSql, placeShownSql, shownKindsByPlaceSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
+import { pointRoughSql } from '../../db/placePoints.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -160,7 +161,7 @@ describe('getWorldPoints', () => {
     });
 
     it("reads whether a marker's point is placed only roughly, and an overview one's never (#1912)", async () => {
-      expect((await ask({ detail: 'markers' })).sql).toContain('el.approximate IS NOT NULL AS approximate');
+      expect((await ask({ detail: 'markers' })).sql).toContain(`${pointRoughSql('el')} IS NOT NULL AS approximate`);
       expect((await ask()).sql).not.toContain('approximate');
     });
   });
