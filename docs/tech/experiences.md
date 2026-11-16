@@ -386,8 +386,8 @@ other writer of a point (the run's withdrawal, a curator's *lost*, a held move) 
 point, and the record follows the points of its line, the ones the site's own record in a kind
 placed or nothing did (`is_part_line_point()`), through `refresh_part_record_gates()` on every
 statement that writes a point and on a record that moves to another place: read once one of them
-is published, turned down while none is and every one still asked about is refused, missing and
-former once all of them are. *Lost* stays the part's own. Migration 250 writes it on
+is published, turned down while none is and every one still asked about is refused. *Lost* stays
+the part's own, and whether the list still gives the line is the record's own (below). Migration 250 writes it on
 every part's record: on the development catalogue (2026-11-15, a dry run of its rule) 75 parts nobody has read, Wudang's
 45 among them, and 13 withdrawn lines, 11 judged former. The predicates the record is asked by
 are `partRecordShownSql` (`readerPredicates.ts`), `partRecordUnreadSql` and
@@ -407,12 +407,41 @@ the two readings to each other until the points go (#2124). Two readers ask the 
   `is_part_line_point()` is parallel safe there, since a function left unsafe keeps the whole
   statement out of a parallel plan.
 - **A reader asks whether a part is shown of its record** too (`partOfferedSql`): read, not turned
-  down and its line still listed (`partRecordListedSql`; `partRecordShownSql` is the form that also
+  down and not judged former, a line the list withdrew included (`partRecordListedSql`; `partRecordShownSql` is the form that also
   asks whether the part still stands, which a by-id read does not). The point a reader is shown
   stays asked beside the record, as before, since a curator's *lost* on a line point and a merge
   folding every line point are written on the point, which the record does not follow. A part no
   source records in its whole, one a curator's word or a Wikidata statement made (the Giralda in
   Seville's site), is shown by its point alone.
+- **A part the list stops giving stays shown until a curator answers** (ADR-0216, #1251), as a
+  membership its source stopped listing does. The site's run writes the withdrawal on the part's
+  record when its list no longer gives the line under any reference, and clears it when the list
+  gives it again (`writePartListings`, `partFieldsWriter.ts`). It keeps the line's point standing,
+  out of the list's numbering (`lineWithdrawnOnItsRecordSql`, `componentListings.ts`), so every
+  reader of a point shows the part and counts it in its site's "k of N". A line the list gives
+  again elsewhere is a move, paired as the run pairs one (`heldByNameSql`): under its name, or
+  under its record's reference where no other line of the site carries the name the list gives
+  it. Western Tien-Shan's `1490-003` named the Karabastau area, which the list dropped, and names
+  the Boraldaitau area now: the Karabastau area stands, withdrawn on its record. A move's old
+  point goes as any point does, and so does the line of a part nobody has read. The card does
+  not read a standing point as its own replacement. The site's
+  *withdrawn* card asks each line point of a part whose record is withdrawn and not judged
+  (`withdrawnPointOpenSql`), dated by the record (`withdrawnSinceSql`). The answer is written
+  beside the point's (`locationStateController.ts`): *former* on the record, the point taking the
+  record's mark, which hides the part; *lost* on the part (`setLifecycleVerdict`), the record
+  keeping its mark; a false alarm clears the record's mark, and the site's next run marks it again
+  while its list leaves the line out. A verdict taken back from the card's answered list is
+  written back the same way: *still listed* sets the record present and clears its mark, *still
+  exists* sets the part extant and leaves the record's mark, since it says nothing of the list,
+  so the site's card asks again while the list leaves the line out. The reply says the point is offered to readers only when a reader
+  is shown the part (`partOfferedSql`). On the development catalogue (2026-11-16) two parts were withdrawn and not judged, the
+  Maidantal and the Bashkizilsay areas of the Chatkal reserve, dropped from Western Tien-Shan on
+  2026-10-25. Migration 253 stands their points again: the site counts 13 of its 23 places, where
+  it counted 11, and its card asks about both. Each is also a second part under its new number,
+  waiting for a curator, made by a run before #2182, so a line the list gives under a point a part
+  already holds is no move: the old part stands. Their points lost their regions when they were
+  withdrawn, and the admin panel's Region Assignment for World Heritage places them again. The 11 judged former (Champagne's 9, one of
+  Getbol's, one of Mangystau's) stay hidden.
 
 The refused-parts list and the take-back still read the row's refusal mark, which is what the
 take-back clears until the writers write the record. On the development catalogue (2026-11-15)
