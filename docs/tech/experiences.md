@@ -3418,7 +3418,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    takes it as its work (ADR-0102): Musée Rodin keeps *The Thinker* while the one cast item
    Wikidata keeps stands at the Kyoto National Museum. A cast placed nowhere
    stands where its point is. An admitted group is shown only at the casts a passer-by can walk
-   up to: the verdict names them (`openCasts`) and the row carries no point at a held cast. The
+   up to (the maintainer's call of 2026-10-26, recorded in PR #2082's description): the verdict names them (`openCasts`) and the row carries no point at a held cast. The
    held casts are handed over all the same (`handOver` on the verdict, `CollectedPublicArt.handOvers`,
    `FetchResult.handOvers`), to their holders and then to the places the group's own statements
    name, so the museum keeps the work as its own while the casts outdoors stay public art: neither
@@ -3618,7 +3618,8 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    commemorates the ship. Nothing is pooled for its `P547` alone. Measured on 2026-10-23, that
    question brought feast days, a university, an airport and world's fairs, and the museums it
    reached are museums. One of them is the Vittoriano, typed only by Italian museum classes, which
-   waits for museum kinds of their own (#882). A work Wikidata files
+   waits for museum kinds of their own (#882: museums stay their own kinds, and house museums and
+   museums of an event come later, the maintainer's decision recorded there on 2026-10-23). A work Wikidata files
    under public art (`P136` `public art`, `PUBLIC_ART_GENRE`) answers that kind's vetoes as an
    artwork class does: the Soviet War Memorial in the Tiergarten is typed cemetery, military
    museum and monument, and the Monument to the Conquerors of Space historic site, monument and
@@ -7448,7 +7449,7 @@ answers none, as *Mark all* run again does (`xmax = 0` on the upsert). With the 
 a date for the visit just made, and tell a trip from a backfill by where and when the ticks were, without
 reading the places again; `POST /trips` and `PUT /trips` write such dates, one request for a batch.
 
-**A date is offered after every tick** (#2120, the mock's scenarios A to D). The shell hands each
+**A date is offered after every tick** (#2120, the mock's scenarios A to D, by the maintainer's decisions on #773 in the comments of 2026-11-12 12:31Z and 2026-11-13 23:22Z). The shell hands each
 tick's `ticked` places to the trips chunk (`noteTicked` in `visitRemovals.ts`, handled by `lazyVisitTrips.tsx`), which applies the rules of
 `components/shared/trips/dateOffer.ts`: pure functions over a session the chunk keeps in memory and in the
 tab's `sessionStorage` (`OFFER_SESSION_KEY`, `tyr.tripOfferSession`, #2536), so a reload or an address
