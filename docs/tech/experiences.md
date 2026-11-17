@@ -7899,7 +7899,23 @@ the most recent `arrival_refused` or `admission_confirmed` the log records for a
 same kind and type that is still refused, of a place the caller may be shown, labelled by its
 recorded reason in words (`refusalSummary`): "kept out by a curator", or the rule's reason a curator
 upheld, which may be about the place's fame or state rather than its kind, so it is never called
-"not a tower" on a reason it does not give. A kind that files no types matches on the kind alone. Nothing is drawn where neither was answered. Under them stands the
+"not a tower" on a reason it does not give. A kind that files no types matches on the kind alone.
+The heading carries the kind's rule behind ⓘ (`kindRuleWords`), read from
+`GET /api/experiences/review/kind-rule/:kindId` (`kindRule.ts`) and never written by hand: the
+kind's types from its vocabulary; what its declaration keeps out, in the declaration's words, for a
+kind declared as data (Towers, Bridges & engineering marvels, Squares & streets: `keptOutOf` in
+`declaredKind.ts`), each with the exception the verdict reads it under, so "a skyscraper, not a
+tower" says "unless it is also an observation tower" and never reads as a refusal that always
+holds; the three world bars the kind's last real run read off its pool
+(`experience_sync_logs.world_bars`, as the coverage report reads them), with their quantiles, the
+stay share of `admissionRegister.ts` and the marks that count as a guide's (a World Heritage
+listing too, for Archaeology); and the surroundings tier from the same register: the median of the
+best places within the radius, the three tests at their shares and group floors, and a kind's own
+conditions (Bridges' types that enter only by a guide, Squares & streets' venue test, Archaeology's
+map). Under Towers it reads "Wikipedia articles in 19 languages or more (the top
+3 %)" among 3,103 places. The heading stands where no neighbour was answered yet, so the rule is
+there on a kind's first arrivals; nothing is drawn where there is neither a neighbour nor a rule
+(Art Museums, whose rule is code of its own and admits by no bar). Under them stands the
 place's type ("Type: Bell tower") where its kind files types, and the answers are the question's:
 *Keep*, *Not a tower* (`notOfKind`) and *Another kind…*.
 
