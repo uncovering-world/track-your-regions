@@ -1,7 +1,7 @@
 # ADR-0178: A kind is filled in three tiers: the world, a place's surroundings and its region
 
 **Date:** 2026-11-02
-**Status:** Accepted
+**Status:** Accepted — the surroundings tier's "within 50 km" in decision 1's table narrowed by [ADR-0181](0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md): a place is measured against the places of its own density within 150 km
 
 ---
 
