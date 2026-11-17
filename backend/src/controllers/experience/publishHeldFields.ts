@@ -29,6 +29,7 @@ import type { PoolClient } from 'pg';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { keepSubjectsOnOneLine, SUBJECT_LINES, type OpenLines } from './subjectLines.js';
+import { isPeriodsField, proposedPeriods, type PublishedPeriods } from './heldPlacePeriods.js';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 export interface ProposedField {
@@ -526,6 +527,12 @@ export interface HeldFieldWrites {
    * a kind's own fact lives on its membership (ADR-0153).
    */
   membershipFacts?: { value: Record<string, unknown> };
+  /**
+   * The lists of the place's periods this call publishes (#2578): written
+   * through the periods writer rather than assigned, since a period is a row
+   * of its own (`heldPlacePeriods.ts`).
+   */
+  placePeriods: PublishedPeriods[];
   /** `$1` is the experience id; the rest is whatever the assignments bound. */
   params: unknown[];
   applied: string[];
@@ -606,12 +613,21 @@ function openLines(open: ProposedField[], selected: ProposedField[], claimed: st
 
 /**
  * One held field of a column of its own into `writes`: the membership's type,
- * a dispersed whole's coordinate released (`releasedOnTheWhole`), or the
- * field's assignment, else unwritable.
+ * a list of the place's periods, a dispersed whole's coordinate released
+ * (`releasedOnTheWhole`), or the field's assignment, else unwritable.
  */
 function writeOneHeld(
   writes: HeldFieldWrites, field: ProposedField, before: HeldBefore, bind: (value: unknown) => string,
 ): void {
+  if (isPeriodsField(field.field)) {
+    const periods = proposedPeriods(field.field, field.new);
+    if (periods === undefined) writes.unwritable.push(field.field);
+    else {
+      writes.placePeriods.push({ says: field.field, periods });
+      writes.applied.push(field.field);
+    }
+    return;
+  }
   // The type within the kind is the membership's (ADR-0084): it rides out
   // beside the place's assignments, for the membership being published.
   if (field.field === 'type') {
@@ -665,7 +681,7 @@ export async function heldFieldWrites(
   const params: unknown[] = [experienceId];
   const bind = (value: unknown) => `$${params.push(value)}`;
   const writes: HeldFieldWrites = {
-    assignments: [], params, applied: [], released: [], claimedFieldsSkipped: [], unwritable: [],
+    assignments: [], params, applied: [], released: [], claimedFieldsSkipped: [], unwritable: [], placePeriods: [],
     proposalMissing: false, contents: null, answered: new Map(), written: [],
     leftOpen: [], unmatched: [],
   };

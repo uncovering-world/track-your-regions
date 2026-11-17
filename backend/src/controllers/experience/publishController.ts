@@ -45,6 +45,7 @@ import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { contentsReached, publishContents, placeAfterRelease, pointMovedWithObject, worksPublished } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { heldFieldWrites, publicationAssignments, type HeldBefore, type HeldFieldWrites } from './publishHeldFields.js';
+import { publishPlacePeriods } from './heldPlacePeriods.js';
 import {
   applyHeldPartWrites, heldWorkRefs, planHeldPartWrites, type HeldPartPlan,
 } from './publishHeldParts.js';
@@ -545,7 +546,8 @@ export async function publishUnderLock(
       // named (#1264), or the one `membershipToAnswerSql` picks where it named
       // none.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url, ${shownByPartsSql('e')} AS shown_by_parts,
-              m.id AS membership_id, m.curation_state, m.admission, m.facts AS membership_facts,
+              m.id AS membership_id, m.source_id AS membership_source_id, m.curation_state, m.admission,
+              m.facts AS membership_facts,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
@@ -639,6 +641,8 @@ export async function publishUnderLock(
       await updateExperienceColumns(client, locked.lock, write.assignments, write.params.slice(1));
       await publishTypeOnMembership(client, locked.lock, membershipId, write.membershipType);
       await publishFactsOnMembership(client, locked.lock, membershipId, write.membershipFacts);
+      // A held list of the place's periods is its source's list once published (#2578).
+      await publishPlacePeriods(client, locked.lock, write.placePeriods, before.membership_source_id as number);
       await publishMembership(client, locked.lock, membershipId, publicationAssignments(before, heldLeftOpen));
 
       // The parts, after the object and in the same transaction: a held
