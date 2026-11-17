@@ -104,12 +104,16 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
 
   // A place's periods (#2578, ADR-0217): what a run reports of them, the
   // periods in which the place stood and the end of a use, each a whole list
-  // and the place's whichever kind's run read it. No surface shows them yet;
-  // their gate is `lifetimeWrites.ts`'s (a view that only fills in what the
-  // place holds passes, any other difference and the end of the place's
-  // standing are asked under a gated source where a reader sees the place),
-  // not this mark.
-  stood: place('unseen'),
+  // and the place's whichever kind's run read it. Their gate is
+  // `lifetimeWrites.ts`'s (a view that only fills in what the place holds
+  // passes, any other difference and the end of the place's standing are
+  // asked under a gated source where a reader sees the place), not this mark.
+  // No surface shows a period yet. The standing periods are marked shown all
+  // the same: their end says the place is gone (ADR-0217 decision 5), so the
+  // review card never says of them that nothing readers see changes. No run
+  // files them as passed `unseen`, so the mark owes no question (ADR-0139
+  // decision 3).
+  stood: place('shown'),
   used: place('unseen'),
 
   // The inscription, the World Heritage kind's: a delisted site loses it with

@@ -298,6 +298,7 @@ function proposedEffect(field: string): string {
   if (field === 'countryCodes' || field === 'countryNames') return 'changes the countries it counts in';
   if (field === 'type') return 'changes its type';
   if (field === 'tags') return 'changes its tags';
+  if (field === 'stood' || field === 'used') return 'changes when the place stood or was in use';
   return 'changes the source data readers see';
 }
 
