@@ -540,6 +540,7 @@ export const CurationLogEntry = z.strictObject({
     + ' itself; null on the place\'s own acts (#1366).',
   ),
   folded_name: z.string().nullable().describe('The folded entry\'s name, beside `folded_id`.'),
+  kind_name: z.string().nullable().describe('The kind the act was about, by the membership its details name; null where it names none.'),
 }).describe("One act of the object's curation log.");
 export type CurationLogEntry = z.infer<typeof CurationLogEntry>;
 

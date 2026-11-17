@@ -23760,6 +23760,13 @@
               "string",
               "null"
             ]
+          },
+          "kind_name": {
+            "description": "The kind the act was about, by the membership its details name; null where it names none.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -23771,7 +23778,8 @@
           "created_at",
           "curator_name",
           "folded_id",
-          "folded_name"
+          "folded_name",
+          "kind_name"
         ],
         "additionalProperties": false,
         "description": "One act of the object's curation log."
@@ -23905,6 +23913,31 @@
           "experience_name": {
             "type": "string"
           },
+          "experience_image_url": {
+            "description": "The place's picture, for the row's thumbnail.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "experience_image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The picture's credit, shown with it (ADR-0043)."
+          },
+          "kind_name": {
+            "description": "The kind the act was about, by the membership its details name; null where it names none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "region_id": {
             "anyOf": [
               {
@@ -23950,6 +23983,9 @@
           "details",
           "experience_id",
           "experience_name",
+          "experience_image_url",
+          "experience_image_credit",
+          "kind_name",
           "region_id",
           "region_name",
           "curator_id",

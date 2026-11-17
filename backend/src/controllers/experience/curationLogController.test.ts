@@ -26,7 +26,7 @@ const ADMIN = { id: 1, role: 'admin' };
 // Shaped as the driver hands it over, a Date and a parsed object included, since
 // `respond()` holds the answer to its schema in this lane.
 const IN_SCOPE_ROW = {
-  id: 1, action: 'edited', region_id: 20, region_name: 'Gyeongju', curator_name: 'Curator', folded_id: null, folded_name: null,
+  id: 1, action: 'edited', region_id: 20, region_name: 'Gyeongju', curator_name: 'Curator', folded_id: null, folded_name: null, kind_name: null,
   details: { name: { old: 'Bulguksa', new: 'Bulguksa Temple' } }, created_at: new Date('2026-08-04T15:01:24.341Z'),
 };
 

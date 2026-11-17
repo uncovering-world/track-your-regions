@@ -23,6 +23,7 @@ import { CuratorScope, UserRole } from './auth.js';
 import { PlacementFailure } from './curation.js';
 import { OperationProgressAnswer } from './operation.js';
 import { ChangedField } from './reviewQueue.js';
+import { ImageCredit } from './experiences.js';
 
 /** A timestamp as the wire carries it: the handler converts the driver's `Date`. */
 const timestamp = z.iso.datetime({ offset: true });
@@ -476,6 +477,9 @@ export const CuratorActivityEntry = z.strictObject({
     .describe('What the act changed, in the shape its action writes.'),
   experience_id: z.number().int(),
   experience_name: z.string(),
+  experience_image_url: z.string().nullable().describe("The place's picture, for the row's thumbnail."),
+  experience_image_credit: ImageCredit.nullable().describe("The picture's credit, shown with it (ADR-0043)."),
+  kind_name: z.string().nullable().describe('The kind the act was about, by the membership its details name; null where it names none.'),
   region_id: z.number().int().nullable(),
   region_name: z.string().nullable(),
   curator_id: z.number().int().nullable()
