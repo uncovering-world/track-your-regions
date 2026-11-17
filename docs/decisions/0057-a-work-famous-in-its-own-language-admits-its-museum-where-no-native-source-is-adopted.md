@@ -1,7 +1,8 @@
-# ADR-0057: A work read at home as much as a world masterpiece admits its museum to a regional tier that has no native source
+# ADR-0057: A work read at home as much as a world masterpiece is a candidate cut of the art-museum kind's surroundings tier
 
 **Date:** 2026-09-11
 **Status:** Draft
+**Built by:** #807, #628, #1910
 
 ---
 
@@ -103,19 +104,22 @@ and pass the check of decision 4; a work with no such language has no local fame
 as the best work it holds. Local fame compares a work with the world's masterpieces in its
 readers' own language, not with the world's readers, so it is not a world rank read lower.
 
-**2. In a country with no adopted native source, a work at local fame 1 or more admits its holder
-to the art-museum kind's regional tier.** This is ADR-0048 decision 3's fallback, read per country.
-The enumeration is ADR-0055's pool — the works the museum
+**2. A work at local fame 1 or more admits its holder to the art-museum kind's surroundings tier,
+as a candidate cut of that tier.** Local fame reads a global source, Wikipedia, per area, which is
+the surroundings tier (ADR-0178 decision 3); its area is the country and its languages rather than
+a place's neighbourhood. The enumeration is ADR-0055's pool — the works the museum
 import places, plus every work of 4 to 9 sitelinks that carries a location or collection statement
 — local fame is the cut, and ADR-0023 decision 4's rule on holders applies. Below four sitelinks
 the pool stops by design: the same classes hold 1,555,160 works there, which is a different
 measurement. The coverage of the country's canon is measured before the
-fallback is adopted for it, as § 4 asks, and the source register records the country and the date.
+cut is adopted for it, as § 4 asks, and the source register records the country and the date.
 
-**3. Local fame never makes a country's regional tier complete.** It fills what famous works reach.
-When a native source is adopted for the country, that source is the enumeration. Local fame may
-stay as its cut where the source has no cut of its own, and a museum that local fame admitted and
-the native source does not list goes to a curator.
+**3. Local fame is no regional tier and never stands in for one.** It fills what famous works
+reach. A country's regional tier exists only where a native source is adopted for it, and its cut
+is that source's own judgement, never local fame (ADR-0178 decision 3). The two tiers are read side
+by side, meet on the place and weigh the same (ADR-0178 decisions 4 and 5): a museum local fame
+admits keeps its place whether or not a native source lists it, and a museum a native source lists
+needs no famous work.
 
 **4. Where a country supplies less than half of a language's readers, the work must be read in that
 country at least in that country's share of the edition.** The check reads Wikimedia's
@@ -142,9 +146,11 @@ the Albertina, is shown only for short periods. The door does not open before #8
 **6. The bar is a ratio, never a quota.** No country gets a number of places. Italy's 25 admissions
 and Tunisia's 2 are what the data holds.
 
-**Narrows, once accepted:** ADR-0048 decision 3, for art museums: the fallback's cut is a bar set
-per language, which needs no floor on the group, because it does not rank the unit's museums
-against each other. Coverage and identity are still measured per country before adoption.
+**Narrows, once accepted:** ADR-0178 decision 1's row for the surroundings tier, as ADR-0181 left
+it, for art museums: the area is a country and its languages rather than the places of a place's
+own density within 150 km, and the cut is a bar set per language, which needs no floor on the
+group, because it does not rank the area's museums against each other. Coverage and identity are
+still measured per country before adoption.
 
 **Left to the adoption slice, #628** (the maintainer's instruction of 2026-09-12: record both
 readings, choose neither now). The bar: 1 keeps 168 museums, 40 % of them named by Wikivoyage in
@@ -158,8 +164,23 @@ plain annual sum keeps 171 museums and a trimmed monthly mean 169, the two fewer
 National Gallery of Slovenia with Grohar's *The Sower* and Skokloster Castle with Arcimboldo's
 *The Librarian*; the check then takes the plain sum to the 168 above.
 
-**Open in review:** whether local fame is only the fallback for a country without a native source,
-as decided above, or a door that stays open beside a native source.
+**Answered by ADR-0178:** whether local fame is only the fallback for a country without a native
+source, or a door that stays open beside one. It stays open beside one: a cut of the surroundings
+tier is no regional-tier source, so a native source adopted for the country neither replaces it
+nor is cut by it (decision 3 above).
+
+**Amended while Draft (2026-11-17, #2619 line 4.11):** nothing of this ADR is built, and it rested
+on ADR-0048 decision 3's fallback, a global source read per unit where no native source is
+adopted, which ADR-0178 decision 3 (2026-11-02) made the surroundings tier and took out of the
+regional tier. The title, decisions 2 and 3 and the *Narrows* line are restated to that: local fame
+is a candidate cut of the art-museum kind's surroundings tier, read per country, and no regional
+tier. The question this ADR left open in review is answered above from ADR-0178. The measurements,
+decisions 1, 4, 5 and 6 and what is left to #628 stand. Which doors open for art museums below the
+world tier is #628's: its direction of 2026-11-17 (comment of 05:51Z) is that below the world tier
+a museum may enter for its own standing, that the doors are looked for and each is measured —
+regional or national registers, the readership of the museum's own article, being named in
+Wikivoyage — and that none is chosen yet. Local fame is one candidate beside them; the table's row
+on the museum's own article records why this ADR did not take it, not that #628 may not.
 
 ## Alternatives Considered
 
@@ -178,7 +199,7 @@ as decided above, or a door that stays open beside a native source.
 | A trimmed monthly mean, or the median month (the first reading), as the level | 169 museums, and 160 in the first pass by the median month; either changes only museums at the bar, such as Grohar's *The Sower* in Ljubljana. The level itself is left to #628 here as it is for the world door |
 | A bar of 0.5 | 270 museums with 36 % listed, and 34 places in English-speaking countries against 14; recorded beside the bar of 1 and left to #628 |
 | The museum's own article (Kumu 1,889 Estonian views a year, the Niguliste Museum 406) | Not works-first, and not measured over the pool; it is the reading that can reach institution-famous museums, recorded for display order and for curators |
-| Wikimedia's reader-country data as the signal | A year shows 2,203 of 9,967 works, and the countries a regional tier matters most for are unpublished or under its thresholds |
+| Wikimedia's reader-country data as the signal | A year shows 2,203 of 9,967 works, and the countries local fame matters most for are unpublished or under its thresholds |
 
 *The first pass* is the measurement over the same twelve months before automated traffic was set
 aside and before the country check, when local fame at 1 kept 171 museums with 40 % listed by
@@ -222,7 +243,7 @@ instead of local fame. The other rows are this ADR's own measurement.
 
 ## References
 
-- Related ADRs: ADR-0023, ADR-0025, ADR-0046, ADR-0048, ADR-0055, ADR-0056
+- Related ADRs: ADR-0023, ADR-0025, ADR-0046, ADR-0048, ADR-0055, ADR-0056, ADR-0178, ADR-0181
 - Related docs: `docs/tech/filling-a-kind.md` § 1, § 4, § 7.4, § 7.6;
   `docs/sources/global/wikidata-by-class-per-unit.md`
 - Literature: Aragón and Sáez-Trumper, "A preliminary approach to knowledge integrity risk
