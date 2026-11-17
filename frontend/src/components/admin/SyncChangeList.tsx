@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getSyncLogChanges, type ChangedField, type SyncChange } from '../../api/admin';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { queryKeys } from '../../api/queryKeys';
+import { filedPeriods, isPeriodsField, periodLines } from '../../utils/placePeriodsLabel';
 
 const PAGE_SIZE = 25;
 
@@ -124,16 +125,19 @@ export function contentsLines(
   });
 }
 
-function describeValue(value: unknown): string {
+/** A value in words: a list of a place's periods a line's worth each (#2578), a text as itself, the rest as JSON. */
+function describeValue(field: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'string') return value;
-  return JSON.stringify(value);
+  const periods = isPeriodsField(field) ? filedPeriods(value) : null;
+  return periods && isPeriodsField(field) ? periodLines(field, periods).join('. ') : JSON.stringify(value);
 }
 
 function FieldRow({ change }: { change: ChangedField }) {
-  const oldText = describeValue(change.old);
-  const newText = describeValue(change.new);
-  const isLong = oldText.length > INLINE_VALUE_LIMIT || newText.length > INLINE_VALUE_LIMIT;
+  const oldText = describeValue(change.field, change.old);
+  const newText = describeValue(change.field, change.new);
+  // A list of periods is read whole, however many it holds: its length says nothing of it.
+  const isLong = !isPeriodsField(change.field) && (oldText.length > INLINE_VALUE_LIMIT || newText.length > INLINE_VALUE_LIMIT);
 
   return (
     <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', pl: 2 }}>

@@ -69,6 +69,26 @@ describe('SyncChangeList', () => {
     expect(screen.getByText(/false → true/)).toBeInTheDocument();
   });
 
+  it('reads a held list of a place\'s periods in words, however long, never as JSON', async () => {
+    // Nelson's Pillar in Dublin: the place holds "1809, open" and its source reports the end of 8 March 1966.
+    const date = (year: number) => ({ year, month: null, day: null, span: null, circa: false, property: 'P571', statement: null });
+    const open = { from: date(1809), ended: false, until: null, ending: null, what: null };
+    mockedGet.mockResolvedValue({
+      changes: [{
+        ...MAJOR_CHANGE, name_snapshot: 'Nelson\'s Pillar', change_type: 'held' as const,
+        changed_fields: [{
+          field: 'stood', old: [open], new: [{ ...open, ended: true, until: date(1966), ending: 'destroyed' }],
+          significance: 'major' as const, curatedConflict: false, held: true,
+        }],
+      }],
+      total: 1, limit: 50, offset: 0,
+    });
+    renderList();
+
+    expect(await screen.findByText(/Built 1809, stands today → Built 1809, destroyed 1966/)).toBeInTheDocument();
+    expect(screen.queryByText(/"year"/)).not.toBeInTheDocument();
+  });
+
   it('drops the significance filter when the toggle is turned off', async () => {
     renderList();
 
