@@ -87,7 +87,7 @@ This is a feature — it requires proper planning. Enter plan mode to:
 
   Read **all** docs that apply — most features touch 2-3 areas. Skip only areas that are clearly irrelevant.
 
-- **Check `docs/decisions/`** for existing ADRs that apply to this feature — mention them in the plan ("This follows ADR-0004")
+- **Check `docs/decisions/`** for existing ADRs that apply to this feature — mention them in the plan ("This follows ADR-0064")
 - Explore the relevant parts of the codebase
 - Understand existing patterns and architecture
 - **Search for existing code to reuse** — check shared utilities, hooks, and components before planning new ones (see "Reuse Before You Create" in the development guide)
