@@ -49,7 +49,7 @@
  */
 
 import {
-  MEMBERSHIPS, partRecordListedSql, partRecordSql, placeAdmittedSql, placeOfferedSql, placeShownSql, rowKindJoinSql,
+  MEMBERSHIPS, partRecordListedSql, partRecordSql, placeOfferedSql, placeShownSql, rowKindJoinSql,
 } from './membership.js';
 import { pointsShownSql, wholeFocusSql } from './placePoints.js';
 
@@ -251,34 +251,26 @@ export function lifecycleSelectSql(alias = 'e'): string {
 }
 
 /**
- * The by-id reads' gate (ADR-0025): a curator or admin whose scope reaches the
- * place (`maySeeExpr`, a boolean parameter) is served it while some membership
- * is admitted, unread or not — the one relaxation; everyone else only where a
- * membership offers it, as the lists do (`experienceOfferedToReaderSql`,
- * #1275), so a
- * reader following a list to a card and a reader opening a card by its id get
- * the same answer.
+ * The by-id reads' gate. A curator or admin whose scope reaches the place
+ * (`maySeeExpr`, a boolean parameter) is served it whatever its memberships say:
+ * unread (ADR-0025) or refused (ADR-0222), since the Curate dialog of an arrival
+ * turned away is where a curator checks the call. The place has to hold a
+ * membership of any admission, or be a part of a whole that does, so the card
+ * has a kind to name; a place a merge folded into another holds none, and its
+ * id answers with the survivor. Everyone else is
+ * served a place only where a membership offers it, as the lists do
+ * (`experienceOfferedToReaderSql`, #1275), so a reader following a list to a
+ * card and a reader opening a card by its id get the same answer, and a refused
+ * place answers a reader 404 (ADR-0024).
  *
  * A part of a serial site holds no membership of its own (ADR-0100 decision
- * 2) and is served where its whole is: `partOfferedSql` for a reader, and for
- * the curator the same relaxation of its whole and its point.
+ * 2) and is served to a reader where its whole is (`partOfferedSql`).
  */
 export function readableByIdSql(maySeeExpr: string, alias = 'e'): string {
-  const admitted = `(${placeAdmittedSql(alias)} OR ${partOfSql(alias, placeAdmittedSql, offeredLocationSql)})`;
-  return `((${maySeeExpr} AND ${admitted}) OR ${placeOrPartOfferedSql(alias)})`;
-}
-
-/**
- * Whether the place `alias` is a part of a whole `whole` says yes of, by a
- * point of its own `point` says yes of (ADR-0100): `whole` is asked of the
- * whole's `experiences` alias, `point` of the part's `experience_locations`
- * alias.
- */
-function partOfSql(alias: string, whole: (w: string) => string, point: (el: string) => string): string {
-  return `EXISTS (SELECT 1 FROM experience_parts po
-        JOIN experiences pw ON pw.id = po.whole_id
-        JOIN experience_locations pel ON pel.experience_id = po.part_id
-       WHERE po.part_id = ${alias}.id AND ${whole('pw')} AND ${point('pel')})`;
+  const held = `(EXISTS (SELECT 1 FROM ${MEMBERSHIPS} hm WHERE hm.experience_id = ${alias}.id AND hm.kind_id IS NOT NULL)
+    OR EXISTS (SELECT 1 FROM experience_parts hp JOIN ${MEMBERSHIPS} hwm ON hwm.experience_id = hp.whole_id AND hwm.kind_id IS NOT NULL
+                WHERE hp.part_id = ${alias}.id))`;
+  return `((${maySeeExpr} AND ${held}) OR ${placeOrPartOfferedSql(alias)})`;
 }
 
 /** A point a reader is shown: offered, and read or published unread. */
@@ -387,7 +379,7 @@ export function publishedContentSql(alias: string): string {
  * see — so the Capitoline Museums with an Archaeology membership admitted but
  * unread and an Art Museums one passed but refused is in no list, as it is on
  * no map and in no kind. The by-id reads compose `readableByIdSql`, which
- * relaxes the unread half alone for a curator.
+ * serves a curator in scope a place unread or refused (ADR-0222).
  */
 export function experienceOfferedToReaderSql(alias = 'e'): string {
   return placeOfferedSql(alias);

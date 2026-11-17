@@ -66,8 +66,8 @@ describe('getExperienceTreasures gate', () => {
 
     const sql = String(mockedQuery.mock.calls[0][0]);
     // The container's question is its memberships' (#822), asked through the
-    // by-id gate: a curator's relaxation on the unread half alone, a reader
-    // served the container only where a membership offers it (#1275).
+    // by-id gate: a curator in scope served the container unread or refused
+    // (ADR-0222), a reader only where a membership offers it (#1275).
     expect(sql).toContain(readableByIdSql('$2::boolean'));
     expect(sql).toMatch(/et\.curation_state <> 'pending'/);
     expect(sql).toMatch(/t\.curation_state <> 'pending'/);
