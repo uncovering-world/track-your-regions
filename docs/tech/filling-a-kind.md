@@ -192,6 +192,11 @@ person who lives there — knows that. Wikidata knows 30 museums in Lima and 32 
 90 rows. The global source is the yardstick a regional source is measured against, not the
 regional source.
 
+**A national register read through Wikidata is still native.** Where Wikidata carries a
+register's own id or grade — its heritage designation (P1435), a national register's id such as
+P3170 or P1770 — a run that reads it reads the register's judgement of importance, not
+Wikidata's: the copy is a channel, and the source of the judgement is native to the unit.
+
 **A global source read per area is the surroundings tier, not the regional one** (ADR-0178
 decision 3). ADR-0048 decision 3 named it as the regional tier's fallback, where no native source
 exists or none can be read (terms, access, a register the law establishes but nobody publishes —
@@ -631,10 +636,11 @@ above for art museums: at 1 or more it finds 171 candidate art museums, 168 of
 them in 47 countries once the reader-country check has run, and Wikivoyage's See listings in
 40 test cities name 40 % of them against 28 % of all candidates
 ([ADR-0057](../decisions/0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md),
-in draft). An admission through either door passes the curator's gate with its flags shown, and
-neither door opens before #868 closes; for Art Museums, whose source publishes unread today, that
-means an admin turns `requires_curation` on before the first run that opens a door, after which
-every arrival of that run waits for a person (decision 5 of each ADR). The bar sets itself per
+in draft, and not built). An admission through the world-tier door passes the curator's gate
+with its flags shown, so every arrival a run admits through the door waits for a person
+(decision 5 of ADR-0056). A fresh database seeds Art Museums gated (`requires_curation`, #2335);
+a database migrated from before #2335 keeps the `false` migration 018 set, and there an admin
+turns the gate on before a run opens the door. The bar sets itself per
 edition: 48,983 views in English, 9,074 in Italian, 366 in Georgian. It reaches a museum through a famous work — the Art Museum of Georgia through the
 Khakhuli triptych — and not a museum famous as an institution, such as the Frida Kahlo Museum or
 the National Museum of Fine Arts in Buenos Aires. Of the 126 surveyed art museums the catalogue

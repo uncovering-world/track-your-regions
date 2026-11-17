@@ -513,7 +513,7 @@ describe('public art in the place pass', () => {
     await (await configOf()).processItem(landmark(), progress(), context);
     expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('admissionNote');
     // A Monuments & memorials item the line admits carries no door's question
-    // (its guide door asks one only under the line, ADR-0167); and what it
+    // (the third bar asks one only under the line, ADR-0175 decision 1); and what it
     // writes lands on its own membership, never on Public art's, so it could
     // not clear Public art's question either.
   });
