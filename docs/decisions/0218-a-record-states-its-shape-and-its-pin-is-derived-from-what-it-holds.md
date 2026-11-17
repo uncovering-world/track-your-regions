@@ -198,15 +198,37 @@ Once Bridges' Rideau Canal and component 1221-001 of the Rideau Canal site are o
 own parts. A traveller who ticks "I was on the canal" has been to one of the site's six parts,
 and the site reads "1 of 6". ADR-0206 decisions 2 and 3 count only places that have no parts and
 read a tick on a nested whole as "?": they stand for a nested serial object (Hadrian's Wall
-within the Frontiers of the Roman Empire, #2126, while its shape is `none`) and are narrowed for a part
+within the Frontiers of the Roman Empire, #2126, a collection of its forts of shape `none`, #1723) and are narrowed for a part
 with a shape of its own. This rule is the session's design of 2026-11-17: it follows from the
 maintainer's ruling of the same day on the two forms and from "ticked for itself" above, and no
 ruling states it.
+
+**A site's count follows its source's list of components.** The Rideau Canal is one of its
+site's six, and its lock stations are not counted there: a visit to a lock station is a visit to
+the canal, and through it to one of the six. The session closed this on 2026-11-17 (#2619 line
+1.17), open to the maintainer's veto.
+
+**A part can hold what a visitor finds there** (the maintainer, 2026-11-17,
+[#2059](https://github.com/uncovering-world/track-your-regions/issues/2059#issuecomment-6947367409)): something to
+see, unknown, or nothing to see, with who proposed the value and who confirmed it. Köln-Alteburg,
+a component of the Lower German Limes, is a Roman fleet base under a residential street of
+Cologne. The model holds the fact so that the fresh database needs no migration for it, and
+nothing more is decided here: what the map shows by default, which signals propose a value and
+what a traveller reports are #2059's, decided when it is built, after a study of the catalogue's
+own points.
 
 **3. The default shape comes from one function, and a curator may pin it.**
 
 - A record the World Heritage list gives components to is `none`, whatever the walk between
   them (Würzburg's two, 159 m apart).
+- A record a curator confirms as a series is `none` at once, before any part arrives (the
+  maintainer, 2026-10-28, #2126: "a confirmed series is a whole at once: no coordinate, its row
+  stays in lists, nothing drawn while no part is shown"). The Egyptian pyramids, whose pin stands
+  at an arbitrary point in Cairo, lose it on the answer. The row stays in its kind's list, and in
+  its regions through the point its kind record reports (decision 11), and nothing is drawn for
+  it until a part is shown. This replaces the Draft's reading, the session's, that the pin
+  stayed until a first part made the record `none`. #2133 names what a confirmed whole with no
+  part is, which a class object (decision 9), also `none` with no parts, is not.
 - A `point` that gains parts becomes `none` when they lie more than 1 km apart and an `area`
   otherwise, as ADR-0210 decision 1 had it for dispersed and container. An `area` or a `line`
   that gains parts from any other source keeps its shape.
@@ -226,8 +248,10 @@ ruling states it.
   defaults confirms the span.
 - A curator pins the shape from the record's card (`shape_pinned_by`, `shape_pinned_at`),
   and the pinned shape stands over every rule here but the first: a serial World Heritage site is
-  `none` (the maintainer, 2026-10-28). Hadrian's Wall, a collection of its forts with shape `none` by the rule above (#1723, #2126),
-  becomes a `line` with parts when a curator says so.
+  `none` (the maintainer, 2026-10-28).
+- Hadrian's Wall stays a collection of its forts, shape `none` (the maintainer's decision of
+  2026-10-19, #1723, and #2126). The Hadrian's Wall Path, walked for 135 km, is a trail record of
+  its own (#1948).
 
 Which types are areas, and from what size, is measured in the slice that writes the defaults.
 
@@ -372,9 +396,14 @@ session's.
   among the proposed points. An AI helper (ADR-0016, ADR-0087) may suggest an answer on the card.
   A reader sees a proposal only once a curator has confirmed it, and one read from OpenStreetMap
   names its object (ADR-0059). The card's section is built with its proposals, and not before.
-- No row is written by default. A check lists the offered areas and lines that hold no main
-  arrival point, which is the "still unchecked" list #505 asks for, without a copy of the
-  source's point on every museum.
+- No row is written by default. A check lists the arrival points a source proposed and no
+  curator has answered, on a record of any shape, which is the "still unchecked" list #505 asks
+  for, without a copy of the source's point on every museum.
+- An area no source proposes an arrival point for is counted, and no curator is asked: Tsingy de
+  Bemaraha in Madagascar, for which neither the OpenStreetMap layer nor English Wikivoyage
+  proposes one. Its navigation link goes to its pin. That follows from the maintainer's principle
+  that a curator enters no fact from nothing (decision 12), and #2619 line 1.15 closed it so on
+  2026-11-17; the reading is the session's.
 
 **8. A record that is not a place is a row of `experiences` with shape `none`,** in the kind
 that offers it. It keeps the name, picture and credit, source records, admission, gate, review
@@ -393,6 +422,16 @@ shown, and this ADR moves no count of such a leaf: Seville Cathedral, were a cur
 its record in Seville's site while another kind still showed its point, is counted or not exactly
 as it is today. Whether such a leaf should follow its record too is asked when the point tables
 go (#2124), and not here.
+
+This decision was checked on three forms of the register of kinds
+(`db/catalogue-coverage/kinds.jsonl`): food (eight dishes read, thieboudienne among them), event
+(nine festivals read: the Gion Matsuri, Holy Week in Seville, the float festivals) and a type met
+at places (the khachkar, decision 9). It was not checked on the register's other forms: drink,
+activity, title, person, species, object and sound, nor on the itineraries filed under route
+("Golden Triangle: Delhi, Agra and Jaipur"), which are lists of places and not lines (#1948).
+#1676 writes the mapping of every form, with real entries for each. A species whose season
+differs by region ("Puffins in Iceland in June") may ask for a season per region, which nothing
+here holds.
 
 **9. A class object is a record of shape `none` with no parts.** The khachkar (8,781 instances
 on the Wikidata subset), Last Address and the Stolpersteine are types a traveller must see
@@ -429,9 +468,17 @@ it and it has no record. Until a second source is read (the type article's own
 links, which #2248 names), the pair in the maintainer's own example is offered to no curator, and
 nothing is built that would have a curator add it from nothing.
 
-What tells a class object from a series is whether the instances are places a traveller goes to
-by name. The Egyptian pyramids are (Khufu's, the Bent Pyramid), so they stay a whole with parts
-(#2126). That test is the session's (2026-11-16, #2248).
+**What tells a series from a class object** (the maintainer, 2026-11-17,
+[#2248](https://github.com/uncovering-world/track-your-regions/issues/2248#issuecomment-6949601870)): a series has
+a short, closed list of parts, each visited for itself; a class object has instances in the
+thousands, whether or not a few are famous. The Egyptian pyramids are a series (Khufu's, the
+Bent Pyramid), so they stay a whole with parts (#2126). A type with thousands of instances is a
+class object even when a few are gone to by name, and the named ones are places tied to it as
+"this place is one of them". Some 7,000 nuraghi stand across Sardinia: "nuraghe" is one record,
+one tick, "I saw one", and nothing reads "1 of 7,000". Su Nuraxi di Barumini, a World Heritage
+site offered in Archaeology, stays a place of its own, and a visit to it ticks the type. This
+replaces the session's test of 2026-11-16 (#2248), whether the instances are places a traveller
+goes to by name, which the ruling confirms in sharper wording.
 
 **10. A wide area needs no model of its own** (#2582). Yellowstone, the Serengeti, the Great
 Barrier Reef, a neighbourhood (Trastevere) and a town visited for itself are `area` records. A
@@ -439,6 +486,21 @@ record is never a region of a world view and a region never a record. A visit to
 lies within an area counts the area (#2125), so a traveller who stood at Old Faithful has been
 to Yellowstone. An area no land region holds (the Great Barrier Reef, 117 km from the nearest one)
 is placed by a region a source or a person names (#2580).
+
+A region a source names is that source's view, as its coordinate is (ADR-0084's `reported_*`):
+it is kept on the source's record, the placement is derived from it, and a curator's placement
+stands over it. Wikidata's country of origin names Senegal for thieboudienne. That is the
+session's rule of 2026-11-17 (#2619 line 3.2), from ADR-0084's pattern and the maintainer's
+ruling of 2026-11-16 on #2579 (comment of 18:33Z) that a curator's placement refers to the region
+it was made on. Resolving "Senegal" to a region is the matching the Wikivoyage view has not
+solved.
+
+Checked on the Wadden Sea, which #2582 names. It is a serial World Heritage site, so `none`
+(decision 3), and each of its components is an `area` (decision 2). A visit inside a component
+counts that component and, through it, the site, which reads "k of N". By decision 11 the site
+is drawn by its parts with the outlines they hold, framed by `focus` and placed in its parts'
+regions, and a component no land region holds is placed by a region a source or a person names,
+as the Great Barrier Reef is. Nothing in it asks for a model of its own.
 
 **11. Readers ask the shape and the pin, never a missing coordinate.**
 `db/readerPredicates.ts` gives `hasPinSql` (a marker, a distance or a fly-to can stand on it)
@@ -505,7 +567,7 @@ measurement.
 
 | A curator sets | What proposes it | What is not built yet |
 |---|---|---|
-| A pinned shape (decision 3) | The default rule gives every record a shape, so a pin is a correction and never a first entry. What OpenStreetMap draws for the item proposes the correction: Hadrian's Wall, a set of `historic=wall` ways under a default of `none` | A check that lists the records whose default shape and OpenStreetMap's drawing disagree |
+| A pinned shape (decision 3) | The default rule gives every record a shape, so a pin is a correction and never a first entry. What OpenStreetMap draws for the item proposes a correction, and a curator answers it: Hadrian's Wall, a set of `historic=wall` ways under a default of `none`, stays `none` (#1723) | A check that lists the records whose default shape and OpenStreetMap's drawing disagree |
 | A claimed coordinate (decision 5) | Each source's point on its record, on 3,995 of the 4,019 offered places; a difference is a review row | — |
 | A claimed outline or line (decision 6) | OpenStreetMap's polygon or line for the item: a polygon for 124 of the 214 wide areas (Yellowstone). For the 90 it does not draw, a curator's own outline (#2471) would be an entry from nothing, and nothing asks for one | The outlines of the kinds beside Archaeology (#1969), the choice between two sources' views (#2583), a canal's or a trail's line (#1948) |
 | The parts of a record by a curator's answer (decisions 2 and 14) | Wikidata's part-of statements: 81 items name the Canal du Midi, the Fonserannes locks among them. Containment in an outline held (325 places), which is what proposes Museum Island's museums, since its item names none. And nearness with a like name, the pairing pass's own rule | A finder that proposes parts as review rows (#2125, #2126); the pairing pass asking about a record that has parts (decision 14) |
@@ -516,6 +578,7 @@ measurement.
 | The strength of that relation (decision 9) | No source: a yes or a no on a proposed pair, which starts as the weaker | Nothing that asks it on a pair no source proposed |
 | A region named for a record with no ground of its own (decisions 9 and 10, #2580) | Wikidata's country of origin, right for six of eight dishes read (thieboudienne, Senegal), and the region each of the coverage surveys' 402 food entries is filed under. For an area at sea, the World Heritage record's State Party, which was not measured | #1676's kinds, and a match from a country's item to a region |
 | The place an event is held at (decision 8) | The location its item states, on seven of nine festivals read: the Gion Matsuri at Yasaka Shrine | #1676 |
+| What a visitor finds at a part (decision 2) | Signals #2059 measured (the part offered in another kind, an article of its own, a picture, a mapped object nearby), which do not yet tell something from nothing, and a traveller's report | #2059: the study of the signals, the default the map shows, the report |
 
 **13. A record is found by its item unless it is a serial object.** ADR-0203 decisions 1 and 3
 say that a place made of parts claims no Wikidata item by any column and that a merge never joins
@@ -543,7 +606,10 @@ would be refused. So:
   failure this decision removes. So all three take the shape test by going through
   `place_is_whole()`, and none spells "has a part" as the test of a serial object: a rule has
   one owner. The `merged-onto` refusal cannot ask the function of the state it reads today,
-  which is the state before the write: before its first part no record is a serial object. It
+  which is the state before the write: before its first part no record is a serial object,
+  a series a curator confirmed included, though it is `none` from the answer on (decision 3);
+  until its first part it claims its item as a record without parts does, which is the
+  session's reading. It
   asks `place_is_whole()` after the part's record is written, in the same transaction, when
   `shape_follows_parts()` has set the shape from the parts, and rolls the write back where the
   answer is true and the record has a standing merge that is not a "same group" answer
@@ -560,9 +626,9 @@ would be refused. So:
   by its own item" (`makesWhole`) only where the first part makes the record a serial object.
 
 **The claim follows the shape.** A curator who pins a shape changes what the record is found by.
-Hadrian's Wall (Q57357) is a collection of its forts with shape `none` (decision 3). Once it has
-parts and a curator states it a `line`, its item identifies it from that write on, and a later
-record of another kind that carries Q57357 is one place with it. Pinned back to `none`, it holds
+A record with parts and shape `none` that a curator states an `area` or a `line` is identified
+by its item from that write on, and a later record of another kind that carries the item is one
+place with it. Pinned back to `none`, it holds
 the item as referring again, and its own kinds' runs still find it through their records. A
 record whose kind states it an `area` or a `line` (the Canal du Midi, once the defaults of
 decision 3 are written) is never a `point` when it gains its first part, so it never passes
@@ -637,11 +703,13 @@ session's design of 2026-11-17:
 one place in World Heritage and in Places of worship (ADR-0084; #755, closed on the maintainer's
 decision of 2026-10-30), because a run finds a place by its item before it creates one
 (ADR-0143 decision 3). The Karnak Temple Complex (Q522862), a part of Ancient Thebes, is one
-place with two kinds' records the same way. The session reads the ruling of 2026-11-17 as one
-about records with parts: it was given to a question about a serial site and a kind's place of
-the same item. That reading is the session's and not the maintainer's. The maintainer's sentence
-is general ("one item does not prove that two records are one thing"), and whether it reaches a
-part's item or every place is listed below as not decided.
+place with two kinds' records the same way. The maintainer confirmed on 2026-11-17
+([#2581](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6949443990)) that the
+words of that morning, "two places are not merged because they share a Wikidata item", reach a
+record with parts, where an item can name the city, one component or the whole, and a curator
+answers. For two records that each have geography of their own and no parts, the join on an equal
+item stays automatic and raises no card. A wrong join of that sort is found by the Catalogue
+Checks and separated by a curator; #1944 measures components bound to a wrong item.
 
 **A near pair answered *part of* writes the relation.** The ruling of 2026-11-17 says that what
 is wanted between such records is the relation; the rule that the answer writes it is the
@@ -677,6 +745,8 @@ decision 9 has it: the khachkar and Noratus cemetery.
 | #2126 | The series-candidate check, cast groups, nesting, and the finder and card of decision 14's question | Decision 14's four answers and what each writes; `place_is_whole()` as decision 13 narrows it |
 | #2125 | Containers and "lies within" | `shape = 'area'` and `boundary`; it removes no point by hand |
 | #1969 | The read of outlines and lines by viewport, the layers, the credit | `shape`, `shape_min_zoom`, `extent` |
+| #2059 | What the map shows by default of what a visitor finds at a part, the signals that propose it, and a traveller's report | The part's fact with its three values and who proposed and confirmed it (decision 2) |
+| #2133 | What a confirmed whole with no part is, and the parts proposed for it | Shape `none` from the curator's answer (decision 3) |
 
 **Amended while Draft, in the pull request of its first slice (#2577):** decision 5 said a
 part gained or lost changes nothing on an `area` or a `line`. That left an area its parts had
@@ -762,6 +832,52 @@ Not decided by these amendments, and the maintainer's to decide before the ADR i
   it as well. Decision 2 counts the extended object; the Rideau Canal's lock stations would
   make the site's six parts more if they were counted too.
 
+**Amended as a Draft, to the maintainer's rulings of 2026-11-17 put from #2619 (#2581, #2248,
+#2059), to two earlier decisions of the maintainer the Draft did not follow (#2126, #1723), and
+to the lines of #2619 the session closed the same day.** Each change names its line in #2619.
+
+- **Decision 3, a confirmed series (line 1.13).** A series a curator confirms is `none` at once:
+  no coordinate, its row in lists, nothing drawn while no part is shown, as the maintainer decided
+  on 2026-10-28 (#2126). The Draft's reading, the session's, kept the pin until a first part.
+  Decision 13, which depends on it, says that such a record is still no serial object for
+  `place_is_whole()` until its first part, the session's reading. The interface table gains
+  #2133's row.
+- **Decisions 2, 3, 12 and 13 and the Consequences, Hadrian's Wall (line 1.14).** The sentence
+  that the wall "becomes a `line` with parts when a curator says so" is struck, with the example
+  of decision 13 built on it and the two sentences of the Consequences that followed from it.
+  The maintainer's decision of 2026-10-19 (#1723) stands: the wall stays a collection of its
+  forts, and the Hadrian's Wall Path is a trail record of its own. Decision 13 states the claim's
+  rule with no example, and decision 12's table says a curator keeps the wall `none`.
+- **Decision 7, an area no source proposes an arrival point for (line 1.15).** It is counted,
+  no curator is asked, and its navigation link goes to its pin; the check lists the proposed
+  points not yet answered, on a record of any shape. From the maintainer's principle of
+  decision 12; the reading is the session's. The Consequences and an alternative follow.
+- **Decision 14, a shared item (line 1.16).** The maintainer confirmed on 2026-11-17
+  ([#2581](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6949443990)) that the ruling
+  on a shared item reaches a record with parts, and that two ordinary places with an equal item
+  stay joined automatically (Cologne Cathedral). The paragraph no longer calls that reading the
+  session's.
+- **Decision 2, the lock stations (line 1.17).** A site's count follows its source's list of
+  components: the Rideau Canal is one of its site's six, its lock stations are not counted
+  there, and a visit to one is a visit to the canal. Closed by the session.
+- **Decision 9, a series against a class object (line 1.18).** The test is the maintainer's, in
+  the ruling's wording ([#2248](https://github.com/uncovering-world/track-your-regions/issues/2248#issuecomment-6949601870)): a
+  short, closed list of parts against instances in the thousands, with the nuraghe as its case.
+  It no longer carries the session's mark.
+- **Decision 2, what a visitor finds (line 3.1).** A part can hold it, with three values and who
+  proposed and who confirmed it (the maintainer, 2026-11-17,
+  [#2059](https://github.com/uncovering-world/track-your-regions/issues/2059#issuecomment-6947367409)). The
+  default the map shows stays #2059's. Decision 12's table and the interface table gain its row.
+- **Decision 10 (lines 3.2 and 3.28).** A region a source names is that source's view, the
+  session's rule from ADR-0084's pattern. The decision is checked on the Wadden Sea, which #2582
+  names, against what decisions 10 and 11 say.
+- **Decision 8 (line 3.29)** says which forms of the register of kinds it was checked on, and
+  which not.
+
+The three questions the note above left to the maintainer are answered: the check of decision 7
+for an area no source proposes for (line 1.15), how far the ruling on a shared item reaches
+(line 1.16), and the lock stations of a part that is itself an extended object (line 1.17).
+
 ## Alternatives Considered
 
 | Option | Why rejected |
@@ -788,7 +904,7 @@ Not decided by these amendments, and the maintainer's to decide before the ADR i
 | No pin on an area that holds an outline | Read literally, "shown by its outline" removes the square from every map below the zoom where 9 ha can be seen, and from the heat map, search, crowding and "near me". |
 | The pin at the main arrival point | Yellowstone would stand on its edge in Montana, and the Canal du Midi at one end again. Inside an area small enough to be a pin, the difference cannot be seen; on a wide one it misleads. |
 | The arrival point on the record's coordinate, as #505 was filed ("the reader-facing coordinate … is the arrival point") | It makes one column carry where the thing is and where to go in, the two facts #505 itself tells apart. |
-| An arrival point defaulted to the source's point on every record | About 24,000 rows that say nothing. The check of decision 7 lists what lacks one where it matters. |
+| An arrival point defaulted to the source's point on every record | About 24,000 rows that say nothing. The check of decision 7 lists what was proposed and not answered. |
 | An arrival point as a part place | A park gate would get a card, a tick and a line in "k of N". |
 | A non-place in a table of its own | A second copy of the gate, the queue, merges, regions, periods and visits, or foreign keys to two tables. |
 
@@ -813,7 +929,8 @@ Not decided by these amendments, and the maintainer's to decide before the ADR i
 - An answer *part of* is a relation a traveller's visit follows, where 69 such answers on the
   development catalogue changed nothing.
 - The catalogue can list what it lacks: an area or a line that still holds its coordinate
-  (no outline or line of its own), and a wide area with no arrival point.
+  (no outline or line of its own), and the arrival points proposed and not yet answered. The
+  wide areas no source proposes a point for are counted.
 
 **Negative / Trade-offs:**
 
@@ -827,10 +944,10 @@ Not decided by these amendments, and the maintainer's to decide before the ADR i
   goes to the arrival point.
 - A curator cannot move the pin of an area that holds an outline of its own; a wrong pin
   there is a wrong outline (#2471).
-- Hadrian's Wall stays a collection with no pin of its own until a curator states it a line.
+- A series a curator confirms loses its stray pin at once and is drawn by nothing until a part
+  is shown: the Egyptian pyramids before their first pyramid.
 - What a record is found by now moves with a curator's pinned shape, and needs one more trigger
-  on `experiences` (decision 13). A curator who states Hadrian's Wall a line also makes it its
-  item's place.
+  on `experiences` (decision 13).
 - The 50 twins of serial sites are 50 questions, most of them answered alike, where #2126's
   automatism asked none.
 - Wikidata's statement no longer answers a pair toward a record with no part. All 40 answers the
@@ -862,4 +979,5 @@ Not decided by these amendments, and the maintainer's to decide before the ADR i
 - Related docs: `docs/tech/experiences.md` § Location model, `docs/tech/experience-map-ui.md`,
   `docs/tech/geometry-columns.md`, `docs/tech/catalogue-coverage.md`
 - Issues: #2577, #505, #2248, #2582, #2125, #1948, #1676, #2583, #2579, #2580, #2581, #1969,
-  #2471, #714, #2124, #2578, #2116, #2586, #2126, #2118, #2528, #2276, #1944, #755, Epic #2115
+  #2471, #714, #2124, #2578, #2116, #2586, #2126, #2118, #2528, #2276, #1944, #755, #1723, #2059,
+  #2133, #2619, Epic #2115
