@@ -18,7 +18,19 @@ import { TEST_DB_NAME_PATTERN } from '../db/testDbName.js';
  * own catalogue when nothing is set, and a spec here builds and tears down rows,
  * so anything not named like a test database is refused before a spec loads.
  * Same pattern as the E2E seed's guard, decided once in `src/db/testDbName.ts`.
+ *
+ * Then it lifts every sequence of the schema to `SEQUENCE_FLOOR` (#2602). The
+ * specs pin their rows' ids by hand, below the floor, and the code under test
+ * numbers what it creates from the sequences. The E2E seed leaves each
+ * sequence just above its own ids, and the lane's writers take values from
+ * it, so without the lift a sequence walks through the pinned ids and turns
+ * an unchanged spec red whenever an earlier one makes one row more, or the
+ * files run in another order. Every sequence is lifted, not only the places': a pinned id is a
+ * pinned id in any table, and a floor no spec reaches costs nothing.
  */
+
+/** Above every id a spec pins, and within an `integer` column. */
+export const SEQUENCE_FLOOR = 100_000_000;
 export default async function requireTestDatabase(): Promise<void> {
   const host = process.env.DB_HOST || 'localhost';
   const port = parseInt(process.env.DB_PORT || '5432');
@@ -49,13 +61,37 @@ export default async function requireTestDatabase(): Promise<void> {
         'inside the isolated test stack, against track_regions_test.',
     );
   }
-  await pool.end();
 
   if (!TEST_DB_NAME_PATTERN.test(landedOn)) {
+    await pool.end();
     throw new Error(
       `The database-backed lane landed on "${landedOn}", which is not named like a test ` +
         'database. Its specs write rows, so anything else is refused. Run `npm run test:db`, ' +
         'which points the lane at the isolated test stack.',
     );
+  }
+
+  try {
+    await liftSequences(pool);
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Every sequence of the schema at `SEQUENCE_FLOOR` at least, so nothing the
+ * code under test creates takes an id a spec pins. A sequence already past
+ * the floor (a second run on the same database) keeps its place.
+ */
+async function liftSequences(pool: Pool): Promise<void> {
+  const { rows } = await pool.query<{ name: string; last_value: string | null }>(
+    `SELECT format('%I.%I', schemaname, sequencename) AS name, last_value
+       FROM pg_sequences
+      WHERE schemaname = 'public' AND max_value >= $1`,
+    [SEQUENCE_FLOOR],
+  );
+  for (const { name, last_value: stood } of rows) {
+    if (stood !== null && Number(stood) >= SEQUENCE_FLOOR) continue;
+    await pool.query('SELECT setval($1::regclass, $2)', [name, SEQUENCE_FLOOR]);
   }
 }
