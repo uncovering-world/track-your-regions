@@ -272,7 +272,7 @@ Number 0142 was never used: no ADR holds it, and none is missing.
 | [0183](0183-a-crowded-city-is-answered-on-its-regions-list-and-a-place-in-its-own-circle.md) | A crowded city is answered on its region's list, and a place in its own circle | Accepted | 2026-11-04 |
 | [0184](0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md) | A readers' floor is the readers of a fixed rank among the year's items | Accepted | 2026-11-08 |
 | [0185](0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md) | Archaeology reads a World Heritage listing as a mark and as the map | Accepted | 2026-11-08 |
-| [0186](0186-the-point-dialog-draws-eoxs-open-sentinel-2-mosaic-and-a-keyed-detailed-source-waits-for-an-account.md) | The point dialog draws EOX's open Sentinel-2 mosaic, and a keyed detailed source waits for an account | Accepted | 2026-11-08 |
+| [0186](0186-the-point-dialog-draws-eoxs-open-sentinel-2-mosaic-and-a-keyed-detailed-source-waits-for-an-account.md) | The point dialog draws EOX's open Sentinel-2 mosaic, and a keyed detailed source waits for an account | Accepted — decision 4's wait for an account no longer holds (#2204) | 2026-11-08 |
 | [0187](0187-a-held-surroundings-tier-place-stays-at-0-8-of-its-editions-reference.md) | A held surroundings-tier place stays at 0.8 of its editions reference | Accepted | 2026-11-08 |
 | [0188](0188-a-ruin-mapped-near-a-site-under-its-name-shows-the-site.md) | A ruin mapped near a site under its name shows the site | Accepted | 2026-11-08 |
 | [0189](0189-a-component-renumbered-or-moved-stays-its-part-found-by-its-name.md) | A component renumbered or moved stays its part, found by its name | Accepted | 2026-11-08 |
