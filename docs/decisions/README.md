@@ -303,13 +303,14 @@ Number 0142 was never used: no ADR holds it, and none is missing.
 | [0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md) | A place carries its lifetime, and only the place's own end hides it | Accepted — decisions 1 and 3 replaced, and decision 4 narrowed on a new place, by [0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) | 2026-11-15 |
 | [0215](0215-a-password-is-digested-whole-before-bcrypt.md) | A password is digested whole before bcrypt | Accepted | 2026-11-16 |
 | [0216](0216-a-withdrawn-part-stays-shown-until-a-curator-answers.md) | A withdrawn part stays shown until a curator answers | Accepted — decisions 2 and 3 narrowed by [0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) | 2026-11-16 |
-| [0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) | Time in the catalogue is held as periods, and the catalogue is read as of a date | Accepted | 2026-11-16 |
+| [0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) | Time in the catalogue is held as periods, and the catalogue is read as of a date | Accepted — decision 7 narrowed by [0224](0224-the-open-rules-of-adr-0217-to-adr-0219-are-the-maintainers-and-a-tick-paints-only-the-ground-the-traveller-was-on.md) | 2026-11-16 |
 | [0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md) | A record states its shape, and its pin is derived from what it holds | Accepted | 2026-11-16 |
-| [0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md) | A visit is one row on what the traveller met, and a tick on a region moves or asks when the region goes | Accepted | 2026-11-16 |
+| [0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md) | A visit is one row on what the traveller met, and a tick on a region moves or asks when the region goes | Accepted — decisions 3, 4, 5 and 9 narrowed by [0224](0224-the-open-rules-of-adr-0217-to-adr-0219-are-the-maintainers-and-a-tick-paints-only-the-ground-the-traveller-was-on.md) | 2026-11-16 |
 | [0220](0220-city-gates-and-walls-takes-no-gate-or-wall-from-archaeology.md) | City gates & walls takes no gate or wall from Archaeology, and the Porta Nigra is offered there | Accepted | 2026-11-17 |
 | [0221](0221-the-wikidata-subset-is-not-published-and-a-stack-that-needs-it-builds-it.md) | The Wikidata subset is not published, and a stack that needs it builds it | Accepted | 2026-11-17 |
 | [0222](0222-a-curator-in-scope-reads-a-refused-place-by-id.md) | A curator in scope reads a refused place by id | Accepted | 2026-11-17 |
 | [0223](0223-a-queue-keeps-two-pull-requests-open-at-most-and-the-dev-stacks-keeper-holds-no-queue.md) | A queue keeps two pull requests open at most, and the dev stack's keeper holds no queue | Accepted | 2026-11-17 |
+| [0224](0224-the-open-rules-of-adr-0217-to-adr-0219-are-the-maintainers-and-a-tick-paints-only-the-ground-the-traveller-was-on.md) | The open rules of ADR-0217 to ADR-0219 are the maintainer's, and a tick paints only the ground the traveller was on | Accepted | 2026-11-17 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
