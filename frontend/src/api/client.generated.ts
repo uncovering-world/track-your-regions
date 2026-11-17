@@ -8574,6 +8574,161 @@ export interface KindNeighbours {
 }
 
 /**
+ * What the kind's declaration keeps out, in its own words ("a lighthouse, not a tower"); null for a kind whose rule is not declared as data.
+ */
+export type KindRuleKeptOut = ({
+  reason: string;
+  /** When the refusal does not hold: a type of `unlessTypes` names the place, any type of the kind does, a class of the kind's own names it too, or another class of the kind's own does; null where it always holds. */
+  unless: 'types' | 'anyType' | 'ownClass' | 'anotherClass' | null;
+  unlessTypes: string[];
+})[] | null;
+
+export type KindRuleWorldMarksItem = typeof KindRuleWorldMarksItem[keyof typeof KindRuleWorldMarksItem];
+
+
+export const KindRuleWorldMarksItem = {
+  wikivoyage: 'wikivoyage',
+  atlasObscura: 'atlasObscura',
+  worldHeritageList: 'worldHeritageList',
+} as const;
+
+/**
+ * The world tier's lines, as the kind's last real run read them off its pool; null where no run did.
+ */
+export type KindRuleWorld = {
+  /**
+     * How many places of the kind's classes the run read the bars on.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  pool: number;
+  /**
+     * The editions bar: Wikipedia articles in this many languages or more.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  editions: number;
+  /** The editions bar's quantile of the pool: 0.97 lets in the top 3 %. */
+  editionsQuantile: number;
+  /** The readers' bar: this many readers a year or more; null where no year was ever read. */
+  readers: number | null;
+  readersQuantile: number;
+  /** The readers' bar of a place a travel guide or Atlas Obscura uses; null where no year was ever read. */
+  guidedReaders: number | null;
+  guidedQuantile: number;
+  /**
+     * The readership year the readers were counted over: "2025-11 to 2026-10".
+     * @nullable
+     */
+  year: string | null;
+  /** The share of a bar a place the last run admitted stays at: 0.8. */
+  stayShare: number;
+  /** What marks a place as one a guide uses, for the guided readers' bar: a Wikivoyage edition's use, an Atlas Obscura entry, and for Archaeology a World Heritage listing (ADR-0185). */
+  marks: KindRuleWorldMarksItem[];
+} | null;
+
+/**
+ * The venue test, for a kind that reads the food-and-drink venues around its places (Squares & streets); null otherwise.
+ */
+export type KindRuleSurroundingsVenues = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  radiusM: number;
+  share: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  groupFloor: number;
+} | null;
+
+/**
+ * Where a place of this tier needs an OpenStreetMap object the kind reads as the place (Archaeology, ADR-0179), and what stands for one; null otherwise.
+ */
+export type KindRuleSurroundingsMapped = {
+  /** A site the World Heritage List inscribes stands for the map (ADR-0185). */
+  listedStands: boolean;
+  /**
+     * A ruin or dig mapped within this distance under a word of its name stands for it (ADR-0188).
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  namedRuinWithinM: number;
+} | null;
+
+/**
+ * The surroundings tier, for a kind admitted by fame; null otherwise.
+ */
+export type KindRuleSurroundings = {
+  /**
+     * A place is measured against the places of its density within this distance.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  radiusKm: number;
+  /**
+     * The reference is the median of this many best places around it.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  best: number;
+  /**
+     * Wikipedia articles in this many languages or more.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  minLanguages: number;
+  /**
+     * About this many readers a year: the readers' floor on the year it was derived on.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  minReaders: number;
+  /** The Wikivoyage test passes at this share of the reference's guide editions. */
+  guideShare: number;
+  /**
+     * The Wikivoyage test reads an area of this many places or more.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  guideGroupFloor: number;
+  editionsShare: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  editionsGroupFloor: number;
+  readersShare: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  readersGroupFloor: number;
+  /** The types of the kind that enter only when a Wikivoyage edition uses them. */
+  guideOnlyTypes: string[];
+  /** Of those, the types a heritage designation that still holds lets in as a guide would. */
+  heritageTypes: string[];
+  /** The venue test, for a kind that reads the food-and-drink venues around its places (Squares & streets); null otherwise. */
+  venues: KindRuleSurroundingsVenues;
+  /** Where a place of this tier needs an OpenStreetMap object the kind reads as the place (Archaeology, ADR-0179), and what stands for one; null otherwise. */
+  mapped: KindRuleSurroundingsMapped;
+} | null;
+
+/**
+ * A kind's rule as its code and its last run state it (#2185).
+ */
+export interface KindRule {
+  /** What the kind's declaration keeps out, in its own words ("a lighthouse, not a tower"); null for a kind whose rule is not declared as data. */
+  keptOut: KindRuleKeptOut;
+  /** The world tier's lines, as the kind's last real run read them off its pool; null where no run did. */
+  world: KindRuleWorld;
+  /** The surroundings tier, for a kind admitted by fame; null otherwise. */
+  surroundings: KindRuleSurroundings;
+}
+
+/**
  * One place found by name.
  */
 export interface PlaceResult {
@@ -15205,6 +15360,31 @@ export const getGetExperiencesReviewKindNeighboursByMembershipIdUrl = (membershi
 export const getExperiencesReviewKindNeighboursByMembershipId = async (membershipId: number, options?: Parameters<typeof apiFetch>[1]): Promise<KindNeighbours> => {
 
   return apiFetch<KindNeighbours>(getGetExperiencesReviewKindNeighboursByMembershipIdUrl(membershipId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewKindRuleByKindIdUrl = (kindId: number,) => {
+
+
+
+
+  return `/api/experiences/review/kind-rule/${encodeURIComponent(String(kindId))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary A kind's rule as its code and its last run state it: what it keeps out and the fame lines it admits by
+ */
+export const getExperiencesReviewKindRuleByKindId = async (kindId: number, options?: Parameters<typeof apiFetch>[1]): Promise<KindRule> => {
+
+  return apiFetch<KindRule>(getGetExperiencesReviewKindRuleByKindIdUrl(kindId),
   {
     ...options,
     method: 'GET'

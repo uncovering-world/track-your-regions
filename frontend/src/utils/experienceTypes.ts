@@ -247,6 +247,11 @@ const KIND_NOUNS: Readonly<Record<number, string>> = {
   9: 'a square or street',
 };
 
+/** What one place of the kind is called, with its article ("a tower"); null for a kind with no noun. */
+export function kindNoun(kindId: number | null | undefined): string | null {
+  return (kindId != null ? KIND_NOUNS[kindId] : undefined) ?? null;
+}
+
 /** The question an arrival's card opens with: "Is this a tower?". */
 export function kindQuestion(kindId: number | null | undefined, kindName: string): string {
   const noun = kindId != null ? KIND_NOUNS[kindId] : undefined;

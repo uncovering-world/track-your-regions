@@ -344,7 +344,7 @@ export function GatedSection({ group, heading, onDone }: {
 
       {/* The kind's line, read from real answered neighbours of the same type (#2185). */}
       {arrival && arrival.membership_id != null && arrival.kind_id != null && (
-        <KindNeighbours membershipId={arrival.membership_id} kindName={arrival.kind_name} />
+        <KindNeighbours membershipId={arrival.membership_id} kindId={arrival.kind_id} kindName={arrival.kind_name} />
       )}
 
       {/* The arrival's type, under the place, where its kind files places under types (#2185). */}

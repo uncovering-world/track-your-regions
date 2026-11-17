@@ -193,6 +193,8 @@ export const queryKeys = {
     articleLead: (placeId: number, article: string | null) => ['curation', 'articleLead', placeId, article] as const,
     /** Under `reviewQueueAll`: an answer, or a place's card closing, changes which neighbour a kind has kept or turned away. */
     kindNeighbours: (membershipId: number) => ['curation', 'reviewQueue', 'kindNeighbours', membershipId] as const,
+    /** Outside `reviewQueueAll`: an answer changes no kind's rule, only a run does. */
+    kindRule: (kindId: number) => ['curation', 'kindRule', kindId] as const,
   },
 
   /** Per user: each key names the caller. */
