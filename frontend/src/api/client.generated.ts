@@ -8529,6 +8529,51 @@ export interface ReviewArticleLeads {
 }
 
 /**
+ * The place of the same kind and type a curator kept most recently, readers offered it; null where none is.
+ */
+export type KindNeighboursKept = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  placeId: number;
+  name: string;
+  /** @nullable */
+  imageUrl: string | null;
+  imageCredit: ImageCredit | null;
+} | null;
+
+/**
+ * The place of the same kind and type a curator turned away from the kind most recently, one the caller may be shown; null where none is.
+ */
+export type KindNeighboursRefused = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  placeId: number;
+  name: string;
+  /** @nullable */
+  imageUrl: string | null;
+  imageCredit: ImageCredit | null;
+  /**
+     * Why the place is out of the kind, as the membership records it: a curator's "kept out by a curator", or the rule's own reason a curator upheld, which may be about the place's fame or state rather than its kind.
+     * @nullable
+     */
+  reason: string | null;
+} | null;
+
+/**
+ * An arrival's answered neighbours in its kind and type, one kept and one refused (#2185).
+ */
+export interface KindNeighbours {
+  /** The place of the same kind and type a curator kept most recently, readers offered it; null where none is. */
+  kept: KindNeighboursKept;
+  /** The place of the same kind and type a curator turned away from the kind most recently, one the caller may be shown; null where none is. */
+  refused: KindNeighboursRefused;
+}
+
+/**
  * One place found by name.
  */
 export interface PlaceResult {
@@ -15135,6 +15180,31 @@ export const getGetExperiencesReviewArticleLeadsUrl = (params: GetExperiencesRev
 export const getExperiencesReviewArticleLeads = async (params: GetExperiencesReviewArticleLeadsParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewArticleLeads> => {
 
   return apiFetch<ReviewArticleLeads>(getGetExperiencesReviewArticleLeadsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewKindNeighboursByMembershipIdUrl = (membershipId: number,) => {
+
+
+
+
+  return `/api/experiences/review/kind-neighbours/${encodeURIComponent(String(membershipId))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary One place of an arrival's kind and type a curator kept, and one a curator turned away
+ */
+export const getExperiencesReviewKindNeighboursByMembershipId = async (membershipId: number, options?: Parameters<typeof apiFetch>[1]): Promise<KindNeighbours> => {
+
+  return apiFetch<KindNeighbours>(getGetExperiencesReviewKindNeighboursByMembershipIdUrl(membershipId),
   {
     ...options,
     method: 'GET'

@@ -42,6 +42,7 @@ import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
 import { VisitReadingLine } from './VisitReadingLine';
 import { KindReadingLine, suggestedKindOf, useKindReading } from './KindReadingLine';
 import { ArrivalKindChoice } from './ArrivalKindChoice';
+import { KindNeighbours } from './KindNeighbours';
 import { notOfKind, typeOptionsFor, typeWordFor } from '../../utils/experienceTypes';
 import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
@@ -340,6 +341,11 @@ export function GatedSection({ group, heading, onDone }: {
           </GatedRow>
         )}
       </Stack>
+
+      {/* The kind's line, read from real answered neighbours of the same type (#2185). */}
+      {arrival && arrival.membership_id != null && arrival.kind_id != null && (
+        <KindNeighbours membershipId={arrival.membership_id} kindName={arrival.kind_name} />
+      )}
 
       {/* The arrival's type, under the place, where its kind files places under types (#2185). */}
       {arrival && typeOptionsFor(arrival.kind_id).length > 0 && (
