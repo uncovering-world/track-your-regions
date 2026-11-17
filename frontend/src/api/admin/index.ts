@@ -23,7 +23,8 @@ import {
   postAdminSyncSourcesBySourceIdFindComponentItems, postAdminSyncSourcesBySourceIdFixImages,
   postAdminSyncSourcesBySourceIdStart, putAdminSyncSourcesBySourceIdCacheByKindTtl,
   putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdWikidataReader, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
-  type CreateCuratorAssignmentBody, type GetAdminCurationActivityParams, type GetAdminSyncLogsByLogIdChangesParams,
+  type CreateCuratorAssignmentBody, type GetAdminCurationActivityParams, type GetAdminCuratorsByUserIdActivityParams,
+  type GetAdminSyncLogsByLogIdChangesParams,
   type SourceLineBody,
 } from '../adminClient.generated';
 
@@ -358,15 +359,18 @@ export async function revokeCuratorAssignment(
   return deleteAdminCuratorsByAssignmentId(assignmentId);
 }
 
+/** What one curator's trail narrows by (#956): the period, a place's name, and the page. */
+export type CuratorActivityFilters = GetAdminCuratorsByUserIdActivityParams;
+
 /**
- * Get curator activity log
+ * One curator's acts, newest first, a batch publish as one entry, with the
+ * period's counts (#956).
  */
 export async function getCuratorActivity(
   userId: number,
-  limit = 50,
-  offset = 0,
+  filters: CuratorActivityFilters = {},
 ): Promise<CuratorActivity> {
-  return getAdminCuratorsByUserIdActivity(userId, { limit, offset });
+  return getAdminCuratorsByUserIdActivity(userId, { limit: 50, offset: 0, ...filters });
 }
 
 /** What the curation activity feed narrows by (#611): every filter is optional and they compose. */

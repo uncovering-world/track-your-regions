@@ -29,6 +29,7 @@ const entry = (id: number, over: Record<string, unknown>) => ({
 beforeEach(() => {
   mockedFeed.mockReset().mockResolvedValue({
     total: 120, limit: 50, offset: 0,
+    counts: { againstTheRule: 20, arrivalsTurnedAway: 177, keptOutAsTheRuleSaid: 57, editedByHand: 24, published: 1007 },
     // Everyone the log names: the admin, a curator, and one whose scope was revoked.
     curators: [{ id: 1, name: 'Administrator' }, { id: 7, name: 'A curator' }, { id: 12, name: 'A former curator' }],
     activity: [
@@ -110,7 +111,10 @@ describe('the curation activity feed (#611)', () => {
   });
 
   it('says when the filters match nothing', async () => {
-    mockedFeed.mockResolvedValue({ total: 0, limit: 50, offset: 0, activity: [], curators: [] });
+    mockedFeed.mockResolvedValue({
+      total: 0, limit: 50, offset: 0, activity: [], curators: [],
+      counts: { againstTheRule: 0, arrivalsTurnedAway: 0, keptOutAsTheRuleSaid: 0, editedByHand: 0, published: 0 },
+    });
     renderPanel();
     expect(await screen.findByText('No curation activity matches these filters.')).toBeInTheDocument();
   });

@@ -40,13 +40,12 @@ import {
   listCurators,
   createCuratorAssignment,
   revokeCuratorAssignment,
-  getCuratorActivity,
   searchUsers,
   getSources,
 } from '../../api/admin';
 import type { RegionSearchResult } from '../../api/regions';
 import type { CuratorInfo, CuratorScope } from '../../api/admin';
-import { CurationActivityTable } from './CurationActivityTable';
+import { CuratorActivityDialog } from './CuratorActivityDialog';
 import { RegionSearchPicker } from './RegionSearchPicker';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { displayNameOf } from '../../utils/displayName';
@@ -55,6 +54,12 @@ import { queryKeys } from '../../api/queryKeys';
 // =============================================================================
 // Main Panel
 // =============================================================================
+
+/** A curator as the card names them: their display name, else their address, else their id. */
+function nameOf(curator: CuratorInfo | undefined): string | null {
+  if (!curator) return null;
+  return displayNameOf(curator.display_name) || curator.email || `User #${curator.user_id}`;
+}
 
 export function CuratorPanel() {
   const queryClient = useQueryClient();
@@ -118,9 +123,12 @@ export function CuratorPanel() {
         onClose={() => setAddFormOpen(false)}
       />
 
-      {/* Activity Log Dialog */}
-      <ActivityDialog
+      {/* Activity Log Dialog: one per curator, so a page, a period or a search
+          one trail was left at never carries over to the next one opened. */}
+      <CuratorActivityDialog
+        key={activityUserId ?? 'none'}
         userId={activityUserId}
+        name={nameOf(curators?.find((curator) => curator.user_id === activityUserId))}
         onClose={() => setActivityUserId(null)}
       />
     </Box>
@@ -156,7 +164,7 @@ function CuratorCard({
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
               <Typography variant="subtitle1" fontWeight={600}>
-                {displayNameOf(curator.display_name) || curator.email || `User #${curator.user_id}`}
+                {nameOf(curator)}
               </Typography>
               <Chip
                 label={curator.role}
@@ -424,42 +432,6 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
         >
           {createMutation.isPending ? 'Assigning...' : 'Assign'}
         </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// =============================================================================
-// Activity Dialog
-// =============================================================================
-
-function ActivityDialog({
-  userId,
-  onClose,
-}: {
-  userId: number | null;
-  onClose: () => void;
-}) {
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.admin.curatorActivity(userId),
-    queryFn: () => getCuratorActivity(userId!),
-    enabled: !!userId,
-  });
-
-  return (
-    <Dialog open={!!userId} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Curator Activity Log</DialogTitle>
-      <DialogContent>
-        {isLoading && <LoadingSpinner size={24} padding="12px 0" />}
-        {!isLoading && !data?.activity.length && (
-          <Typography color="text.secondary" sx={{ py: 2 }}>
-            No curation activity recorded yet.
-          </Typography>
-        )}
-        {!isLoading && data?.activity.length ? <CurationActivityTable activity={data.activity} /> : null}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );

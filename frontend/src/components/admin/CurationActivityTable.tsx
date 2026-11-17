@@ -27,6 +27,7 @@ function actEntryOf(entry: CuratorActivityEntry): ActEntry {
     kind_name: entry.kind_name,
     created_at: entry.created_at,
     who: actorName(entry),
+    batch: entry.batch,
     place: {
       id: entry.experience_id,
       name: entry.experience_name,
@@ -46,7 +47,8 @@ export function CurationActivityTable({ activity, showCurator = false }: {
       entries={activity.map(actEntryOf)}
       variant="trail"
       showCurator={showCurator}
-      rowActions={(entry) => entry.place && <CuratePlaceButton placeId={entry.place.id} name={entry.place.name} />}
+      // A batch is many places: its row opens none, and its places are listed under it.
+      rowActions={(entry) => !entry.batch && entry.place && <CuratePlaceButton placeId={entry.place.id} name={entry.place.name} />}
     />
   );
 }

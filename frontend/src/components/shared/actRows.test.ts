@@ -49,7 +49,9 @@ describe('an act of the curation log as rows of an audit table (#956)', () => {
 
     const refused = act('arrival_refused', { reason: 'kept out by a curator', membershipId: 155469, note: null }, 'Bridges & engineering marvels');
     expect(actRows(refused)).toEqual([{ fact: 'Bridges & engineering marvels', before: 'In, by the rule', after: 'Out' }]);
-    expect(againstTheRule(refused)).toBe(true);
+    // An arrival turned away is the gate's routine review, not a dispute with the rule.
+    expect(againstTheRule(refused)).toBe(false);
+    expect(againstTheRule(act('kept_out', { kind: 'Archaeology' }, 'Archaeology'))).toBe(true);
     expect(actWhy(refused)).toBeNull();
 
     const confirmed = act('admission_confirmed', { reason: 'no monument or memorial class', membershipId: 1 }, 'Monuments & memorials');
