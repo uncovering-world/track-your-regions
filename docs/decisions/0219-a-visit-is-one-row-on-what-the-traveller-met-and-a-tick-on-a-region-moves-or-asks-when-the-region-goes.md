@@ -6,7 +6,7 @@
 [#2580](https://github.com/uncovering-world/track-your-regions/issues/2580), Epic #2115; it
 settles #768
 **Built by:** #2579, #2580, #768, #2008, #1948, #1676, #616, #584, #2015, #1173, #2594, #587,
-#1169, #1170, #1171, #2135
+#1169, #1170, #1171, #2135, #2631
 **Narrows:**
 [ADR-0199](0199-a-visit-is-one-row-on-the-place-ticked-and-a-whole-is-read-through-its-parts.md)
 decision 1 (the one visit table also holds a work seen, a tick on a region and the traveller's
