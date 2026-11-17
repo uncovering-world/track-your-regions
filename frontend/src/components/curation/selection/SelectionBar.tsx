@@ -14,7 +14,9 @@ import { useState } from 'react';
 import {
   Box, Button, Collapse, LinearProgress, Paper, Stack, Typography,
 } from '@mui/material';
-import type { ReviewAnswer } from '../../../api/reviewQueue';
+import type { BatchReason, ReviewAnswer } from '../../../api/reviewQueue';
+import { REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
+import { ReasonMenu } from '../../shared/ReasonMenu';
 import type { QueueRow } from '../queueRows';
 import {
   ANSWER_WORDS, countLine, KIND_NOUN, type AnswerableKind,
@@ -40,13 +42,14 @@ export function SelectionBar({
   total: number;
   /** The batch in flight, or null. */
   progress: AnswerProgress | null;
-  onAnswer: (answer: ReviewAnswer) => void;
+  onAnswer: (answer: ReviewAnswer, reason?: BatchReason) => void;
   onClear: () => void;
 }) {
   const [showing, setShowing] = useState<ReviewAnswer | null>(null);
   if (rows.length === 0 && !allMatching) return null;
   const busy = progress !== null;
   const kinds = reach;
+  const rejectAsks = turnAwayAsks(reach);
 
   const heading = allMatching
     ? `All ${total.toLocaleString('en')} matching these filters`
@@ -87,8 +90,8 @@ export function SelectionBar({
           busy={busy} showing={showing} setShowing={setShowing} onAnswer={onAnswer}
         />
         <AnswerButton
-          answer="reject" label="Reject the proposed changes" color="warning"
-          busy={busy} showing={showing} setShowing={setShowing} onAnswer={onAnswer}
+          answer="reject" label={rejectAsks?.label ?? 'Reject the proposed changes'} color="warning"
+          busy={busy} showing={showing} setShowing={setShowing} onAnswer={onAnswer} asks={rejectAsks}
         />
         {lost && (
           <AnswerButton
@@ -122,14 +125,34 @@ export function SelectionBar({
 /** The explanation list's id, for every toggle's `aria-controls`. */
 const EXPLANATION_ID = 'selection-bar-explanation';
 
+/** What a rejection that turns arrivals away asks: the button's words, and what the reasons are about. */
+interface TurnAwayAsks {
+  label: string;
+  heading?: string;
+}
+
+/**
+ * Whether the rejection turns arrivals away, and so asks why (#863): one
+ * reason for every arrival the batch reaches. A selection of arrivals alone
+ * is turned away by count; a mixed one keeps its word for every kind, and the
+ * list says the reason is the arrivals'.
+ */
+export function turnAwayAsks(reach: Array<{ kind: AnswerableKind; count: number }>): TurnAwayAsks | undefined {
+  const arrivals = reach.find(({ kind }) => kind === 'arrival');
+  if (!arrivals) return undefined;
+  if (reach.length === 1) return { label: `Turn away ${arrivals.count.toLocaleString('en')}` };
+  return { label: 'Reject the proposed changes', heading: 'Why the arrivals are turned away' };
+}
+
 /**
  * One answer, and the toggle that says what it does. The toggle names the
  * explanation as what it controls; the answer button answers on its click,
- * and it is the page — not this bar — that asks first where the batch reaches
- * past one page or past the loaded rows (`useAnswerSelection`).
+ * or, where the answer asks why, on the reason picked from its list. It is
+ * the page, not this bar, that asks first where the batch reaches past one
+ * page or past the loaded rows (`useAnswerSelection`).
  */
 function AnswerButton({
-  answer, label, color, busy, showing, setShowing, onAnswer,
+  answer, label, color, busy, showing, setShowing, onAnswer, asks,
 }: {
   answer: ReviewAnswer;
   label: string;
@@ -137,19 +160,33 @@ function AnswerButton({
   busy: boolean;
   showing: ReviewAnswer | null;
   setShowing: (a: ReviewAnswer | null) => void;
-  onAnswer: (a: ReviewAnswer) => void;
+  onAnswer: (a: ReviewAnswer, reason?: BatchReason) => void;
+  asks?: TurnAwayAsks;
 }) {
   return (
     <Stack direction="row" spacing={0.5} alignItems="center">
-      <Button
-        size="small"
-        variant="contained"
-        color={color}
-        disabled={busy}
-        onClick={() => onAnswer(answer)}
-      >
-        {label}
-      </Button>
+      {asks ? (
+        <ReasonMenu
+          label={label}
+          heading={asks.heading}
+          reasons={REFUSAL_REASON_CODES}
+          size="small"
+          variant="contained"
+          color={color}
+          disabled={busy}
+          onChoose={(reasonCode, note) => onAnswer(answer, { reasonCode, note })}
+        />
+      ) : (
+        <Button
+          size="small"
+          variant="contained"
+          color={color}
+          disabled={busy}
+          onClick={() => onAnswer(answer)}
+        >
+          {label}
+        </Button>
+      )}
       <Button
         size="small"
         variant="text"

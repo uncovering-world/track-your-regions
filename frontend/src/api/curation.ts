@@ -41,7 +41,7 @@ import {
   getExperiencesByIdPictureClasses,
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
-  type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseContentsBody,
+  type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseArrivalBody, type RefuseContentsBody,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -407,12 +407,13 @@ export async function publishExperience(
 }
 
 /**
- * A curator's no to an arrival (#852, ADR-0053): the object is kept out the way a
- * rule-refused row is, and *Put it back* in the kept-out list is the way back.
+ * A curator's no to an arrival (#852, ADR-0053), with the reason picked (#863):
+ * the object is kept out the way a rule-refused row is, and *Put back* in the
+ * kept-out list is the way back.
  */
 export async function refuseArrival(
   experienceId: number,
-  body: { note?: string; membershipId?: number } = {},
+  body: RefuseArrivalBody,
 ): Promise<RefuseArrivalResult> {
   return postExperiencesByIdRefuseArrival(experienceId, body);
 }

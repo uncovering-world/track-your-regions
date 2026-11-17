@@ -38,7 +38,7 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/components/curation/ObjectContext.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/PictureClassMark.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/PinQuestionCard.tsx': { breaches: 2, slice: '#2444' },
-  'src/components/curation/RefusedCards.tsx': { breaches: 4, slice: '#2444' },
+  'src/components/curation/RefusedCards.tsx': { breaches: 2, slice: '#2444' },
   'src/components/curation/RefusedPartsCard.tsx': { breaches: 12, slice: '#2444' },
   'src/components/curation/ReviewBench.tsx': { breaches: 29, slice: '#2444' },
   'src/components/curation/ReviewPage.tsx': { breaches: 12, slice: '#2444' },

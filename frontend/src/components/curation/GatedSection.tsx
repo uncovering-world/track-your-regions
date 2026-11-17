@@ -45,6 +45,16 @@ import { ArrivalKindChoice } from './ArrivalKindChoice';
 import { KindNeighbours } from './KindNeighbours';
 import { notOfKind, typeOptionsFor, typeWordFor } from '../../utils/experienceTypes';
 import { CrowdingWayIn } from './crowding/CrowdingWayIn';
+import { ReasonMenu } from '../shared/ReasonMenu';
+import { REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
+
+type TurnAwayReason = (typeof REFUSAL_REASON_CODES)[number];
+
+/**
+ * The reasons "Turn away" offers an arrival: a refusal's, but not its kind,
+ * which the card's own "Not a <kind>" button answers.
+ */
+const TURN_AWAY_REASONS = REFUSAL_REASON_CODES.filter(code => code !== 'not-this-kind');
 
 /**
  * The counts, as numbers and as a floor under the query that casts them.
@@ -193,7 +203,8 @@ export function GatedSection({ group, heading, onDone }: {
   // is, so the kept-out list is where it comes back from. Its own mutation for
   // the reason the held refusal is: it writes the membership and nothing else.
   const keepOut = useMutation({
-    mutationFn: () => refuseArrival(group.id, namedMembership(arrival?.membership_id)),
+    mutationFn: ({ reasonCode, note }: { reasonCode: TurnAwayReason; note?: string }) =>
+      refuseArrival(group.id, { ...namedMembership(arrival?.membership_id), reasonCode, note }),
     onSettled: (_data, error) => {
       invalidateExperiences(queryClient, { experienceId: group.id });
       onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item, true, {}));
@@ -379,16 +390,26 @@ export function GatedSection({ group, heading, onDone }: {
         {/* The arrival's no (#852): kept out, the way a rule's refusal is.
             Everything else on a card is answered on its own row — a held field,
             a moved point, an arrived work — so a card-level no would only say
-            one of those twice. */}
+            one of those twice. "Not a <kind>" is itself the reason; every
+            other reason is a line under "Turn away" (#863). */}
         {arrival && (
           <Button
             variant="outlined"
             color="warning"
             disabled={answering}
-            onClick={() => keepOut.mutate()}
+            onClick={() => keepOut.mutate({ reasonCode: 'not-this-kind' })}
           >
             {notOfKind(arrival.kind_id, arrival.kind_name)}
           </Button>
+        )}
+        {arrival && (
+          <ReasonMenu
+            label="Turn away"
+            reasons={TURN_AWAY_REASONS}
+            color="warning"
+            disabled={answering}
+            onChoose={(reasonCode, note) => keepOut.mutate({ reasonCode, note })}
+          />
         )}
         {/* The arrival's third answer (#2213): the kind it belongs in instead. */}
         {arrival && (

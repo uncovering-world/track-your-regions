@@ -10,7 +10,8 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ReviewAnswer } from '../../../api/reviewQueue';
+import type { BatchReason, ReviewAnswer } from '../../../api/reviewQueue';
+import { CURATION_REASON_WORDS } from '@tyr/shared/curationLog';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import { invalidateAfterBatchPublication } from '../../../utils/queryInvalidation';
 import type { QueueRow } from '../queueRows';
@@ -40,8 +41,11 @@ export interface AnswerSelection {
   confirmNote: string | null;
   /** What the answer will reach, by kind — the ticks, or every kind the filters match under all matching. */
   reach: Array<{ kind: AnswerableKind; count: number }>;
-  /** Answer now, or ask first where the batch reaches past one page. */
-  answer: (answer: ReviewAnswer) => void;
+  /**
+   * Answer now, or ask first where the batch reaches past one page; a
+   * rejection that turns arrivals away with the reason picked for all of them.
+   */
+  answer: (answer: ReviewAnswer, reason?: BatchReason) => void;
   confirm: () => void;
   cancel: () => void;
 }
@@ -51,16 +55,20 @@ function couldNotStart(error: unknown): string {
   return `The batch could not start: ${reason}`;
 }
 
-/** One line per kind in the selection: the count, and what this answer does to it. */
+/**
+ * One line per kind in the selection: the count, and what this answer does to
+ * it; the arrivals' line names the reason they are turned away for.
+ */
 function confirmLinesFor(
-  counts: Array<{ kind: AnswerableKind; count: number }>, answer: ReviewAnswer,
+  counts: Array<{ kind: AnswerableKind; count: number }>, answer: ReviewAnswer, reason?: BatchReason,
 ): string[] {
   const lines: string[] = [];
   for (const { kind, count } of counts) {
     const words = ANSWER_WORDS[kind][answer];
     if (!words) continue;
     const noun = KIND_NOUN[kind][count === 1 ? 0 : 1];
-    lines.push(`${count.toLocaleString('en')} ${noun}: ${words}`);
+    const why = kind === 'arrival' && reason ? ` (${CURATION_REASON_WORDS[reason.reasonCode]})` : '';
+    lines.push(`${count.toLocaleString('en')} ${noun}: ${words}${why}`);
   }
   return lines;
 }
@@ -89,6 +97,8 @@ export function useAnswerSelection({
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<AnswerProgress | null>(null);
   const [confirming, setConfirming] = useState<ReviewAnswer | null>(null);
+  // The reason picked with the answer waiting on its confirmation, sent with it.
+  const [confirmingReason, setConfirmingReason] = useState<BatchReason | undefined>(undefined);
 
   /**
    * One answer to every ticked row — the rows on screen a page at a time, or
@@ -96,16 +106,17 @@ export function useAnswerSelection({
    * selection is cleared and the batch invalidation run whatever happened:
    * each object was its own transaction, so a stopped batch changed things too.
    */
-  const run = async (answer: ReviewAnswer) => {
+  const run = async (answer: ReviewAnswer, reason?: BatchReason) => {
     setConfirming(null);
+    setConfirmingReason(undefined);
     setNotice(null);
     setProgress({
       answered: 0, refused: 0, outOfScope: 0, of: selection.allMatching ? total : answerRowsFor(rows).length,
     });
     try {
       const report = selection.allMatching
-        ? await answerAllMatching(address, total, answer, setProgress)
-        : await answerRows(rows, answer, setProgress);
+        ? await answerAllMatching(address, total, answer, setProgress, reason)
+        : await answerRows(rows, answer, setProgress, reason);
       setNotice(answerNoticeFor(report));
     } catch (error) {
       setNotice(error instanceof AnswerStopped ? stoppedNoticeFor(error) : couldNotStart(error));
@@ -126,12 +137,14 @@ export function useAnswerSelection({
   // show. Turning down unread contents follows the same confirmation rule as
   // the other answers: it has the list and the take-back its neighbours have
   // (#859).
-  const answer = (which: ReviewAnswer) => {
-    if (selection.allMatching || rows.length > pageSize) setConfirming(which);
-    else void run(which);
+  const answer = (which: ReviewAnswer, reason?: BatchReason) => {
+    if (selection.allMatching || rows.length > pageSize) {
+      setConfirming(which);
+      setConfirmingReason(reason);
+    } else void run(which, reason);
   };
 
-  const confirmLines = confirming === null ? [] : confirmLinesFor(reach, confirming);
+  const confirmLines = confirming === null ? [] : confirmLinesFor(reach, confirming, confirmingReason);
   const confirmNote = confirming === null || alsoReached.length === 0 ? null
     : `A row this filter lists is answered whole, so ${alsoReached.map(kind => ALSO_HELD[kind]).join(' and ')} `
       + `a row may also hold are answered too: ${alsoReached
@@ -146,7 +159,7 @@ export function useAnswerSelection({
     confirmNote,
     reach,
     answer,
-    confirm: () => { if (confirming) void run(confirming); },
-    cancel: () => setConfirming(null),
+    confirm: () => { if (confirming) void run(confirming, confirmingReason); },
+    cancel: () => { setConfirming(null); setConfirmingReason(undefined); },
   };
 }
