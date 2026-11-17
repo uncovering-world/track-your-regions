@@ -480,6 +480,12 @@ export const CuratorActivityEntry = z.strictObject({
   experience_image_url: z.string().nullable().describe("The place's picture, for the row's thumbnail."),
   experience_image_credit: ImageCredit.nullable().describe("The picture's credit, shown with it (ADR-0043)."),
   kind_name: z.string().nullable().describe('The kind the act was about, by the membership its details name; null where it names none.'),
+  batch: z.strictObject({
+    count: z.number().int().describe('How many places the batch published.'),
+    names: z.array(z.string()).describe('The names of the first of them, newest first.'),
+  }).nullable().describe(
+    "A batch publish this entry stands for (#956): one curator's run of publications, each under a minute after the one before, five or more; null for a single act.",
+  ),
   region_id: z.number().int().nullable(),
   region_name: z.string().nullable(),
   curator_id: z.number().int().nullable()
@@ -489,8 +495,15 @@ export const CuratorActivityEntry = z.strictObject({
 export type CuratorActivityEntry = z.infer<typeof CuratorActivityEntry>;
 
 export const CuratorActivity = z.strictObject({
-  activity: z.array(CuratorActivityEntry).describe('Newest first.'),
-  total: z.number().int(),
+  activity: z.array(CuratorActivityEntry).describe('Newest first, a batch publish as one entry.'),
+  total: z.number().int().describe('How many entries the filters keep, a batch counting once.'),
+  counts: z.strictObject({
+    againstTheRule: z.number().int().describe('Acts against what the rule decided: a place the rule kept out put back, a place it holds taken out of a kind.'),
+    arrivalsTurnedAway: z.number().int().describe("Arrivals a curator answered no on the review page: the gate's routine review, not a dispute with the rule."),
+    keptOutAsTheRuleSaid: z.number().int(),
+    editedByHand: z.number().int(),
+    published: z.number().int().describe('Places published, every place of a batch counted.'),
+  }).describe("The filters' acts, counted by what an auditor reads them for (#956)."),
   limit: z.number().int(),
   offset: z.number().int(),
 }).describe('A page of the curation log: what one curator did, or what every curator did.');

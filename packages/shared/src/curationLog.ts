@@ -76,3 +76,25 @@ export const POINT_VERDICT_ACTIONS = [
   'location_state_restored',
   'location_missing_dismissed',
 ] as const satisfies readonly CurationLogAction[];
+
+/**
+ * The acts a curator takes against what the rule decided (#956): a place the
+ * rule kept out put back, and a place the rule holds taken out of a kind. An
+ * auditor reads a curator's trail for these first; the trail's count of them
+ * and the mark on their rows read this one list.
+ *
+ * An arrival turned away (`arrival_refused`) is not among them: answering an
+ * arrival is the gate's routine review, which the rule asked for, and the
+ * trail counts it on a line of its own.
+ */
+export const AGAINST_THE_RULE_ACTIONS = [
+  'admission_overridden',
+  'kept_out',
+] as const satisfies readonly CurationLogAction[];
+
+/** The acts that change a fact by hand: the place's own fields, one of its points, one of its works. */
+export const EDITED_BY_HAND_ACTIONS = [
+  'edited',
+  'location_edited',
+  'work_edited',
+] as const satisfies readonly CurationLogAction[];

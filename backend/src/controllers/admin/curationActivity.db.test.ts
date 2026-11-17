@@ -133,6 +133,56 @@ describe('the curation activity feed (#611)', () => {
     expect(page).toMatchObject({ total: 2, limit: 1, offset: 1 });
   });
 
+  it('keeps the acts on a place whose name holds the search, a LIKE character searched for itself', async () => {
+    expect(named(await feed({ q: 'kinkaku' }))).toEqual(['published']);
+    expect(named(await feed({ q: '100%' }))).toEqual([]);
+  });
+
+  it('reads a batch publish as one entry with its count and first names, and counts every place of it (#956)', async () => {
+    // Six publications by the admin seconds apart across 05:15:59 and 05:16:00, as a batch
+    // publish of arrivals writes them: one run, whatever the clock minute.
+    for (let i = 0; i < 6; i += 1) {
+      const at = new Date(Date.parse('2001-11-02T05:15:57Z') + i * 1000).toISOString();
+      await act(`batch${i}`, [KINKAKU, ITSUKUSHIMA, COLOGNE][i % 3], admin, 'published', at);
+    }
+    const answer = await feed({ since: '2001-11-01T00:00:00Z' });
+    expect(answer.activity).toHaveLength(1);
+    expect(answer.activity[0].batch).toEqual({ count: 6, names: expect.arrayContaining(['Kinkaku-ji (activity fixture)']) });
+    expect(answer.total).toBe(1);
+    expect(answer.counts).toEqual({ againstTheRule: 0, arrivalsTurnedAway: 0, keptOutAsTheRuleSaid: 0, editedByHand: 0, published: 6 });
+    // The fixture's publications, a minute or days apart, are acts of their own.
+    expect((await feed({ before: '2001-11-01T00:00:00Z' })).activity.every(entry => entry.batch === null)).toBe(true);
+  });
+
+  it('breaks a run at a pause of a full minute, so four quick publications and a fifth a minute on are five acts', async () => {
+    for (const [i, at] of ['12:00:00', '12:00:01', '12:00:02', '12:00:03', '12:01:03'].entries()) {
+      await act(`run${i}`, KINKAKU, admin, 'published', `2001-11-03T${at}Z`);
+    }
+    const answer = await feed({ since: '2001-11-03T00:00:00Z', before: '2001-11-04T00:00:00Z' });
+    expect(answer.activity).toHaveLength(5);
+    expect(answer.activity.every(entry => entry.batch === null)).toBe(true);
+  });
+
+  it('answers a page past the end, or a search that matches nothing, with no row and the counts still read', async () => {
+    const past = await feed({ offset: 50 });
+    expect(past.activity).toEqual([]);
+    expect(past.total).toBe(5);
+    expect(past.counts.published).toBe(2);
+    const none = await feed({ q: 'Nowhere at all' });
+    expect(none).toMatchObject({ activity: [], total: 0 });
+    expect(none.counts).toEqual({ againstTheRule: 0, arrivalsTurnedAway: 0, keptOutAsTheRuleSaid: 0, editedByHand: 0, published: 0 });
+  });
+
+  it("counts the period's acts by what an auditor reads them for", async () => {
+    await act('putBack', KINKAKU, curator, 'admission_overridden', '2001-12-01T09:00:00Z');
+    await act('turnedAway', ITSUKUSHIMA, curator, 'arrival_refused', '2001-12-01T10:00:00Z');
+    await act('upheld', COLOGNE, curator, 'admission_confirmed', '2001-12-01T11:00:00Z');
+    // An arrival turned away is the gate's routine review, counted on its own line, not against the rule.
+    expect((await feed()).counts).toEqual({
+      againstTheRule: 1, arrivalsTurnedAway: 1, keptOutAsTheRuleSaid: 1, editedByHand: 1, published: 2,
+    });
+  });
+
   it('reads one curator\'s acts through the same filters', async () => {
     const answer = await getCuratorActivity({
       params: { userId: curator }, query: { limit: 50, offset: 0, ...YEAR, action: 'edited' },
