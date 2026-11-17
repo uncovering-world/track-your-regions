@@ -10,7 +10,10 @@ column");
 decision 1 (when an outline is tested as the place's own, and its `line` basis, which places a
 record only by a line that is its own);
 [ADR-0212](0212-the-openstreetmap-layer-keeps-whole-the-objects-of-a-bridges-item-and-its-line-places-it.md)
-decision 4 (the same: every place that holds a line of its own)
+decision 4 (the same: every place that holds a line of its own);
+[ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md)
+decision 2 (when a leaf is offered, only for a leaf that has no point: by its record in its
+whole; a leaf that has a point is offered as that decision has it)
 
 ---
 
@@ -58,6 +61,44 @@ Measured on the development catalogue on 2026-11-16, read-only:
   activities, 244 under events and 107 under routes. A festival names a venue in 95 of 237
   entries, a dish in 4 of 402. Of the 107 routes, 41 are itineraries ("Golden Triangle: Delhi,
   Agra and Jaipur"), which are lists of places and not lines.
+
+Two rulings of the maintainer followed, and this Draft is amended to them (the last note under
+the Decision says where). On 2026-11-16 (#2581, #2248) the maintainer decided when a visit to a place ticks
+a type of thing: only where the place is in the catalogue as a place of that type, as Noratus
+cemetery is the field of khachkars. On 2026-11-16 and 2026-11-17 (#2578) the maintainer decided that nothing
+is put into the model that a curator would have to enter from nothing: every fact a curator sets
+has a source that proposes candidates, which the curator confirms, corrects or refuses.
+
+So the same catalogue was read on 2026-11-16 for what could propose each fact a curator sets
+here, with the Wikidata subset, the OpenStreetMap layer (`workbench.osm_objects`, joined by its
+`wikidata` tag) and the English Wikivoyage pages the workbench holds. "Read by hand" is a
+reviewer's reading of the named places, with no outside page fetched.
+
+- **A shape.** OpenStreetMap holds an object for 3,340 of the 4,019 offered places, and a way or
+  a relation for 2,960. Of six read by hand it draws five as what they are: Yellowstone a
+  protected-area polygon, Naqsh-e Jahan Square a `place=square` multipolygon, the Canal du Midi a
+  waterway relation, Hadrian's Wall a set of `historic=wall` ways, Museum Island a site relation.
+  Pompeii is a locality node only.
+- **An outline.** The layer keeps a polygon for 124 of the 214 wide World Heritage areas
+  (Yellowstone among them) and nothing for 90.
+- **Arrival points.** A tourist information office or a visitor centre stands near 126 of the 214
+  in the layer, counted in a box around the point, so some belong to a neighbour. The layer's
+  selection (`LAYER_SELECTION`) keeps `tourism` and not `entrance`, `barrier` or
+  `highway=trailhead`, so a gate or a trailhead is held for 24 of the 214, and only because
+  another tag kept it. English Wikivoyage has a page of its own for 117 of the 214, and 8 carry
+  entrances as typed markers with coordinates: all five of Yellowstone's. Wikidata states an
+  entrance coordinate on one offered place. Of five areas read by hand four have a proposal
+  (Yellowstone, the Grand Canyon, the Serengeti, Plitvice) and Tsingy de Bemaraha has none.
+- **Parts.** 965 offered places state a whole in Wikidata, and for 406 the whole has a record.
+  81 items name the Canal du Midi as their whole, the Fonserannes locks among them. Museum
+  Island's item names no part, and the Neues Museum names the museum authority as its whole.
+- **The places a type is met at.** Of 8,781 khachkars, 7,370 state where they are, and they name
+  35 records of the catalogue, 12 of them offered. The five with the most are right: Etchmiadzin
+  Cathedral (47), Tatev (15), Goshavank (11), Geghard (10) and Sanahin (6). Noratus is not among
+  the 35: the item of its article is the village, no khachkar names it, and it has no record.
+- **A region by name, and an event's place.** Of eight dishes read, Wikidata's country of origin
+  is right for six (thieboudienne, Senegal), coarse for paella (Spain) and wrong for khash
+  (Iraq). Seven of nine festivals state a location: the Gion Matsuri at Yasaka Shrine.
 
 ## Decision
 
@@ -232,7 +273,9 @@ of #2583's and is not the record's `boundary`.
 **7. A record holds the points a traveller arrives at, beside its shape**
 (`place_arrival_points`): none, one or several, each with a role (`entrance`,
 `visitor_centre`, `ticket_office`, `trailhead`, `landing`), a name, a coordinate, and at most
-one marked main.
+one marked main. The maintainer asked on 2026-11-16 (#2577) that the model hold these points
+beside the shape and say which point the pin and a navigation link use; the answers below are the
+session's.
 
 - They are not parts. An arrival point has no card, no kind, no tick, and places its record in
   no region.
@@ -246,9 +289,16 @@ one marked main.
   Montana, on the park's edge; the Canal du Midi starts in Toulouse, at one end of
   240 km, which is the defect #1948 was filed for. A pin there would say where to go in and
   not where the thing is.
-- A curator sets them from the record's card. An AI helper (ADR-0016, ADR-0087) or a run may
-  propose them, and a reader sees a proposal only once a curator has confirmed it. A proposal
-  read from OpenStreetMap names its object (ADR-0059).
+- **They are proposed, and a curator answers** (the maintainer's principle of 2026-11-16 and
+  2026-11-17, decision 12; the Draft's first text had a curator set them, with a helper or a run
+  that might propose). Two sources propose them. The OpenStreetMap layer gives visitor centres
+  and information offices today, and gates and trailheads once its tag selection
+  (`LAYER_SELECTION`) keeps `entrance`, `barrier` and `highway=trailhead`. The typed markers of
+  English Wikivoyage's pages give entrances with their coordinates: Yellowstone's five. The role
+  follows from the tag or the marker. The main one has no source and is the curator's choice
+  among the proposed points. An AI helper (ADR-0016, ADR-0087) may suggest an answer on the card.
+  A reader sees a proposal only once a curator has confirmed it, and one read from OpenStreetMap
+  names its object (ADR-0059). The card's section is built with its proposals, and not before.
 - No row is written by default. A check lists the offered areas and lines that hold no main
   arrival point, which is the "still unchecked" list #505 asks for, without a copy of the
   source's point on every museum.
@@ -256,25 +306,59 @@ one marked main.
 **8. A record that is not a place is a row of `experiences` with shape `none`,** in the kind
 that offers it. It keeps the name, picture and credit, source records, admission, gate, review
 queue, merge, curation log, region rows, parts and visit that every other record has. Its
-dates hang on its own row: the Gion Matsuri holds a season (1 to 31 July) and, where known, a
-`held` period of a year, and Holy Week in Seville is a record of its own (ADR-0217 decisions 2
-and 9, which left the row to #1676). UNESCO's "Yama, Hoko, Yatai, float festivals in Japan" is
-a record of shape `none` whose 33 parts are festivals, the Gion Matsuri among them.
+dates hang on its own row: the Gion Matsuri holds a season (1 to 31 July), and Holy Week in
+Seville is a record of its own (ADR-0217 decisions 2 and 9, which left the row to #1676). A
+`held` period of one year is a word of that vocabulary which nothing writes until a source gives
+a year's dates (ADR-0217 decisions 9 and 13). UNESCO's "Yama, Hoko, Yatai, float festivals in
+Japan" is a record of shape `none` whose 33 parts are festivals, the Gion Matsuri among them.
+Such a part has no point, and ADR-0206 decision 2 offers a leaf "when a reader is shown one of
+its points", so none of the 33 would be counted. A leaf that has no point is therefore offered by
+its record in its whole, where that record is one a reader is shown (ADR-0213 decision 1): a
+traveller who was at the Gion Matsuri reads "1 of 33" on the float festivals. The rule reaches no
+further. A leaf that has a point is offered as ADR-0206 decision 2 has it, by a point a reader is
+shown, and this ADR moves no count of such a leaf: Seville Cathedral, were a curator to refuse
+its record in Seville's site while another kind still showed its point, is counted or not exactly
+as it is today. Whether such a leaf should follow its record too is asked when the point tables
+go (#2124), and not here.
 
 **9. A class object is a record of shape `none` with no parts.** The khachkar (8,781 instances
 on the Wikidata subset), Last Address and the Stolpersteine are types a traveller must see
-some of and no particular one of (the maintainer, 2026-11-04, #2248). Such a record is not a
-sixth shape and not a whole:
+some of and no particular one of (the maintainer, 2026-11-04, #2248). The maintainer's direction of that day
+left open whether such a type is a whole with no parts listed or an object of its own. The
+session answered it for this Draft on 2026-11-16 (#2248), and the maintainer's ruling of the same day on
+#2581 takes the answer as given: "the khachkar is one record, a type and not one stone". Such a
+record is not a sixth shape and not a whole:
 
 - it has no ground of its own, so its shape is `none`, and it belongs to its regions by name
   (the khachkar to Armenia), as a dish does;
 - its instances are not parts, so nothing reads "3 of 8,781" and nothing maps every plaque;
-- the places it is best met at are linked to it by #2581's relation ("met at"): the Noratus
+- the places it is met at are linked to it by #2581's relation ("met at"): the Noratus
   cemetery, Geghard. Opening its card lights those places;
-- a visit is one tick on the record: "I saw one".
+- a visit is one tick on the record, "I saw one", made on the record or read from a visit to a
+  place, as below.
 
-What tells it from a series is whether the instances are places a traveller goes to by name.
-The Egyptian pyramids are (Khufu's, the Bent Pyramid), so they stay a whole with parts (#2126).
+**A visit to a place ticks the type only where the place is in the catalogue as a place of that
+type, and a visitor cannot be there without seeing one** (the maintainer, 2026-11-16, #2581 and
+#2248). So the relation between a type and a place has two strengths, and a curator says which:
+
+- **"this place is one of them"** ticks the type. Noratus cemetery is offered as the field of
+  khachkars, so a visit to it ticks the khachkar;
+- **"one can be seen here"** ticks nothing, as a visit to a museum does not tick a work it holds.
+  A museum with one khachkar in a room is such a place.
+
+The strength is asked only on a pair a source proposed, and a proposed pair starts as
+"one can be seen here", which ticks nothing. That is the session's rule of 2026-11-17, from the
+maintainer's principle (decision 12): the strength has no source, so it is a yes or a no on a
+proposed pair and never an entry from nothing. The pairs are proposed from where the instances
+say they are: for the khachkar, 35 records of the catalogue, with Etchmiadzin Cathedral (47
+khachkars) and Geghard (10) among them. Noratus is not proposed, since no khachkar's item names
+it and it has no record. Until a second source is read (the type article's own
+links, which #2248 names), the pair in the maintainer's own example is offered to no curator, and
+nothing is built that would have a curator add it from nothing.
+
+What tells a class object from a series is whether the instances are places a traveller goes to
+by name. The Egyptian pyramids are (Khufu's, the Bent Pyramid), so they stay a whole with parts
+(#2126). That test is the session's (2026-11-16, #2248).
 
 **10. A wide area needs no model of its own** (#2582). Yellowstone, the Serengeti, the Great
 Barrier Reef, a neighbourhood (Trastevere) and a town visited for itself are `area` records. A
@@ -318,10 +402,46 @@ where that geometry is its own, which is where it holds no coordinate. Yellowsto
 other 213 wide areas held as one point today are each a pin at every zoom, and a search flies
 to it, until its outline is held.
 
-Below the zoom where an outline reads, an area is its pin (the maintainer's ruling of
-2026-11-16): Naqsh-e Jahan Square, 560 m long, is under a pixel on a map of Iran. A long
+Below the zoom where an outline reads, an area is its pin: Naqsh-e Jahan Square, 560 m long, is
+under a pixel on a map of Iran. The Draft's first text gave this as the maintainer's ruling of
+2026-11-16. No comment on #2577 or #2125 and nothing in the Draft's pull request records it, so
+it stands here as the session's until the maintainer confirms it. A long
 object that is not a trail takes a plain tick (the maintainer, 2026-11-16); sections and
 kilometres are for hiking trails and cycling routes (#1948).
+
+**12. The model holds no fact a curator would have to enter from nothing** (the maintainer,
+2026-11-16 and 2026-11-17, #2578). Every fact a curator sets has a source that proposes
+candidates, which the curator confirms, corrects or refuses.
+
+The session reads the principle as a rule about the model and what is built on it, and not as a
+limit on a curator: **the model holds no fact without a source that can propose it, and nothing
+is built that needs a curator to enter a fact from nothing.**
+
+- A curator may complete or correct a proposed row: the main one among proposed arrival points, the
+  stronger of two strengths on a proposed pair.
+- A curator may still give, on their own knowledge, the verdicts the product already has
+  (*lost* and *former*, ADR-0217 decisions 4, 5 and 13), and the edits a card already offers: a
+  coordinate, a part named from either place's card. Each is about a fact that has a source of
+  proposals.
+- A fact with no source keeps its place in the vocabulary, and no form or card is built for it:
+  ADR-0217 decision 9 has the one such fact, a movable event's dates for one year. Here the
+  strength of "met at" has no source of its own and is asked only on a pair a source proposed.
+
+Which source proposes each fact below is the session's reading of the Context's second
+measurement.
+
+| A curator sets | What proposes it | What is not built yet |
+|---|---|---|
+| A pinned shape (decision 3) | The default rule gives every record a shape, so a pin is a correction and never a first entry. What OpenStreetMap draws for the item proposes the correction: Hadrian's Wall, a set of `historic=wall` ways under a default of `none` | A check that lists the records whose default shape and OpenStreetMap's drawing disagree |
+| A claimed coordinate (decision 5) | Each source's point on its record, on 3,995 of the 4,019 offered places; a difference is a review row | — |
+| A claimed outline or line (decision 6) | OpenStreetMap's polygon or line for the item: a polygon for 124 of the 214 wide areas (Yellowstone). For the 90 it does not draw, a curator's own outline (#2471) would be an entry from nothing, and nothing asks for one | The outlines of the kinds beside Archaeology (#1969), the choice between two sources' views (#2583), a canal's or a trail's line (#1948) |
+| The parts of a record by a curator's claim (decision 2) | Wikidata's part-of statements: 81 items name the Canal du Midi, the Fonserannes locks among them. And containment in an outline held (325 places), which is what proposes Museum Island's museums, since its item names none | A finder that proposes parts as review rows (#2125, #2126) |
+| Arrival points and their roles (decision 7) | The OpenStreetMap layer's visitor centres and information offices, near 126 of the 214 wide areas, and the typed markers of English Wikivoyage's pages, on 8 of them. A marker's coordinate is a fact read by a parser, and no text is kept | The table and the card; `entrance`, `barrier` and `highway=trailhead` in the layer's selection, and a rebuild of the layer; a reader of the markers. Best after the outlines, which tell a visitor centre inside the area from one next door |
+| The main arrival point (decision 7) | No source: a choice among the proposed points | — |
+| The places a class object is met at (decision 9) | Its instances' own locations: 35 records for the khachkar | #2581's relation, a finder and a card; the type article's links as a second source, without which Noratus is not proposed |
+| The strength of that relation (decision 9) | No source: a yes or a no on a proposed pair, which starts as the weaker | Nothing that asks it on a pair no source proposed |
+| A region named for a record with no ground of its own (decisions 9 and 10, #2580) | Wikidata's country of origin, right for six of eight dishes read (thieboudienne, Senegal), and the region each of the coverage surveys' 402 food entries is filed under. For an area at sea, the World Heritage record's State Party, which was not measured | #1676's kinds, and a match from a country's item to a region |
+| The place an event is held at (decision 8) | The location its item states, on seven of nine festivals read: the Gion Matsuri at Yasaka Shrine | #1676 |
 
 **What this leaves, and the interface each builds against.**
 
@@ -333,6 +453,7 @@ kilometres are for hiking trails and cycling routes (#1948).
 | #2583 | Where each source's and a curator's outline and line are kept, what a view outlines (the site or its buffer zone), and how the choice of ADR-0146 is recorded | `experiences.boundary` and `experiences.path` through their one writer; decision 6's tests, `outline_reaches_place()` and `line_reaches_place()`, which the trigger of decision 5 runs on the column, whoever chose the view |
 | #2579 | The visit referents, the verb, and a section's kilometres | Every shape is a row of `experiences`, so a place, an area, a line, a section, a dish and a class object are one referent |
 | #2580 | The region referent that survives a re-import | A basis `named` in `experience_shape_regions`, read by `refresh_place_regions()`: a dish, a class object and an area at sea alike |
+| #2581 | The relations between records as one design: the table of "met at", "replaced by" and the others it lists | Every shape is a row of `experiences`, so a relation joins two rows; "met at" carries decision 9's two strengths, the weaker by default, and only the stronger is read as a visit to the type |
 | #2125 | Containers and "lies within" | `shape = 'area'` and `boundary`; it removes no point by hand |
 | #1969 | The read of outlines and lines by viewport, the layers, the credit | `shape`, `shape_min_zoom`, `extent` |
 
@@ -342,6 +463,34 @@ made an area for good once its last part was taken out: nothing had stated it on
 decision 3 asks the default only of a `point`, so parts 44 km apart added later would not have
 made it `none`. A record that loses its last part now takes its default again, which is what
 `whole_shape_follows_parts()` did for a container.
+
+**Amended as a Draft, to the maintainer's rulings of 2026-11-16 and 2026-11-17 (#2581, #2248,
+#2578):** the Draft was merged before both rulings were recorded.
+
+- Decision 9 says when a visit to a place ticks a type, with the two strengths of "met at"
+  (Noratus cemetery against a museum with one khachkar), from the maintainer's ruling of 2026-11-16. The
+  interface table gains #2581's row. The Draft's first text had no visit to a place tick a type.
+- Decision 12 is new: the maintainer's principle that a curator enters nothing from nothing, with the source
+  that proposes each fact this ADR has a curator set. Its reading is the session's: a rule about
+  what the model holds and what is built, and no limit on what a curator may do on a card. Decision 7 no longer has a curator set
+  arrival points from an empty card, and says that the layer's tag selection must grow before
+  gates and trailheads are proposed. Decision 9 says a strength is asked only on a proposed pair.
+- Decision 8 follows ADR-0217's amendment of the same day: nothing writes a `held` period of one
+  year until a source gives the dates.
+- Decision 8 says a leaf that has no point is offered by its record in its whole, since a
+  festival that is a part has none; the header names ADR-0206 decision 2, which it narrows for
+  such a leaf only. A leaf with a point is counted as that decision has it.
+- The Consequences name the maintainer's ruling of 2026-11-17 (#2116, #2586) that no curator's decision is
+  carried from the development catalogue. The Draft said nothing of carrying one.
+- Attributions are corrected. Decision 7 says the maintainer asked the question and the session
+  answered it. Decision 9 says which part of the class object is the maintainer's and which the session's.
+  Decision 11's "an area is its pin" below the zoom where an outline reads was given as the maintainer's
+  ruling of 2026-11-16, which no issue records, and stands as the session's until the maintainer confirms it.
+
+Not decided by this amendment, and the maintainer's to decide before the ADR is accepted:
+
+- whether the check of decision 7 lists an area for which no source proposes an arrival point
+  (Tsingy de Bemaraha), which would ask a curator to enter one from nothing.
 
 ## Alternatives Considered
 
@@ -357,6 +506,9 @@ made it `none`. A record that loses its last part now takes its default again, w
 | `parts` as a fifth shape, as #2577 was filed | Being an area and having parts are two facts: no container whole exists, the Canal du Midi is a line with locks, Museum Island an area with museums. One column would make each choose. |
 | A sixth shape for the class object | It differs from a dish in nothing the schema holds: no ground, a region by name, places it is met at, one tick. |
 | A class object as a whole whose parts are not listed | A whole reads "k of N" and is drawn by its parts; 8,781 khachkars are neither counted nor mapped, and no source ranks them. |
+| A visit to any place a type is met at ticks the type | A museum with one khachkar in a room would tick the khachkar, where no visit to a museum ticks a work it holds. The maintainer decided against it on 2026-11-16. |
+| No visit to a place ticks a type (this Draft's first text) | A traveller who walked the field at Noratus has seen khachkars, and a product that asks them to say so again does not know what Noratus is. |
+| Arrival points a curator sets from an empty card (this Draft's first text, the session's) | Yellowstone's five entrances would be typed from nothing, where Wikivoyage states all five with coordinates. The maintainer's principle of 2026-11-16 and 2026-11-17 refuses it. |
 | Keep the coordinate on an area that holds an outline of its own | ADR-0210 rejected a stored, unread coordinate for a whole, for a reason that holds here: every run would keep writing it and every reader of the column would take it for where the place is. A curator's claimed coordinate is kept, but in a column no run writes and no reader of `location` sees. The milestone's exit criterion asks for "a whole with an outline and no point". |
 | No pin on an area that holds an outline | Read literally, "shown by its outline" removes the square from every map below the zoom where 9 ha can be seen, and from the heat map, search, crowding and "near me". |
 | The pin at the main arrival point | Yellowstone would stand on its edge in Montana, and the Canal du Midi at one end again. Inside an area small enough to be a pin, the difference cannot be seen; on a wide one it misleads. |
@@ -401,13 +553,22 @@ made it `none`. A record that loses its last part now takes its default again, w
   many function names).
 - The rule for which types are areas is not measured yet, and it decides where "lies within"
   cascades a visit (325 places stand inside an outline held today).
+- No shape a curator pinned, coordinate a curator claimed or part a curator named on the
+  development catalogue is carried to the fresh database (the maintainer, 2026-11-17, #2116 and
+  #2586; it covers the "part of" answers #2125 planned to carry). Museum Island's museums are
+  proposed and answered again (decision 12).
+- Noratus, the maintainer's own example of a place that ticks a type, is proposed by no source
+  read today, so no visit ticks the khachkar until the type article's links are read.
+- Gates and trailheads are proposed only after the OpenStreetMap layer is rebuilt with three more
+  tags, and an area no source proposes a point for (Tsingy de Bemaraha) keeps its navigation link
+  on its pin.
 
 ## References
 
-- Related ADRs: ADR-0016, ADR-0028, ADR-0029, ADR-0045, ADR-0059, ADR-0061, ADR-0069, ADR-0077, ADR-0084, ADR-0087,
-  ADR-0100, ADR-0115, ADR-0146, ADR-0198, ADR-0205, ADR-0207, ADR-0210, ADR-0211, ADR-0212,
-  ADR-0217
+- Related ADRs: ADR-0016, ADR-0028, ADR-0029, ADR-0045, ADR-0048, ADR-0059, ADR-0061, ADR-0069, ADR-0077, ADR-0084, ADR-0087,
+  ADR-0100, ADR-0115, ADR-0146, ADR-0198, ADR-0205, ADR-0206, ADR-0207, ADR-0210, ADR-0211, ADR-0212,
+  ADR-0213, ADR-0217
 - Related docs: `docs/tech/experiences.md` § Location model, `docs/tech/experience-map-ui.md`,
   `docs/tech/geometry-columns.md`, `docs/tech/catalogue-coverage.md`
 - Issues: #2577, #505, #2248, #2582, #2125, #1948, #1676, #2583, #2579, #2580, #2581, #1969,
-  #2471, #714, #2124, Epic #2115
+  #2471, #714, #2124, #2578, #2116, #2586, Epic #2115
