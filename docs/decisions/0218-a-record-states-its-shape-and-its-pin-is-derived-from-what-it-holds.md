@@ -13,7 +13,20 @@ record only by a line that is its own);
 decision 4 (the same: every place that holds a line of its own);
 [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md)
 decision 2 (when a leaf is offered, only for a leaf that has no point: by its record in its
-whole; a leaf that has a point is offered as that decision has it)
+whole; a leaf that has a point is offered as that decision has it) and decisions 2 and 3 (a
+part that has a shape of its own and parts of its own is counted as one place of the whole above
+it, decision 2);
+[ADR-0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md)
+decisions 1, 3 and 5 ("claims no item", "never merged" and what the join leaves out hold for a
+record with parts and no shape of its own, decision 13; and a curator's answer "the same group"
+is the one way a kind's record comes onto such a record, decision 14) and decision 6 (the check
+`merge-onto-a-whole` leaves out a merge that records such an answer, decision 14);
+[ADR-0086](0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md)
+decision 2 (in a "same group" answer the serial object stays, whichever id is lower,
+decision 14);
+[ADR-0150](0150-wikidatas-part-of-answers-a-near-pair.md)
+decision 1 (a statement answers a near pair without a curator only toward a record that already
+has parts, decision 14)
 
 ---
 
@@ -100,6 +113,42 @@ reviewer's reading of the named places, with no outside page fetched.
   is right for six (thieboudienne, Senegal), coarse for paella (Spain) and wrong for khash
   (Iraq). Seven of nine festivals state a location: the Gion Matsuri at Yasaka Shrine.
 
+A third ruling followed on 2026-11-17, recorded in two comments on #2581
+([the maintainer's words on identity, geography and "part of"](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6943049715) and
+[the decision on Khajuraho](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6943873765), the second also on #2126), and the Draft is amended to it in
+decisions 2, 13 and 14:
+
+- a Wikidata item and a coordinate are separate things: a serial site has no coordinate of its
+  own and may still hold an item, which is the link to the article that describes it as a whole;
+- a serial object and an extended object are different: the first has no geography of its own
+  and consists of its points, the second (a large square, a long canal) is an entity of its own
+  on the map and may also hold other places as its parts;
+- two places are not merged because they share a Wikidata item. A shared or carelessly set item
+  is a hint that proposes "one is a part of the other";
+- Khajuraho: Places of worship's "Khajuraho Group of Monuments" and the serial World Heritage
+  site of that name are the same 15 temples, and a traveller sees one whole offered in both
+  kinds, one card, "3 of 15". Making them one is a curator's answer and never automatic.
+
+Read on the development catalogue on 2026-11-17, read-only, with the items checked against the
+Wikidata subset:
+
+- 50 admitted records of the Wikidata kinds that a curator has read carry an item that a serial
+  World Heritage site holds without being found by it (ADR-0203 decision 1). Khajuraho
+  (Q167298) is one: the site has shape `none` and 15 parts, and the Places of worship record is
+  a second place, a point.
+- Three records were joined onto a serial site by an equal item in October 2026 and separated
+  by a curator on 2026-11-13 (ADR-0203 decision 6). Archaeology's Baalbek carries Q178835, which
+  is Wikidata's item for the city. Archaeology's Mausoleum of the First Qin Emperor (Q910180)
+  stands 34 m from the component of that name, 441-001, one of its site's two. Bridges' Rideau
+  Canal (Q651323) carries the item of component 1221-001, one of its site's six.
+- All 5,645 part relations come from the World Heritage list. 69 near pairs are answered
+  *part of*, 29 by a curator and 40 by the catalogue from a Wikidata statement (ADR-0150), and
+  none of the 69 is a relation: the answer is kept on the pair and writes nothing. None of the
+  69 names a record that has parts as the whole, since the pairing pass leaves every record
+  with parts out.
+- The Canal du Midi (Q202494) is one place found by its item, with no parts. The item of the
+  Fonserannes locks (Q586271) states "part of" toward it.
+
 ## Decision
 
 **1. A record states its shape** (`experiences.shape`), which says what the record itself is on
@@ -117,18 +166,42 @@ kind offers it. It is a statement about the thing, and the geometry columns say 
 catalogue holds of it. Yellowstone is an `area` while only its point is held. The column is
 `NOT NULL`, and its four values are a closed set.
 
-**2. Having parts is a second fact, and not a shape.** A record of any shape may have parts
-(`experience_parts`, ADR-0198). `whole_shape` goes:
+**2. Having parts is a second fact, and not a shape, and what a record is is a third.** A
+record holds three facts, and none of them is read from another (the maintainer, 2026-11-17,
+[#2581](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6943049715): "a Wikidata item and a coordinate are separate things"):
 
-- a serial World Heritage site has shape `none` and parts. The Struve Geodetic Arc is its 34
-  points; the Wadden Sea is its components, each of them an `area`;
-- Museum Island is an `area` with parts (the Neues Museum, by a curator's claim);
-- the Canal du Midi is a `line` with parts: the Fonserannes locks, by the maintainer's decision
-  of 2026-11-16 that a lock is a part of its canal.
+- **what it is**: the catalogue's own id, and the outside items that link to its articles. A
+  Wikidata item is the link to the article that describes the record. It says nothing of where
+  the record is, a record with no ground of its own may hold one, and an equal item on two
+  records does not by itself make them one (decisions 13 and 14);
+- **where it is**: its shape (decision 1), which is a point, an area, a line, or none;
+- **what it consists of, and what it is a part of**: a record of any shape may have parts and
+  may be a part (`experience_parts`, ADR-0198). `whole_shape` goes.
 
-"Shown by its parts" is a record of shape `none` that has parts: it has no pin of its own,
-and a direct tick on it reads "? of N". A record with a shape of its own is ticked for itself,
-and "k of N" stands beside the tick where it has claimed parts.
+A record with parts has one of two forms, which the maintainer's words of 2026-11-17 keep apart:
+
+- **a serial object** has shape `none` and parts. It has no geography of its own and is shown
+  by its parts. The Struve Geodetic Arc is its 34 points; the Wadden Sea is its components, each
+  of them an `area`; a serial World Heritage site is always one (decision 3);
+- **an extended object** has a shape of its own, and parts. Museum Island is an `area` with
+  parts (the Neues Museum, by a curator's answer). The Canal du Midi is a `line` with parts: the
+  Fonserannes locks, by the maintainer's decision of 2026-11-16 (#2577) that a lock is a part of
+  its canal. The locks are offered among locks and are a part of the canal.
+
+"Shown by its parts" is a serial object: it has no pin of its own, and a direct tick on it
+reads "? of N". An extended object is ticked for itself, and "k of N" stands beside the tick
+where it has parts.
+
+**A part that is itself an extended object is counted as one place of the whole above it.**
+Once Bridges' Rideau Canal and component 1221-001 of the Rideau Canal site are one place
+(decision 14), that place is a `line`, a part of the site, and its lock stations may become its
+own parts. A traveller who ticks "I was on the canal" has been to one of the site's six parts,
+and the site reads "1 of 6". ADR-0206 decisions 2 and 3 count only places that have no parts and
+read a tick on a nested whole as "?": they stand for a nested serial object (Hadrian's Wall
+within the Frontiers of the Roman Empire, #2126, while its shape is `none`) and are narrowed for a part
+with a shape of its own. This rule is the session's design of 2026-11-17: it follows from the
+maintainer's ruling of the same day on the two forms and from "ticked for itself" above, and no
+ruling states it.
 
 **3. The default shape comes from one function, and a curator may pin it.**
 
@@ -435,13 +508,160 @@ measurement.
 | A pinned shape (decision 3) | The default rule gives every record a shape, so a pin is a correction and never a first entry. What OpenStreetMap draws for the item proposes the correction: Hadrian's Wall, a set of `historic=wall` ways under a default of `none` | A check that lists the records whose default shape and OpenStreetMap's drawing disagree |
 | A claimed coordinate (decision 5) | Each source's point on its record, on 3,995 of the 4,019 offered places; a difference is a review row | — |
 | A claimed outline or line (decision 6) | OpenStreetMap's polygon or line for the item: a polygon for 124 of the 214 wide areas (Yellowstone). For the 90 it does not draw, a curator's own outline (#2471) would be an entry from nothing, and nothing asks for one | The outlines of the kinds beside Archaeology (#1969), the choice between two sources' views (#2583), a canal's or a trail's line (#1948) |
-| The parts of a record by a curator's claim (decision 2) | Wikidata's part-of statements: 81 items name the Canal du Midi, the Fonserannes locks among them. And containment in an outline held (325 places), which is what proposes Museum Island's museums, since its item names none | A finder that proposes parts as review rows (#2125, #2126) |
+| The parts of a record by a curator's answer (decisions 2 and 14) | Wikidata's part-of statements: 81 items name the Canal du Midi, the Fonserannes locks among them. Containment in an outline held (325 places), which is what proposes Museum Island's museums, since its item names none. And nearness with a like name, the pairing pass's own rule | A finder that proposes parts as review rows (#2125, #2126); the pairing pass asking about a record that has parts (decision 14) |
+| How a kind's record stands to a serial object that holds its item (decision 14) | The shared item: 50 read records on 2026-11-17, Khajuraho among them | The finder, the question and its four answers (#2126) |
 | Arrival points and their roles (decision 7) | The OpenStreetMap layer's visitor centres and information offices, near 126 of the 214 wide areas, and the typed markers of English Wikivoyage's pages, on 8 of them. A marker's coordinate is a fact read by a parser, and no text is kept | The table and the card; `entrance`, `barrier` and `highway=trailhead` in the layer's selection, and a rebuild of the layer; a reader of the markers. Best after the outlines, which tell a visitor centre inside the area from one next door |
 | The main arrival point (decision 7) | No source: a choice among the proposed points | — |
 | The places a class object is met at (decision 9) | Its instances' own locations: 35 records for the khachkar | #2581's relation, a finder and a card; the type article's links as a second source, without which Noratus is not proposed |
 | The strength of that relation (decision 9) | No source: a yes or a no on a proposed pair, which starts as the weaker | Nothing that asks it on a pair no source proposed |
 | A region named for a record with no ground of its own (decisions 9 and 10, #2580) | Wikidata's country of origin, right for six of eight dishes read (thieboudienne, Senegal), and the region each of the coverage surveys' 402 food entries is filed under. For an area at sea, the World Heritage record's State Party, which was not measured | #1676's kinds, and a match from a country's item to a region |
 | The place an event is held at (decision 8) | The location its item states, on seven of nine festivals read: the Gion Matsuri at Yasaka Shrine | #1676 |
+
+**13. A record is found by its item unless it is a serial object.** ADR-0203 decisions 1 and 3
+say that a place made of parts claims no Wikidata item by any column and that a merge never joins
+it. Both hold for a record with parts and no shape of its own, and for no other. This narrowing
+is the session's design of 2026-11-17. It follows from two rulings of the maintainer: that a
+lock is a part of its canal (2026-11-16, #2577), and that a serial object and an extended object
+are different while an item and a coordinate are separate things (2026-11-17,
+[#2581](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6943049715)). No ruling states the narrowing itself.
+
+ADR-0203's reason is a serial site's: it is its parts on the ground, so an item it carries names
+the site, one of its parts or their ensemble. The item on the Historic Ensemble of the Potala
+Palace is the palace's, which is one of its three parts. An extended object's item names the
+object. Q202494 is the Canal du Midi with or without its locks. Under ADR-0203 as built, the
+canal would stop being found by Q202494 the day the Fonserannes locks become its part, a later
+kind that reads the item would create a second Canal du Midi, and the merge that would repair it
+would be refused. So:
+
+- **"is a serial object" is one test, and every reader asks it of one function.**
+  `place_is_whole()` is true for a record that has a part and whose shape is `none`. It is not
+  the only place the rule is spelled today. `place_identifier_claims()` and `sharedItemsSql`
+  read the function. `partsBarMerge` (`partWriter.ts`) asks `experience_parts` itself whether
+  either place has a part, and the part writer's `merged-onto` refusal (`addRefusal` in
+  `partRecordController.ts`, through `whole_has_parts`) does the same. Narrowing the function
+  alone would leave the merge refusing the Canal du Midi once it has a lock, which is the
+  failure this decision removes. So all three take the shape test by going through
+  `place_is_whole()`, and none spells "has a part" as the test of a serial object: a rule has
+  one owner. The `merged-onto` refusal cannot ask the function of the state it reads today,
+  which is the state before the write: before its first part no record is a serial object. It
+  asks `place_is_whole()` after the part's record is written, in the same transaction, when
+  `shape_follows_parts()` has set the shape from the parts, and rolls the write back where the
+  answer is true and the record has a standing merge that is not a "same group" answer
+  (decision 14). A `point` with another place merged into it that gains two parts more than
+  1 km apart becomes `none` with them, and is refused; a canal that another kind's canal was
+  merged into is a `line`, and takes its first lock. ADR-0203 decision 5 is narrowed with decisions 1 and 3, since what the join leaves out
+  is what the function says;
+- an extended object with parts keeps claiming its items as a place without parts does, is found
+  by a run's lookup (ADR-0143 decision 3), and may be one place with another kind's record of
+  the same object. No second canal is created;
+- ADR-0203 decision 4 stands for the parts of every record: two parts of one whole stay two
+  places, whatever the whole's shape;
+- the curator's part writer warns that a first part makes a place "never merged, no longer found
+  by its own item" (`makesWhole`) only where the first part makes the record a serial object.
+
+**The claim follows the shape.** A curator who pins a shape changes what the record is found by.
+Hadrian's Wall (Q57357) is a collection of its forts with shape `none` (decision 3). Once it has
+parts and a curator states it a `line`, its item identifies it from that write on, and a later
+record of another kind that carries Q57357 is one place with it. Pinned back to `none`, it holds
+the item as referring again, and its own kinds' runs still find it through their records. A
+record whose kind states it an `area` or a `line` (the Canal du Midi, once the defaults of
+decision 3 are written) is never a `point` when it gains its first part, so it never passes
+through `none` and never loses its claim. A `point` that gains parts more than 1 km apart
+becomes `none` by decision 3 and a serial object with them.
+
+The registry must be refreshed on that write, and nothing does so today.
+`place_identifiers_follow_wholes()` refreshes a place when a statement on `experience_parts`
+gives it its first part or takes its last, and stays for a record whose shape does not move with
+its parts. The one trigger on `experiences` that refreshes the registry,
+`trg_place_identifiers_place_merged`, fires on `merged_into_id` alone. A second trigger on
+`experiences`, on a write of `shape`, has to call `place_identifiers_follow_place()`. It then
+also follows `shape_follows_parts()`, which writes the shape from a statement on
+`experience_parts`. The shape card says what the pin does to the item, as the part writer's
+card does for a first part.
+
+**14. A shared item never joins a record onto a serial object: it proposes a question, and a
+curator answers it** (the maintainer, 2026-11-17, [#2581](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6943873765), also recorded on #2126).
+Places of worship's "Khajuraho Group of Monuments" and the serial World Heritage site of that
+name share Q167298 and are the same 15 temples. A traveller sees one whole offered in both
+kinds: one card, "3 of 15". Making them one is a curator's answer and never automatic. The
+maintainer's four answers:
+
+| The curator answers | What follows | Case |
+|---|---|---|
+| The same group | One record, offered in both kinds, shown by its parts, with one count | Khajuraho, the maintainer's own case |
+| A part of it | The relation: the kind's place is a part of the serial object | Archaeology's Baalbek and the Baalbek site. The maintainer's answer for that pair (2026-11-17, [#2581](https://github.com/uncovering-world/track-your-regions/issues/2581#issuecomment-6943049715)): "not merged; related as a part and its whole" |
+| The same place as one of its parts | The kind's place and that part are one place, a part of the serial object and offered in the kind | Archaeology's Mausoleum of the First Qin Emperor and component 441-001, 34 m apart; Bridges' Rideau Canal and component 1221-001 |
+| Unrelated | Two records, and the pair is not asked again | A pair whose item names neither record's thing |
+
+An item cannot choose among these answers: Baalbek's Q178835 is the city's, and the pair is a
+part and its whole all the same. The answers and "never automatic" are the maintainer's. What each answer writes is the
+session's design of 2026-11-17:
+
+- *the same group* moves the kind's record onto the serial object and folds the kind's place
+  into it under a merge record, so that it can be undone (ADR-0086). The serial object keeps
+  shape `none`, holds the item as referring as before, and the kind's run finds it through its
+  record. This is the one way a kind's record comes onto a serial object, and ADR-0203
+  decision 3 is narrowed for it: no run, no join and no other merge joins one.
+  **The serial object is the one that stays.** ADR-0086 decision 2 keeps the place with the
+  lower id, and a pair answered *one place* passes its first place as the survivor
+  (`mergeProposalController.ts`). A kind's place that is older than its site would then keep
+  its point and take the site's parts. For this answer the survivor is the serial object,
+  whichever id is lower, which narrows ADR-0086 decision 2.
+  **The check `merge-onto-a-whole` leaves this merge out.** ADR-0203 decision 6 lists every
+  standing merge onto a place made of parts and asks a curator to undo it
+  (`identifierAssertions.ts`). The serial object is still such a place, so the check would list
+  Khajuraho as a defect and its remedy would reverse the curator's answer. A merge that records
+  a "same group" answer is told apart by its merge record and is not listed, which narrows
+  ADR-0203 decision 6. Every other merge onto a serial object stays a defect;
+- *a part of it* writes a curator's record in the whole, as an answer from the place's card
+  does (ADR-0198 decision 5, #2118);
+- *the same place as one of its parts* is a merge of the part and the kind's place, which
+  ADR-0100 decision 4 and ADR-0203 decision 4 allow. #2528 has the same merge for a place
+  about to be added as a second part;
+- *unrelated* writes the answer alone. Where the item is wrong for one of the two, the curator
+  corrects it as ADR-0143 decision 5 has it.
+
+**What proposes the question.** No curator enters a relation from nothing (decision 12):
+
+- the shared item: a kind's record that carries an item which a serial object holds as
+  referring. The probe of #2276 found these records, and it seeds the finder;
+- a Wikidata part statement between the two records' items (ADR-0150): the item of the
+  Fonserannes locks states "part of" toward the Canal du Midi's;
+- nearness with a like name, the pairing pass's rule (ADR-0046 decisions 2 to 4). The pass
+  leaves every record with parts out today, so the one surface that asks "is this a part of
+  that?" never asks it of a whole. It stops leaving them out: a pair of a kind's place and a
+  serial object, or one of its parts, is proposed where the rule finds it;
+- containment in an outline held, for an area's parts (decision 12).
+
+**For two ordinary places an equal item still makes one place.** Cologne Cathedral (Q4176) is
+one place in World Heritage and in Places of worship (ADR-0084; #755, closed on the maintainer's
+decision of 2026-10-30), because a run finds a place by its item before it creates one
+(ADR-0143 decision 3). The Karnak Temple Complex (Q522862), a part of Ancient Thebes, is one
+place with two kinds' records the same way. The session reads the ruling of 2026-11-17 as one
+about records with parts: it was given to a question about a serial site and a kind's place of
+the same item. That reading is the session's and not the maintainer's. The maintainer's sentence
+is general ("one item does not prove that two records are one thing"), and whether it reaches a
+part's item or every place is listed below as not decided.
+
+**A near pair answered *part of* writes the relation.** The ruling of 2026-11-17 says that what
+is wanted between such records is the relation; the rule that the answer writes it is the
+session's design. A curator's answer writes a curator's record in the whole (ADR-0198
+decision 5). The catalogue's answer from a statement (ADR-0150) writes a record under the
+`wikidata-statement` id scheme, which names the statement; the schema declares the scheme
+and no source uses it yet. Either way `parts_follow_records()`
+makes the relation, and taking the answer back (ADR-0150 decision 4) takes the record away.
+
+**Becoming a record with parts is a curator's answer; being a part of one may be a source's
+claim.** This is the session's design of 2026-11-17, from #2126 ("no rule makes a place a
+whole") and the ruling that a link is a hint. The World Heritage list alone gives a record its
+first part without a curator (ADR-0100, ADR-0210 decision 4). So a statement toward a record
+that has no part is shown on the question and a curator answers it; toward a record that
+already has parts it is a claim, as a list line is, and the pass answers the pair. ADR-0150
+decision 1 has the pass answer every such pair, and is narrowed to the second case. Its
+decisions 2 to 5 stand.
+
+The relation between a class object and the places it is met at is not "part of" and stays as
+decision 9 has it: the khachkar and Noratus cemetery.
 
 **What this leaves, and the interface each builds against.**
 
@@ -453,7 +673,8 @@ measurement.
 | #2583 | Where each source's and a curator's outline and line are kept, what a view outlines (the site or its buffer zone), and how the choice of ADR-0146 is recorded | `experiences.boundary` and `experiences.path` through their one writer; decision 6's tests, `outline_reaches_place()` and `line_reaches_place()`, which the trigger of decision 5 runs on the column, whoever chose the view |
 | #2579 | The visit referents, the verb, and a section's kilometres | Every shape is a row of `experiences`, so a place, an area, a line, a section, a dish and a class object are one referent |
 | #2580 | The region referent that survives a re-import | A basis `named` in `experience_shape_regions`, read by `refresh_place_regions()`: a dish, a class object and an area at sea alike |
-| #2581 | The relations between records as one design: the table of "met at", "replaced by" and the others it lists | Every shape is a row of `experiences`, so a relation joins two rows; "met at" carries decision 9's two strengths, the weaker by default, and only the stronger is read as a visit to the type |
+| #2581 | The relations between records as one design: the table of "met at", "replaced by" and the others it lists. "Part of" is decided here (decisions 2, 13 and 14) | Every shape is a row of `experiences`, so a relation joins two rows; "met at" carries decision 9's two strengths, the weaker by default, and only the stronger is read as a visit to the type |
+| #2126 | The series-candidate check, cast groups, nesting, and the finder and card of decision 14's question | Decision 14's four answers and what each writes; `place_is_whole()` as decision 13 narrows it |
 | #2125 | Containers and "lies within" | `shape = 'area'` and `boundary`; it removes no point by hand |
 | #1969 | The read of outlines and lines by viewport, the layers, the credit | `shape`, `shape_min_zoom`, `extent` |
 
@@ -487,10 +708,59 @@ made it `none`. A record that loses its last part now takes its default again, w
   Decision 11's "an area is its pin" below the zoom where an outline reads was given as the maintainer's
   ruling of 2026-11-16, which no issue records, and stands as the session's until the maintainer confirms it.
 
-Not decided by this amendment, and the maintainer's to decide before the ADR is accepted:
+**Amended as a Draft, to the maintainer's ruling of 2026-11-17 on identity, geography and
+"part of" (#2581, #2126):** the ruling is recorded in two comments of that day on #2581, the
+second also on #2126. It was to be reconciled with ADR-0203, with #2126's requirement that a
+twin's record lands on the whole, and with this Draft, in one statement of the model.
+
+- Decision 2 says a record holds three facts, with what it is as the third, and names the two
+  forms of a record with parts, the serial object and the extended object. The three facts and
+  the two forms are the maintainer's (2026-11-17, #2581). The Draft's first text had the shape
+  and the parts as two facts and said nothing of the item.
+- Decision 2 says a part that is itself an extended object is counted as one place of the whole
+  above it, and the header names ADR-0206 decisions 2 and 3. The session's design.
+- Decision 13 is new: ADR-0203 decisions 1 and 3 hold for a serial object only, and the claim
+  follows the shape. The session's design, from the maintainer's rulings of 2026-11-16 (#2577,
+  a lock is a part of its canal) and 2026-11-17 (#2581, the two forms). It is written here
+  because ADR-0203 is Accepted and is narrowed only by another ADR's header: its Status line
+  names this ADR when this ADR is accepted, and not before.
+- Decision 14 is new. That a shared item only proposes a question, the four answers, and one
+  whole in both kinds for Khajuraho are the maintainer's (2026-11-17, #2581 and #2126). They
+  replace the automatism of #2126's requirement, which was a design and no ruling, and with it
+  the reason ADR-0203's alternatives table gave against asking a curator. What each answer
+  writes, what proposes the question, that a near pair answered *part of* writes the relation,
+  and that becoming a record with parts is a curator's answer are the session's design. The
+  header names ADR-0150 decision 1, which the last of these narrows.
+- Decision 14 gives Archaeology's Baalbek under *a part of it*, which is the maintainer's
+  answer for that pair (2026-11-17, #2581, the first comment of that day). Its item, the
+  city's, is kept only as the reason an item cannot decide.
+- After the first review of this amendment's pull request, three things were added, all the
+  session's design. Decision 13 named `place_is_whole()` as the one test, where `partsBarMerge`
+  and the `merged-onto` refusal spell "has a part" on their own: it now names the three readers
+  and has each go through the function, and the header names ADR-0203 decision 5. Decision 14
+  said nothing of the check `merge-onto-a-whole`, which would have listed every "same group"
+  answer for undo: the check leaves such a merge out, and the header names ADR-0203 decision 6.
+  Decision 14 did not say which place stays: the serial object does, and the header names
+  ADR-0086 decision 2.
+- After the second review, decision 13 says when the `merged-onto` refusal asks the function:
+  after the part is written, since before a first part `place_is_whole()` is false for every
+  record. The session's design.
+- Decision 14 keeps "one thing in two kinds is one place" for ordinary places (ADR-0084, #755).
+  That the ruling of 2026-11-17 concerns records with parts is the session's reading.
+- Decision 12's table says what proposes a part and the question of decision 14, and the
+  interface table gains #2126's row.
+
+Not decided by these amendments, and the maintainer's to decide before the ADR is accepted:
 
 - whether the check of decision 7 lists an area for which no source proposes an arrival point
-  (Tsingy de Bemaraha), which would ask a curator to enter one from nothing.
+  (Tsingy de Bemaraha), which would ask a curator to enter one from nothing;
+- whether "two places are not merged because they share a Wikidata item" reaches further than a
+  record with parts: a part's item (the Karnak Temple Complex, joined with two kinds' records by
+  Q522862; #1944 measures components bound to a wrong item) or every place (Cologne Cathedral).
+  Decision 14 reads it as reaching neither;
+- whether the parts of an extended object that is itself a part are counted in the whole above
+  it as well. Decision 2 counts the extended object; the Rideau Canal's lock stations would
+  make the site's six parts more if they were counted too.
 
 ## Alternatives Considered
 
@@ -504,6 +774,11 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 | A record that holds an outline that is not its own cannot be an area: it keeps the shape it had | A curator's pinned shape of `area` and the stated shape would disagree, and an inserted row has no shape to keep. The shape says what the thing is; whose the outline is decides only the coordinate. |
 | The curator's coordinate as a record of the Curators source, in no kind and no whole | It narrows ADR-0198 decision 1 for a value that is the place's own today: a curator's claim is a column of the place named in `curated_fields`, never a record. |
 | `parts` as a fifth shape, as #2577 was filed | Being an area and having parts are two facts: no container whole exists, the Canal du Midi is a line with locks, Museum Island an area with museums. One column would make each choose. |
+| An equal item puts a kind's record on a serial object without a curator, as #2126 was filed | The item names the group for Khajuraho, a component for the Mausoleum of the First Qin Emperor and the Rideau Canal, and the city for Baalbek, and nothing in the item tells them apart. The three joins of October 2026 were undone by hand. The maintainer decided against the automatism on 2026-11-17 (#2581, #2126). |
+| The twin of a serial site as one more part of it | Khajuraho would read "k of 16" with a sixteenth pin that is the other fifteen. |
+| The twin as a second whole of the same parts, nested in the site | Two cards of one name, each "k of 15". The maintainer decided on 2026-11-17 (#2581) that a traveller sees one card. |
+| Keep ADR-0203's test, "has a part", for every shape | The Canal du Midi would stop being found by its item when its first lock became its part, and a second canal could be created and never merged. It ties what a record is to what it consists of. |
+| Every equal item is a question to a curator | It undoes ADR-0084 in practice. ADR-0143 counted 570 equal-item merges, 2 of them undone. Asked of Cologne Cathedral, "is this a part of that?" has no meaning. |
 | A sixth shape for the class object | It differs from a dish in nothing the schema holds: no ground, a region by name, places it is met at, one tick. |
 | A class object as a whole whose parts are not listed | A whole reads "k of N" and is drawn by its parts; 8,781 khachkars are neither counted nor mapped, and no source ranks them. |
 | A visit to any place a type is met at ticks the type | A museum with one khachkar in a room would tick the khachkar, where no visit to a museum ticks a work it holds. The maintainer decided against it on 2026-11-16. |
@@ -531,6 +806,12 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   inferred.
 - The markers read stays one indexed point column. No outline or line enters it.
 - #2125 is unblocked, and #2582 closes into this decision.
+- A canal, a square or an island keeps the item every kind finds it by when it gains parts, so
+  the Fonserannes locks can be a part of the Canal du Midi and no second canal appears.
+- Khajuraho becomes one card in two kinds by one answer, and the same question separates the
+  Mausoleum of the First Qin Emperor and the Rideau Canal, which an item cannot.
+- An answer *part of* is a relation a traveller's visit follows, where 69 such answers on the
+  development catalogue changed nothing.
 - The catalogue can list what it lacks: an area or a line that still holds its coordinate
   (no outline or line of its own), and a wide area with no arrival point.
 
@@ -547,6 +828,16 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 - A curator cannot move the pin of an area that holds an outline of its own; a wrong pin
   there is a wrong outline (#2471).
 - Hadrian's Wall stays a collection with no pin of its own until a curator states it a line.
+- What a record is found by now moves with a curator's pinned shape, and needs one more trigger
+  on `experiences` (decision 13). A curator who states Hadrian's Wall a line also makes it its
+  item's place.
+- The 50 twins of serial sites are 50 questions, most of them answered alike, where #2126's
+  automatism asked none.
+- Wikidata's statement no longer answers a pair toward a record with no part. All 40 answers the
+  catalogue gave on the development catalogue named such a record, so each would be a question
+  with the statement shown.
+- A kind's place answered *a part of* a serial World Heritage site adds a place to the count
+  beside the list's components, and the question's card has to say so.
 - A bridge's default shape reads the span of the line held for it, so a bridge whose line
   arrives later moves from a pin at its source's coordinate to a pin on its line.
 - A record of shape `none` sits in tables named for places (`place_periods`, the "place" in
@@ -565,10 +856,10 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 
 ## References
 
-- Related ADRs: ADR-0016, ADR-0028, ADR-0029, ADR-0045, ADR-0048, ADR-0059, ADR-0061, ADR-0069, ADR-0077, ADR-0084, ADR-0087,
-  ADR-0100, ADR-0115, ADR-0146, ADR-0198, ADR-0205, ADR-0206, ADR-0207, ADR-0210, ADR-0211, ADR-0212,
-  ADR-0213, ADR-0217
+- Related ADRs: ADR-0016, ADR-0028, ADR-0029, ADR-0045, ADR-0046, ADR-0048, ADR-0059, ADR-0061, ADR-0069, ADR-0077,
+  ADR-0084, ADR-0086, ADR-0087, ADR-0100, ADR-0115, ADR-0143, ADR-0146, ADR-0150, ADR-0198, ADR-0203, ADR-0205,
+  ADR-0206, ADR-0207, ADR-0210, ADR-0211, ADR-0212, ADR-0213, ADR-0217
 - Related docs: `docs/tech/experiences.md` § Location model, `docs/tech/experience-map-ui.md`,
   `docs/tech/geometry-columns.md`, `docs/tech/catalogue-coverage.md`
 - Issues: #2577, #505, #2248, #2582, #2125, #1948, #1676, #2583, #2579, #2580, #2581, #1969,
-  #2471, #714, #2124, #2578, #2116, #2586, Epic #2115
+  #2471, #714, #2124, #2578, #2116, #2586, #2126, #2118, #2528, #2276, #1944, #755, Epic #2115
