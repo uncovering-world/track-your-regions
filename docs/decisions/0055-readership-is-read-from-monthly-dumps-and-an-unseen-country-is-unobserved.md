@@ -97,49 +97,107 @@ cannot show was measured, and the causes were checked against Wikimedia's code a
 ## Decision
 
 **1. Readership is read from the monthly `pageview_complete` user dumps, over the last twelve
-complete months, once a year.** A pass over the pool never goes through the per-article API. A
-month file that ends early is an error, not a short month. Wikimedia publishes no checksums for
-these files, so completeness is checked three ways: the downloaded size against the server's
-`Content-Length`; the decompressor's own exit status, carried through `set -o pipefail`, because a
-stream that stops reads to the filter as a clean end of file; and, as a last sanity check, the
-line and edition counts, where a month under 50 million lines or 80 editions is refused.
+complete months.** A pass never goes through the per-article API. A build reads only the months
+the year lacks, so the twelve roll forward as Wikimedia publishes them. A month file that ends
+early is an error, not a short month. Wikimedia publishes no checksums for these files, so
+completeness is checked three ways: the downloaded size against the server's `Content-Length`;
+the decompressor's own exit status, because a stream that stops reads to a line reader as a clean
+end of file; and, as a last sanity check, the line and edition counts, where a month under 50
+million lines or 80 Wikipedia editions is refused. A month is kept per item and edition for every
+edition, and a door sums the counted editions of decision 2.
 
 **2. A work's views in an edition are the views of its article's title and of every title that
-redirects to it, with all three spellings summed.** Rows matched only by page id are not counted.
-A sitelink that leads to an article about something else, or to nothing, is *no article* — never
-zero, the rule of ADR-0023. A work with no article in any counted edition is unmeasurable, never
-last.
+redirects to it, with all three spellings summed, in every counted edition.** A counted edition
+is one whose twelve months total more than 15 million views: 83 of 378 on 2026-10-18. Rows
+matched only by page id are not counted. A redirect that is itself an item's sitelink counts
+under that item, not under the article it points to. An article under 10 views in a month, its
+redirects summed into it, is not kept for that month. A work read in no counted edition is absent
+from the reading: unmeasurable, never zero and never last, and a bar is read over the works that
+were read. A sitelink that leads to nothing reads nothing. One that leads to an article about
+something else is read as the item states it, since the views of the two articles cannot be told
+apart; the fix belongs on the item.
 
-**3. The extract keeps the access method and the daily series, and automated traffic is set aside
-against each edition's own norm.** At 5,000 views a year or more, a (work, edition) pair whose
-phone share differs from its edition's yearly phone share by 2.5 or more in log-odds does not
-count. A pair that does not count adds nothing to its work's sums, so a work's total is the rest
-of its editions, and it is left out of the per-language medians that ADR-0057 divides by; it is
-never read as zero there. The Top 25 Report's absolute rule is not used.
+**3. The extract keeps each month's views, its views on a phone (mobile web and app) and, from
+400 views in the month, the daily series, and automated traffic is set aside against each
+edition's own norm.** At 5,000 views a year or more, a (work, edition) pair whose phone share
+differs from its edition's yearly phone share by 2.5 or more in log-odds does not count. A pair
+that does not count adds nothing to its work's sums wherever a work's own readers are read, so a
+work's total is the rest of its editions; it is never read as zero. Two reads over every item are
+raw sums, read before any pair is set aside. One is the readers of the item at a rank, which a
+readers' floor is stated as (ADR-0184). The other is the list of items read at a bar under a
+pool's floor, and the door reads each of those again with the pairs set aside. A cut that divides
+by a per-language median leaves such a pair out of the median and never reads it there as zero.
+ADR-0057 proposes such a cut as a candidate; none is built. The Top 25 Report's absolute rule is
+not used.
 
 **4. A burst is a flag, never a correction, and it is read on the series its door reads.** A work
 with a quarter of its year in one week, or a monthly coefficient of variation of 0.5 or more,
-carries a flag a curator sees: over every language for the world door of ADR-0056, and over the
-language that admitted the museum for the surroundings-tier cut of ADR-0057, so that a flag never comes
-from a series its door does not read. A museum whose works peak in the same fortnight carries the
-flag too. The incidence above is the world door's cohort; an admission through the surroundings-tier
-cut clears a far lower bar — about 500 views in Georgian — and its bursts are its own. The level a door reads stays the
-plain annual sum unless its own adoption slice changes it; ADR-0056 and ADR-0057 both leave
-that choice to #628, each with its own numbers beside it, and the flag stands either way.
+carries a flag a curator sees. On the work door of ADR-0056, in every kind that has one, the
+series is every counted edition without the pairs decision 3 sets aside. Where that door alone
+admits a venue, the flag is named in the curator's question on it. A museum whose works peak in
+the same fortnight carries the flag too; that half is not built. A cut read in one language reads
+the flag over that language, so that a flag never comes from a series its door does not read.
+Such a cut clears a far lower bar, about 500 views in Georgian for ADR-0057's candidate, and its
+bursts are its own. Every door reads the plain annual sum as its level, the level ADR-0056
+decision 4 names and the door was adopted on (#1574, ADR-0162). A door that would read another
+level records it in its own ADR, with its numbers beside it, and the flag stands either way.
 
-**5. The reader-country dataset is a check, never a signal.** It confirms where a work is read
-only where ADR-0057 asks, with each country's share computed inside the period that country is
-published. A country the dataset does not show is *unobserved*. Nothing is inferred from its
-absence: a work from it is neither dropped nor favoured, it carries an "unverified" flag, and the
-product says "no data", never "rarely read".
+**5. The reader-country dataset is a check, never a signal, and no door built reads it.** The work
+door names no country (ADR-0056 decision 5), so the dataset is read nowhere today. A door that
+asks where a work is read reads it as a check only, with each country's share computed inside the
+period that country is published; ADR-0057's candidate cut is the one proposed. A country the
+dataset does not show is *unobserved*. Nothing is inferred from its absence: a work from it is
+neither dropped nor favoured, it carries an "unverified" flag, and the product says "no data",
+never "rarely read".
 
 **6. No other readership source is used without its publisher's permission.** Baidu Baike, Namu
 Wiki, Similarweb and Cloudflare Radar stay out until their terms are read and permission is given
 (ADR-0048 decision 6).
 
-**Not decided here:** which works qualify (ADR-0056, ADR-0057), and where a run stores the extract
-or when it schedules the pass. Those belong to the implementation, documented in `docs/tech` with
-its code.
+**Not decided here:** which works qualify (ADR-0056 and the ADRs that narrow it, and ADR-0057 as
+a candidate), and where a run stores the extract or when it schedules the pass. Those belong to
+the implementation, documented in `docs/tech/dumps.md` § Readership with its code.
+
+**Amended while Draft (2026-11-17, #2619 line 4.10):** each decision was read against what is
+built: `docs/tech/dumps.md` § Readership, `backend/src/services/dumps/readership/`,
+`backend/src/services/sync/readershipDoor.ts` and migrations 120 and 126. Decisions 3 to 5
+leaned on ADR-0057, which is a Draft, a candidate cut of the surroundings tier and not built.
+They now say what holds for the work door ADR-0056 and ADR-0162 built, and treat ADR-0057's cut as
+a candidate. What changed:
+- *Decision 1.* The pass is no longer "once a year". A build reads only the months the year
+  lacks (`buildReadership`), and the twelve roll forward. The decompressor's exit status is
+  read from the `bzip2` process (`read.ts`) rather than through a shell's `pipefail`. The
+  edition floor counts Wikipedia editions (`MIN_EDITIONS`). A month is kept for every edition,
+  and a door sums the counted ones.
+- *Decision 2.* It now defines the counted editions (`countedEditions`), which every door reads
+  and the decisions used without defining. Three rules of the build are added:
+  - a redirect that is an item's own sitelink counts under that item (`keepEdition`);
+  - a month's floor of 10 views applies to an article with its redirects summed (#1702);
+  - a work read in no counted edition is absent from the reading, and the bar is read over the
+    works read (`readWorks`, `doorOf`).
+
+  The earlier text called a sitelink to an article about something else *no article*. Nothing
+  built can tell that from the work's own article, so the decision now says it is read as the
+  item states it.
+- *Decision 3.* The extract keeps the views and the views on a phone, not each access method
+  apart, and keeps a month's days only from 400 views (`monthSummer.ts`). It now names the two
+  raw sums: the rank of a readers' floor, which Accepted ADR-0184 states, and the read under a
+  pool's floor, which the door reads again. The per-language medians are now a candidate cut's,
+  not ADR-0057's as if it ran.
+- *Decision 4.* The flag is stated for the work door as built in every kind that has it
+  (`burstsAmong`, `doorNote`). The museum-wide flag of works that peak in the same fortnight
+  stays decided and is marked not built. ADR-0057's cut becomes the example of a cut read in one
+  language. The level is the plain sum every door was adopted on, instead of a choice both doors
+  leave to #628.
+- *Decision 5.* No door built reads the reader-country dataset, since the work door names no
+  country. The check stands as written for a door that asks.
+- *Decision 6* stands as written. The maintainer confirmed it on 2026-11-17 (#2619, comment of
+  20:18Z): no other readership source is used without its publisher's permission, read from its
+  terms first, as ADR-0048 decision 6 asks of any source. That is an order of steps, not a refusal
+  for ever.
+
+The context and the consequences are the record of the 2026-09-11 measurement and are not
+restated.
 
 ## Alternatives Considered
 
@@ -178,11 +236,11 @@ its code.
 
 ## References
 
-- Related ADRs: ADR-0023, ADR-0048, ADR-0056, ADR-0057
-- Related docs: `docs/tech/filling-a-kind.md` § 7.4, § 8
+- Related ADRs: ADR-0023, ADR-0048, ADR-0056, ADR-0057, ADR-0101, ADR-0162, ADR-0184
+- Related docs: `docs/tech/filling-a-kind.md` § 7.4, § 8; `docs/tech/dumps.md` § Readership
 - Wikimedia: `https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits`,
   `https://dumps.wikimedia.org/other/pageview_complete/readme.html`,
   `https://analytics.wikimedia.org/published/datasets/country_project_page/00_README.html`,
   `https://foundation.wikimedia.org/wiki/Legal:Country_and_Territory_Protection_List`,
   T427171, T435038
-- Issues: #807
+- Issues: #807, #1436, #1650, #1702, #1574
