@@ -498,17 +498,20 @@ A derived state reads as visited and paints nothing of its own: a whole visited 
 to the record (Epic #2115), and the regions are painted by the place that was ticked. This is
 the design's rule.
 
-What a visit counts as under a kind is not decided here. A visit before the place entered a
-list, a visit made while it was listed, and a tick made today on a place no longer listed or
-standing, which asks when, are the maintainer's ruling of 2026-11-16 on #2578, and ADR-0217
-carries it. This read counts regions, takes no date and no listing into account, and a visit
-that ADR-0217 counts as one to a former place paints its region like any other.
+What a visit counts as under a kind is not decided here. A count under a kind is read over the
+list of the date shown, and when a visit happened changes none; no "when were you there?" is
+asked for a place that left a list. That is the maintainer's ruling of 2026-11-17 on #2578
+(comments of 10:24Z and 10:30Z), which replaces the one of 2026-11-16 (comment of 21:06Z) this paragraph
+named, and ADR-0217 decision 8 carries it. This read counts regions, takes no date and no
+listing into account, and a visit to a place that left its list or no longer stands paints its
+region like any other: Liverpool, delisted in 2021, paints its region whenever the traveller
+was there.
 
 **What this leaves, and the interface each builds against.**
 
 | Issue | It decides | It builds against |
 |---|---|---|
-| #2008 | The catalogue offered for a past trip | A trip's `year`, `month`, `day` under a visit of any of the four, read by `@tyr/shared/approximateDates`. What the visit counts as against a list and a place's lifetime, and the "when?" asked on a tick of a place no longer listed or standing, are ADR-0217's (#2578); a visit holds nothing for them but its trips |
+| #2008 | The catalogue offered for a past trip | A trip's `year`, `month`, `day` under a visit of any of the four, read by `@tyr/shared/approximateDates`. Which list a count is read over is ADR-0217's (decisions 6 and 8, #2578): the list as it stood on the date shown, never the date of the visit, so no count reads a trip and no "when?" is asked on a tick of a place that left a list or is not yet on it. The date offered on a tick of a place that no longer stands (ADR-0217 decision 7) files the visit under a trip, and is no condition of counting |
 | #1948 | Sections, the walk in kilometres, what a walk paints | A visit on the section's record; a row beside the trip for the kilometres and the two stops |
 | #1676 | The kinds, their verbs, which kinds paint | A visit on a record of shape `none`; the kind's declaration read by decision 5; the answer to "where" as a visit of its own, linked from the record's visit when the first such kind is built |
 | #616 | The country a visit was in | A trip's date and the visit's ground: the record's pin, the own point, or the ticked region's anchor. Not a table keyed on a region of one view |
@@ -567,6 +570,17 @@ in no comparison by bricks, and a change to it asks. Decision 5 said a place lis
 counted regions paints "nothing above them", which reached past the maintainer's ruling
 ("none of them") unmarked. The smallest region that holds all the listed ones is now painted
 as a lighter visit while the question is open, marked as the design's.
+
+**Amended while Draft (2026-11-17, #2578), to the maintainer's ruling of that day on counts:**
+decision 9's paragraph on what a visit counts as under a kind, and the #2008 row of the table
+after it, named the maintainer's ruling of 2026-11-16 (#2578, comment of 21:06Z): a visit made
+while a place was listed, and a tick made today on a place no longer listed or standing, "which
+asks when". The maintainer replaced that on 2026-11-17 (#2578, comments of 10:24Z and 10:30Z): a count is
+read over the list of the date shown, when a visit happened changes none, and no "when were you
+there?" is asked for a place that left a list. Both sentences now say so and point to ADR-0217
+decisions 6, 7 and 8, amended the same day. Nothing this ADR decides changes: a visit holds its
+trips as before, and the read of decision 9 never took a date or a listing into account. The
+"visit to a former place" the paragraph spoke of is gone with the rule that made one.
 
 ## Alternatives Considered
 
