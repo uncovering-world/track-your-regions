@@ -238,6 +238,7 @@ and accepted by it.
 | [0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) | Time in the catalogue is held as periods, and the catalogue is read as of a date | Draft | 2026-11-16 |
 | [0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md) | A record states its shape, and its pin is derived from what it holds | Draft | 2026-11-16 |
 | [0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md) | A visit is one row on what the traveller met, and a tick on a region moves or asks when the region goes | Draft | 2026-11-16 |
+| [0220](0220-city-gates-and-walls-takes-no-gate-or-wall-from-archaeology.md) | City gates & walls takes no gate or wall from Archaeology, and the Porta Nigra is offered there | Draft | 2026-11-17 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
