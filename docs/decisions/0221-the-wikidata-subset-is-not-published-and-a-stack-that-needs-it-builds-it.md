@@ -1,10 +1,11 @@
 # ADR-0221: The Wikidata subset is not published, and a stack that needs it builds it
 
 **Date:** 2026-11-17
-**Status:** Draft
+**Status:** Accepted
 **Issue:** [#1438](https://github.com/uncovering-world/track-your-regions/issues/1438) (closed as
 not planned), Epic #1312
-**Narrows (once accepted):**
+**Built by:** #1438, #1312, #1693
+**Narrows:**
 [ADR-0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md)
 decision 5 (a built subset is shared as a dated release);
 [ADR-0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md)
@@ -71,6 +72,8 @@ release. Its licence statement stands; the release it mentions is not built.
   issue builds a release of them either.
 - How a second developer shortens the first build (#1696). A sample build exists
   (`docs/tech/dumps.md` § Trying a change on a sample).
+
+**Accepted on 2026-11-17** (#2619 line 4.12): every decision here is the maintainer's, recorded on #1438; no decision changes with the acceptance.
 
 ## Alternatives Considered
 

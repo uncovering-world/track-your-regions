@@ -1,10 +1,11 @@
 # ADR-0220: City gates & walls takes no gate or wall from Archaeology, and the Porta Nigra is offered there
 
 **Date:** 2026-11-17
-**Status:** Draft
+**Status:** Accepted
 **Issue:** [#1160](https://github.com/uncovering-world/track-your-regions/issues/1160),
 [#1812](https://github.com/uncovering-world/track-your-regions/issues/1812)
-**Narrows (once accepted):**
+**Built by:** #1160, #1812
+**Narrows:**
 [ADR-0131](0131-a-kind-is-drawn-by-what-a-place-was-made-for.md) decision 2 (the sentence on City
 gates & walls: a gate or a wall standing whole is that kind's, "the Porta Nigra included", and
 that this narrows the ruling of 2026-10-20 on #1160)
@@ -106,6 +107,8 @@ membership in Archaeology takes nothing from another kind.
 - The other three places the ruling of 2026-10-20 names. The Theodosian Walls and the Babylon
   Fortress wait for the classifier of #1445, as #1160 records. The Hippodrome is recorded on
   #1160 as today a square (the maintainer, 2026-10-20).
+
+**Accepted on 2026-11-17** (#2619 line 4.12): every decision here is the maintainer's, recorded on #1160 and #1812; no decision changes with the acceptance.
 
 ## Alternatives Considered
 

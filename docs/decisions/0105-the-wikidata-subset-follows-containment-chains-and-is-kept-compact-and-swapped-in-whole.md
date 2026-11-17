@@ -1,7 +1,7 @@
 # ADR-0105: The Wikidata subset follows containment chains, and is kept compact and swapped in whole
 
 **Date:** 2026-10-14
-**Status:** Accepted — decision 4 narrowed by [ADR-0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md)
+**Status:** Accepted — decision 5's clause on a published release narrowed by [ADR-0221](0221-the-wikidata-subset-is-not-published-and-a-stack-that-needs-it-builds-it.md): no release is published, so a stack refills the tables by building the subset; decision 4 narrowed by [ADR-0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md)
 
 ---
 
