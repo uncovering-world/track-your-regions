@@ -30,7 +30,7 @@ export * from './reviewQueueMapNamesSchema.js';
 // Why a curator acted, and the region acts (#863).
 export * from './curatorActSchemas.js';
 import {
-  additionReasonSchema, admissionReasonFits, admissionReasonSchema, refusalReasonSchema, sourceAnswerReasonSchema,
+  additionReasonSchema, answeredMembershipSchema, refusalReasonSchema, sourceAnswerReasonSchema,
 } from './curatorActSchemas.js';
 
 // =============================================================================
@@ -731,41 +731,6 @@ export const lifecycleStateBodySchema = z.object({
   message: 'Pass membership, existence, or both',
 });
 
-/**
- * The membership a curator's answer is about (#1264, ADR-0084): a place in two
- * kinds can have an arrival in one and a refusal or a held proposal in the
- * other, and the card the curator answered names which. Optional — absent, the
- * endpoint answers the membership `membershipToAnswerSql` picks, which is the
- * place's only one until a merge (#1247). A membership of another place is no
- * question this place has, and is refused as one already answered.
- */
-const answeredMembershipSchema = bodyRowIdSchema.optional();
-
-export const experienceAdmissionBodySchema = z.object({
-  /**
-   * `confirm` keeps the refusal, `override` undoes it.
-   *
-   * No `expected` block, because only one of the two needs a stale-view check.
-   * `confirm` hides, so it collides with the `curated_fields` pin a first
-   * answer left. `override` reveals and is idempotent across curators, so it
-   * stays open on a pinned row — that is the only way back from a refusal, and
-   * a way back an earlier click can close is not one.
-   */
-  decision: z.enum(['confirm', 'override']),
-  note: z.string().max(1000).optional(),
-  membershipId: answeredMembershipSchema,
-  /**
-   * On a put-back: whether later runs keep the row while the rule refuses it
-   * for the same reason (the pin, #1367). Absent, they do; false admits it for
-   * now and the next run applies the rule again (#1368). Read only with
-   * `override` — a confirmation always pins.
-   */
-  remember: z.boolean().optional(),
-  reasonCode: admissionReasonSchema,
-}).refine(admissionReasonFits, {
-  message: 'A put-back offers the reasons of an addition, a confirmation those of a refusal', path: ['reasonCode'],
-});
-
 /** The admission pins a curator may read (#1369): every one in scope, or one place's. */
 export const admissionPinsQuerySchema = z.object({
   experienceId: rowIdSchema.optional(),
@@ -879,6 +844,10 @@ export const crowdingAnswersBodySchema = z.object({
  * conflict writers compare with the pointer under the lock. Bounded by the
  * queue's page maximum: a selection past one page is walked by the client a
  * page at a time, so progress is reported and the route never takes a filter.
+ *
+ * A rejection that turns arrivals away says why, one reason for every one of
+ * them (#863): an arrival row rejected without one is refused, as its card's
+ * own turn-away is. The reason and the note go with a rejection only.
  */
 export const reviewAnswerBodySchema = z.object({
   rows: z.array(z.object({
@@ -888,6 +857,11 @@ export const reviewAnswerBodySchema = z.object({
     membershipId: answeredMembershipSchema,
   })).min(1).max(100),
   answer: z.enum(['accept', 'reject', 'lost']),
+  reasonCode: refusalReasonSchema
+    .describe('Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused.'),
+  note: z.string().max(1000).optional().describe('The curator\'s words beside the reason, kept with each arrival turned away.'),
+}).refine(body => body.answer === 'reject' || (body.reasonCode === undefined && body.note === undefined), {
+  message: 'A reason goes with a rejection only', path: ['reasonCode'],
 });
 
 /**
@@ -907,13 +881,6 @@ export const arrivalKindBodySchema = addToKindBodySchema.extend({
 export const plannedKindAnswerBodySchema = z.object({
   plannedKind: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(80).describe("The planned kind's slug in the register."),
   belongs: z.boolean().describe('Whether the place belongs to that kind, as a candidate for when it is built.'),
-});
-
-/** A curator keeping out an arrival (#852, ADR-0053): the note is all there is to send. */
-export const refuseArrivalBodySchema = z.object({
-  note: z.string().max(1000).optional(),
-  membershipId: answeredMembershipSchema,
-  reasonCode: refusalReasonSchema,
 });
 
 /**

@@ -84,8 +84,11 @@ function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
-function req(rows: Array<{ kind: string; id: number; runId?: number | null }>, answer: string) {
-  return { user: CURATOR, body: { rows, answer } } as never;
+function req(
+  rows: Array<{ kind: string; id: number; runId?: number | null }>, answer: string,
+  reason: { reasonCode?: string; note?: string } = {},
+) {
+  return { user: CURATOR, body: { rows, answer, ...reason } } as never;
 }
 
 const PUBLISHED = {
@@ -181,10 +184,28 @@ describe('the dispatch table', () => {
     expect(res.json.mock.calls[0][0].refused[0].error).toContain('reload');
   });
 
-  it("rejects an arrival with a curator's refusal", async () => {
-    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'reject'), makeRes() as never);
-    expect(mockedRefuseArrival).toHaveBeenCalledWith(5, 7, 12, {});
+  it("rejects an arrival with a curator's refusal, and the reason picked for the batch (#863)", async () => {
+    await answerRoute(postReviewAnswer,
+      req([{ kind: 'waiting', id: 5 }], 'reject', { reasonCode: 'other', note: 'a border crossing' }), makeRes() as never);
+    expect(mockedRefuseArrival).toHaveBeenCalledWith(5, 7, 12, { reasonCode: 'other', note: 'a border crossing' });
     expect(mockedRefuseContents).not.toHaveBeenCalled();
+  });
+
+  it('refuses an arrival rejected without a reason, as its card would', async () => {
+    const res = makeRes();
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'reject'), res as never);
+    expect(mockedRefuseArrival).not.toHaveBeenCalled();
+    expect(res.json.mock.calls[0][0].refused)
+      .toEqual([expect.objectContaining({ id: 5, error: expect.stringContaining('needs a reason') })]);
+  });
+
+  it('takes a reason and words with a rejection only, and a refusal\'s reason only', () => {
+    const rows = [{ kind: 'waiting', id: 5 }];
+    expect(() => postReviewAnswer.body!.parse({ rows, answer: 'accept', reasonCode: 'gone' })).toThrow();
+    expect(() => postReviewAnswer.body!.parse({ rows, answer: 'lost', note: 'collapsed' })).toThrow();
+    expect(() => postReviewAnswer.body!.parse({ rows, answer: 'reject', reasonCode: 'missing-from-rule' })).toThrow();
+    expect(postReviewAnswer.body!.parse({ rows, answer: 'reject', reasonCode: 'gone' }))
+      .toMatchObject({ answer: 'reject', reasonCode: 'gone' });
   });
 
   it('rejects a held object with contents by refusing the whole card, then the contents', async () => {

@@ -70,14 +70,16 @@ async function scopeOfRow(
 /**
  * Answer a selection of review rows with one answer.
  * POST /api/experiences/review/answer
- * Body: { rows: [{ kind, id, runId }], answer: 'accept' | 'reject' | 'lost' }
+ * Body: { rows: [{ kind, id, runId }], answer: 'accept' | 'reject' | 'lost', reasonCode?, note? }
  *
  * A row named twice is answered once. A row whose object is gone is refused
  * by name rather than 404ing the batch: the list the curator selected from
  * was drawn a moment ago, and one deleted object is one line in the report.
  */
 export async function answerReviewRows(
-  { body: { rows, answer }, caller }: { body: z.output<typeof reviewAnswerBodySchema>; caller: Express.User },
+  { body: { rows, answer, reasonCode, note }, caller }: {
+    body: z.output<typeof reviewAnswerBodySchema>; caller: Express.User;
+  },
 ): Promise<ReviewAnswerResult> {
   const userId = caller.id;
   const userRole = caller.role;
@@ -118,6 +120,7 @@ export async function answerReviewRows(
           // One answer over a selection of many is a bulk act; a selection of
           // one is the card's own answer (#863).
           bulk: distinct.length > 1,
+          reasonCode, note,
         },
         row.kind, answer);
       if ('refusal' in outcome) {

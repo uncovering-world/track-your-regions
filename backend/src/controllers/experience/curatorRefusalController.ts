@@ -12,7 +12,7 @@
  * **Refusing an arrival is written the way a rule's refusal is.** The
  * membership takes `admission = 'refused'`, a reason that says a person did
  * it, and the admission pin — so the row leaves the queue for the kept-out
- * list at once, every later run honours the answer, and *Put it back*
+ * list at once, every later run honours the answer, and *Put back*
  * (`POST /:id/admission { override }`) is the way back, publishing the
  * arrival as it always has (ADR-0025 § 4.5). `curation_state` stays
  * `pending`: nobody passed it, and ADR-0025 decision 4 asks that both facts

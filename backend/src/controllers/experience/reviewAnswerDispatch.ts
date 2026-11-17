@@ -12,7 +12,7 @@
  *
  * | kind | accept | reject | lost |
  * |---|---|---|---|
- * | waiting, arrival | publish the object and what arrived with it | keep it out (a curator's refusal) | — |
+ * | waiting, arrival | publish the object and what arrived with it | keep it out (a curator's refusal, with the batch's reason; refused without one) | — |
  * | waiting, held | publish every open held field and part, and the unread contents | refuse every open held row, and the unread contents | — |
  * | waiting, contents only | release the unread points and works | refuse them | — |
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
@@ -65,6 +65,7 @@ import type { PlacementFailure, PublishResult } from '../../api/responses/curati
 import type { ReviewAnswerDid } from '../../api/responses/reviewQueue.js';
 import type { QueueKind as AnswerKind, ReviewAnswer as Answer } from './reviewQueueVocabulary.js';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import type { CurationReasonCode } from '@tyr/shared/curationLog';
 import { shownBySql } from '../../db/placePoints.js';
 
 export type { AnswerKind, Answer };
@@ -103,6 +104,9 @@ type Answerer = {
    * batch's in one query.
    */
   bulk?: boolean;
+  /** Why a rejection turns an arrival away, and the curator's words: one for every row (#863). */
+  reasonCode?: CurationReasonCode;
+  note?: string;
 };
 
 /** The bulk mark an arm's writer takes: the row's run, on an answer over a selection of many. */
@@ -222,14 +226,23 @@ async function acceptWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome>
   };
 }
 
+/**
+ * An arrival turned away with a reason, in a batch as on its card
+ * (`refuseArrivalBodySchema`): the batch's one reason is every row's, and an
+ * arrival rejected without one is refused.
+ */
+async function turnArrivalAway(who: Answerer): Promise<Outcome> {
+  const { experienceId, userId, logRegionId, membershipId, reasonCode, note } = who;
+  if (reasonCode === undefined) return refused(400, 'Turning an arrival away needs a reason, chosen under Turn away');
+  const outcome = await refuseArrivalUnderLock(experienceId, userId, logRegionId, {
+    ...named(membershipId), reasonCode, note, bulk: bulkOf(who),
+  });
+  return outcome.refusal ? refusedBy(outcome.refusal) : { did: { published: 0 } };
+}
+
 async function rejectWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome> {
   const { experienceId, userId, logRegionId, runId, membershipId } = who;
-  if (subs.arrival) {
-    const outcome = await refuseArrivalUnderLock(experienceId, userId, logRegionId, {
-      ...named(membershipId), bulk: bulkOf(who),
-    });
-    return outcome.refusal ? refusedBy(outcome.refusal) : { did: { published: 0 } };
-  }
+  if (subs.arrival) return turnArrivalAway(who);
   const did: Did = {};
   let placement: Placement | undefined;
   if (subs.held) {

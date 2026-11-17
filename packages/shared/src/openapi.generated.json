@@ -26833,45 +26833,76 @@
         "description": "One object in a region's list."
       },
       "ExperienceAdmissionBody": {
-        "type": "object",
-        "properties": {
-          "decision": {
-            "type": "string",
-            "enum": [
-              "confirm",
-              "override"
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "const": "confirm"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "membershipId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "reasonCode": {
+                "description": "Why the curator acted, kept in the log entry the act writes.",
+                "type": "string",
+                "enum": [
+                  "not-this-kind",
+                  "not-worth-a-visit",
+                  "not-one-place",
+                  "gone",
+                  "duplicate",
+                  "wrong-place",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "decision"
             ]
           },
-          "note": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "membershipId": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647
-          },
-          "remember": {
-            "type": "boolean"
-          },
-          "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes. A confirmation takes a refusal's reason, a put-back an addition's.",
-            "type": "string",
-            "enum": [
-              "not-this-kind",
-              "not-worth-a-visit",
-              "not-one-place",
-              "gone",
-              "duplicate",
-              "wrong-place",
-              "other",
-              "missing-from-rule"
+          {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "const": "override"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "membershipId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "remember": {
+                "type": "boolean"
+              },
+              "reasonCode": {
+                "type": "string",
+                "enum": [
+                  "missing-from-rule",
+                  "other"
+                ],
+                "description": "Why the curator acted, kept in the log entry the act writes. A put-back always says why."
+              }
+            },
+            "required": [
+              "decision",
+              "reasonCode"
             ]
           }
-        },
-        "required": [
-          "decision"
-        ]
+        ],
+        "type": "object"
       },
       "ExperienceDetail": {
         "type": "object",
@@ -36819,7 +36850,6 @@
             "maximum": 2147483647
           },
           "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
             "type": "string",
             "enum": [
               "not-this-kind",
@@ -36829,9 +36859,13 @@
               "duplicate",
               "wrong-place",
               "other"
-            ]
+            ],
+            "description": "Why the curator acted, kept in the log entry the act writes. Turning an arrival away always says why."
           }
-        }
+        },
+        "required": [
+          "reasonCode"
+        ]
       },
       "RefuseArrivalResult": {
         "type": "object",
@@ -38952,6 +38986,24 @@
               "reject",
               "lost"
             ]
+          },
+          "reasonCode": {
+            "description": "Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "gone",
+              "duplicate",
+              "wrong-place",
+              "other"
+            ]
+          },
+          "note": {
+            "description": "The curator's words beside the reason, kept with each arrival turned away.",
+            "type": "string",
+            "maxLength": 1000
           }
         },
         "required": [
