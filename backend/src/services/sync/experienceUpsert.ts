@@ -591,10 +591,10 @@ async function previewUpsert(sent: ExperienceUpsertParams, lifetime: RecordPerio
     // a gate the proposal is what a curator is being asked about, so a preview
     // that reported "nothing would change" would hide the question. The hold
     // rides along so it lands in the bucket that says it was refused.
-    changeSet: withDates(
-      proposedBy(row, computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView)),
+    changeSet: proposedBy(row, withDates(
+      computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView),
       lifetime && decideLifetime(await heldPeriodsOf(pool, row.id), lifetime, storedPlaceGate(params.sourceId, row, curatedFields)),
-    ),
+    )),
     nameSnapshot: curatedFields.includes('name') || heldFromView
       ? (row.name as string)
       : written.name,
@@ -720,7 +720,7 @@ const storedPlaceGate = (sourceId: number, stored: Record<string, unknown>, clai
   pinned: Boolean(stored.kept_by_pin),
 });
 
-/** The change set with what the run wrote of the place's periods, where it read any. */
+/** The change set with what the run wrote of the place's periods and held back of them, where it read any. */
 const withDates = (changeSet: ChangeSetResult, dates: LifetimeDecision | undefined): ChangeSetResult =>
   (dates ? withLifetimeChanges(changeSet, dates) : changeSet);
 
@@ -1206,9 +1206,11 @@ async function writeUnderLock(
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
   const incoming = snapshotFromParams(written, await incomingOutline(client, params, stored ?? null), shortMove);
   const dates = await writeOwnLifetime(client, locked, row, params, lifetime, held);
-  const changeSet = withDates(
-    proposedBy(stored, computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held)), dates,
-  );
+  // A held list of the place's periods is a proposal like a held field, so a
+  // run whose own membership refuses the place proposes neither (`proposedBy`).
+  const changeSet = proposedBy(stored, withDates(
+    computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held), dates,
+  ));
   fileKeyMove(changeSet, redirectedFrom, params.externalId);
 
   // A curator's pass covered the object that was there; a changed object has not

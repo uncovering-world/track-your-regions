@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SourcedDate, SourcedPeriod } from '../../db/placePeriodsWriter.js';
-import { decideLifetime, withLifetimeChanges, type HeldPeriods, type LifetimeGate } from './lifetimeWrites.js';
+import { decideLifetime, withLifetimeChanges, type HeldPeriods, type LifetimeDecision, type LifetimeGate } from './lifetimeWrites.js';
 
 /**
  * #2578: the gate over a place's periods (ADR-0217 decision 3), on the
@@ -18,6 +18,8 @@ const until = (from: SourcedDate | null, end: SourcedDate | null, ending: Source
 const held = (periods: SourcedPeriod[], sourceId = 5, decidedBy: number | null = null): HeldPeriods => ({ periods, sourceId, decidedBy });
 const gate = (over: Partial<LifetimeGate> = {}): LifetimeGate =>
   ({ sourceId: 5, gated: true, held: true, claimed: [], pinned: false, ...over });
+/** What a decision holds back for a curator, by what each list says. */
+const heldBack = (decision: LifetimeDecision): string[] => decision.held.map((change) => change.field);
 
 const BLOWN_UP = on(1931, { month: 12, day: 5, property: 'P576' });
 const SINCE_1883 = [open(on(1883))];
@@ -32,7 +34,7 @@ describe('the gate over a place\'s periods (#2578)', () => {
     expect(decision.changes.map((c) => [c.field, c.passedTheGate, c.old])).toEqual([
       ['stood', 'first-date', null], ['used', 'first-date', null],
     ]);
-    expect(decision.heldBack).toEqual([]);
+    expect(heldBack(decision)).toEqual([]);
   });
 
   it('passes a gap filled into a period the place holds: every date kept, and the place still standing', () => {
@@ -67,13 +69,13 @@ describe('the gate over a place\'s periods (#2578)', () => {
     const trinita = [until(on(1252), on(1557)), until(on(1569), on(1944)), open(on(1958))];
     const stored = { stood: held(trinita) };
     // One gap fewer, though every start it keeps is one the place holds.
-    expect(decideLifetime(stored, { stood: [until(on(1252), on(1944)), open(on(1958))] }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime(stored, { stood: [until(on(1252), on(1944)), open(on(1958))] }, gate()))).toEqual(['stood']);
     // As many periods, with the first gap at another year.
-    expect(decideLifetime(stored, { stood: [until(on(1252), on(1333)), until(on(1345), on(1944)), open(on(1958))] }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime(stored, { stood: [until(on(1252), on(1333)), until(on(1345), on(1944)), open(on(1958))] }, gate()))).toEqual(['stood']);
     // A gap more, and the last period closed: the place would leave today's lists.
     const gone = [...trinita.slice(0, 2), until(on(1958), on(2020)), until(on(2021), on(2024))];
-    expect(decideLifetime(stored, { stood: gone }, gate()).heldBack).toEqual(['stood']);
-    expect(decideLifetime({ stood: held([open(on(1252))]) }, { stood: gone }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime(stored, { stood: gone }, gate()))).toEqual(['stood']);
+    expect(heldBack(decideLifetime({ stood: held([open(on(1252))]) }, { stood: gone }, gate()))).toEqual(['stood']);
   });
 
   it('asks about a gap longer than a century, which an item cannot tell a ruin from: the Odeon of Herodes Atticus', () => {
@@ -81,10 +83,24 @@ describe('the gate over a place\'s periods (#2578)', () => {
     const odeon = [until(on(161), on(267, { property: 'P793' }), 'destroyed'), open(on(1953, { property: 'P793' }))];
     // Bethlehem Chapel in Prague, pulled down in 1786 and rebuilt by 1952, was truly gone: the same question, another answer.
     const chapel = [until(on(1391), on(1786, { property: 'P576' })), open(on(1952, { property: 'P793' }))];
-    for (const [stored, view] of [[[open(on(161))], odeon], [[], odeon], [[open(on(1391))], chapel]] as const) {
-      const decision = decideLifetime(stored.length ? { stood: held([...stored]) } : {}, { stood: [...view] }, gate());
-      expect(decision).toEqual({ write: {}, heldBack: ['stood'], changes: [] });
+    for (const [stored, view] of [[[open(on(161))], odeon], [[open(on(1391))], chapel]] as const) {
+      const decision = decideLifetime({ stood: held([...stored]) }, { stood: [...view] }, gate());
+      expect(decision).toEqual({
+        write: {}, changes: [],
+        held: [{ field: 'stood', old: stored, new: view, significance: 'minor', curatedConflict: false, held: true }],
+      });
     }
+    // Where the place holds nothing, what the list says beside the gap is filled in, and the gap is asked beside that.
+    const first = decideLifetime({}, { stood: odeon }, gate());
+    expect(first.write).toEqual({ stood: [open(on(161))] });
+    expect(first.changes).toMatchObject([{ field: 'stood', old: null, new: [open(on(161))], passedTheGate: 'first-date' }]);
+    expect(first.held).toMatchObject([{ field: 'stood', old: [open(on(161))], new: odeon, held: true }]);
+    // A shorter gap beside the long one is filled in with it: only the long one waits.
+    const twoGaps = [chapel[0], until(on(1952, { property: 'P793' }), on(1960, { property: 'P576' })), open(on(1990))];
+    expect(decideLifetime({}, { stood: twoGaps }, gate()).write).toEqual({ stood: [until(on(1391), on(1960, { property: 'P576' })), open(on(1990))] });
+    // A list that also ends the place fills nothing in: the whole of it waits.
+    const goneAgain = [odeon[0], until(on(1953, { property: 'P793' }), on(2020, { property: 'P576' }), 'destroyed')];
+    expect(decideLifetime({}, { stood: goneAgain }, gate())).toMatchObject({ write: {}, changes: [], held: [{ significance: 'major' }] });
     // On a place no reader sees yet it arrives with the place, and a trusted source writes it: neither as a fill.
     for (const elsewhere of [gate({ held: false }), gate({ gated: false })]) {
       const decision = decideLifetime({}, { stood: odeon }, elsewhere);
@@ -104,8 +120,8 @@ describe('the gate over a place\'s periods (#2578)', () => {
     }
     expect(decideLifetime({}, { stood: [until(on(161), null), open(on(1953))] }, gate()).changes).toMatchObject([{ passedTheGate: 'first-date' }]);
     // A century and a year, and a century that the dates' own width may not reach.
-    expect(decideLifetime({}, { stood: [until(on(1800), on(1850)), open(on(1952))] }, gate()).heldBack).toEqual(['stood']);
-    expect(decideLifetime({}, { stood: [until(on(1700), on(1800, { span: 'century' })), open(on(1960))] }, gate()).heldBack).toEqual([]);
+    expect(heldBack(decideLifetime({}, { stood: [until(on(1800), on(1850)), open(on(1952))] }, gate()))).toEqual(['stood']);
+    expect(heldBack(decideLifetime({}, { stood: [until(on(1700), on(1800, { span: 'century' })), open(on(1960))] }, gate()))).toEqual([]);
   });
 
   it('asks about the end of a use a run no longer reports once the item says the place was rebuilt after it', () => {
@@ -114,13 +130,13 @@ describe('the gate over a place\'s periods (#2578)', () => {
     const view = { stood: [until(on(1726), on(1945, { month: 2, day: 15, property: 'P576' })), open(on(2005, { month: 10, day: 30, property: 'P793' }))] };
     const decision = decideLifetime(stored, view, gate());
     expect(decision.write).toEqual(view);
-    expect(decision.heldBack).toEqual(['used']);
+    expect(heldBack(decision)).toEqual(['used']);
   });
 
   it('holds a view that moves a date a reader sees, under a gated source, and writes it elsewhere', () => {
     const stored = { stood: held(SINCE_1883) };
     const view = { stood: [open(on(1881))] };
-    expect(decideLifetime(stored, view, gate())).toEqual({ write: {}, heldBack: ['stood'], changes: [] });
+    expect(decideLifetime(stored, view, gate())).toMatchObject({ write: {}, held: [{ field: 'stood', held: true }], changes: [] });
     const trusted = decideLifetime(stored, view, gate({ gated: false, held: false }));
     expect(trusted.write).toEqual(view);
     expect(trusted.changes.map((c) => [c.field, c.passedTheGate])).toEqual([['stood', undefined]]);
@@ -130,23 +146,23 @@ describe('the gate over a place\'s periods (#2578)', () => {
   it('holds a view that drops a date the place holds, a period of it, or tells its end another way', () => {
     const stored = { stood: held(CATHEDRAL) };
     // The gap withdrawn: 1931 and 2000 are gone from the view.
-    expect(decideLifetime(stored, { stood: SINCE_1883 }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime(stored, { stood: SINCE_1883 }, gate()))).toEqual(['stood']);
     // The start of the second period no longer stated.
-    expect(decideLifetime(stored, { stood: [CATHEDRAL[0], open(null)] }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime(stored, { stood: [CATHEDRAL[0], open(null)] }, gate()))).toEqual(['stood']);
     // An end the place holds as a destruction, reported as a removal.
-    expect(decideLifetime({ stood: held(PILLAR) }, { stood: [{ ...PILLAR[0], ending: 'removed' }] }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime({ stood: held(PILLAR) }, { stood: [{ ...PILLAR[0], ending: 'removed' }] }, gate()))).toEqual(['stood']);
     // Gone with no date, and destroyed: a view that dates the end and no longer says how drops "destroyed".
     const destroyed = { stood: held([until(on(1809), null, 'destroyed')]) };
-    expect(decideLifetime(destroyed, { stood: [until(on(1809), on(1966, { property: 'P576' }))] }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime(destroyed, { stood: [until(on(1809), on(1966, { property: 'P576' }))] }, gate()))).toEqual(['stood']);
     expect(decideLifetime(destroyed, { stood: PILLAR }, gate()).changes).toMatchObject([{ field: 'stood', passedTheGate: 'first-date' }]);
     // A use the place holds, with no date of its own, no longer reported.
-    expect(decideLifetime({ used: held([until(null, null)]) }, {}, gate()).heldBack).toEqual(['used']);
+    expect(heldBack(decideLifetime({ used: held([until(null, null)]) }, {}, gate()))).toEqual(['used']);
   });
 
   it('never passes the end of the last standing period as a fill: asked on a place readers see, written with an arrival', () => {
     // A reader sees the pillar: its end takes it off today's lists, whatever the place held.
-    expect(decideLifetime({}, { stood: PILLAR }, gate())).toEqual({ write: {}, heldBack: ['stood'], changes: [] });
-    expect(decideLifetime({ stood: held([open(on(1809))]) }, { stood: PILLAR }, gate()).heldBack).toEqual(['stood']);
+    expect(decideLifetime({}, { stood: PILLAR }, gate())).toMatchObject({ write: {}, held: [{ field: 'stood', held: true }], changes: [] });
+    expect(heldBack(decideLifetime({ stood: held([open(on(1809))]) }, { stood: PILLAR }, gate()))).toEqual(['stood']);
     // Nelson's Pillar arrives already gone: its end is written with it, and is no fill.
     const arrival = decideLifetime({}, { stood: PILLAR }, gate({ held: false }));
     expect(arrival.write).toEqual({ stood: PILLAR });
@@ -156,7 +172,7 @@ describe('the gate over a place\'s periods (#2578)', () => {
 
   it('holds a view that says a gone place stands again', () => {
     const rebuilt = [PILLAR[0], open(on(2026))];
-    expect(decideLifetime({ stood: held(PILLAR) }, { stood: rebuilt }, gate()).heldBack).toEqual(['stood']);
+    expect(heldBack(decideLifetime({ stood: held(PILLAR) }, { stood: rebuilt }, gate()))).toEqual(['stood']);
   });
 
   it('reads the last standing period of a place a curator\'s pin keeps as open', () => {
@@ -166,7 +182,7 @@ describe('the gate over a place\'s periods (#2578)', () => {
     const twice = [until(on(1883), BLOWN_UP), until(on(2000), on(2020, { property: 'P576' }), 'destroyed')];
     expect(decideLifetime({}, { stood: twice }, pinned).write).toEqual({ stood: CATHEDRAL });
     // Gone with nothing else known: no period is left to write.
-    expect(decideLifetime({}, { stood: [until(null, null)] }, pinned)).toEqual({ write: {}, heldBack: [], changes: [] });
+    expect(decideLifetime({}, { stood: [until(null, null)] }, pinned)).toEqual({ write: {}, held: [], changes: [] });
     // A pin says nothing of a use.
     expect(decideLifetime({}, { used: IN_USE }, pinned).write).toEqual({ used: IN_USE });
   });
@@ -183,15 +199,15 @@ describe('the gate over a place\'s periods (#2578)', () => {
   it('takes off periods the source wrote and no longer reports, through the same gate', () => {
     const stored = { used: held(IN_USE) };
     const unseen = decideLifetime(stored, {}, gate({ held: false }));
-    expect(unseen).toMatchObject({ write: { used: [] }, heldBack: [] });
+    expect(unseen).toMatchObject({ write: { used: [] }, held: [] });
     expect(unseen.changes).toMatchObject([{ field: 'used', old: IN_USE, new: null }]);
-    expect(decideLifetime(stored, {}, gate())).toEqual({ write: {}, heldBack: ['used'], changes: [] });
+    expect(decideLifetime(stored, {}, gate())).toMatchObject({ write: {}, held: [{ field: 'used', held: true }], changes: [] });
   });
 
   it('writes nothing for periods the place holds as the source reports them, wherever each was read', () => {
     const elsewhere = [until(on(1883, { property: 'P1619', statement: 'Q194474$903BF5EC-F2AC-49AD-9037-EFFF5E0E42D8' }), BLOWN_UP), open(on(2000))];
     expect(decideLifetime({ stood: held(CATHEDRAL) }, { stood: elsewhere }, gate({ gated: false }))).toEqual({
-      write: {}, changes: [], heldBack: [],
+      write: {}, changes: [], held: [],
     });
   });
 
@@ -200,5 +216,14 @@ describe('the gate over a place\'s periods (#2578)', () => {
     const decision = decideLifetime({}, { stood: SINCE_1883 }, gate());
     expect(withLifetimeChanges(unchanged, decision)).toMatchObject({ changeType: 'updated', significance: 'minor' });
     expect(withLifetimeChanges({ ...unchanged, changeType: 'created' }, decision).changeType).toBe('created');
+  });
+
+  it('files a held list among the held fields, on an object it leaves unchanged, and weighs the end of a place as major', () => {
+    const unchanged = { changeType: 'unchanged' as const, changedFields: [], significance: null, curatedConflicts: [], heldFields: [] };
+    const filed = withLifetimeChanges(unchanged, decideLifetime({ stood: held([open(on(1809))]) }, { stood: PILLAR }, gate()));
+    expect(filed).toMatchObject({ changeType: 'unchanged', changedFields: [], significance: 'major' });
+    expect(filed.heldFields).toEqual([
+      { field: 'stood', old: [open(on(1809))], new: PILLAR, significance: 'major', curatedConflict: false, held: true },
+    ]);
   });
 });

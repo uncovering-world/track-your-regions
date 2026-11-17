@@ -11,9 +11,11 @@
  *   Cathedral of Christ the Saviour held as "1883 → open" and reported as
  *   "1883 → 1931, 2000 → open" is one.
  * - **Any other difference is asked** under a gated source where a reader
- *   sees the place: the run does not write it, and its record keeps the view
- *   it reports for the curator's answer. Under a trusted source, or on a
- *   place no reader sees yet, it is written as any other field is.
+ *   sees the place: the run does not write it, its record keeps the view it
+ *   reports, and the run files the list as a held field, which raises the
+ *   review queue's held card as a held name does (`heldPlacePeriods.ts`
+ *   publishes it). Under a trusted source, or on a place no reader sees yet,
+ *   it is written as any other field is.
  * - **The end of the place's last standing period is never a fill**, since it
  *   takes the place off today's lists: under a gated source it is asked on a
  *   place readers see, and written with the arrival on a new one (Nelson's
@@ -26,7 +28,10 @@
  *   travellers visited for all of that time, where Bethlehem Chapel in
  *   Prague, pulled down in 1786 and rebuilt by 1952, was not there. So the
  *   list is asked on a place readers see under a gated source, and written
- *   with the arrival on a new one.
+ *   with the arrival on a new one. What the list says beside that gap does
+ *   not wait for the answer: the same list with the gap closed is written
+ *   where it only fills (`overLongGaps`), so the Odeon holds "161 → open"
+ *   while its gap is asked, and keeps it when a curator refuses the gap.
  * - **A curator's admission pin wins over a derived end**: the curator kept
  *   the place where its item says it is gone (the Barmaley Fountain, whose
  *   replica stands since 2013), so the run reads its last standing period as
@@ -73,8 +78,12 @@ export interface LifetimeDecision {
   write: Partial<Record<PeriodSays, readonly SourcedPeriod[]>>;
   /** What it filed: every list it writes, a fill marked as passed. */
   changes: FieldChange[];
-  /** What it holds back for a curator. */
-  heldBack: PeriodSays[];
+  /**
+   * What it holds back for a curator, filed as held: the list the place holds
+   * and the one the source reports, which the held card shows side by side
+   * and publishing writes (`heldPlacePeriods.ts`).
+   */
+  held: FieldChange[];
 }
 
 /** The same period: its dates, whether it ended, how, and what it is called. Where it was read from is not compared. */
@@ -109,20 +118,36 @@ export const LONGEST_GAP_FILLED = 100;
 const LONGEST_GAP_DAYS = LONGEST_GAP_FILLED * 12 * 31;
 
 /**
- * Whether `next` opens a gap in the place's standing that is certainly longer
- * than `LONGEST_GAP_FILLED` years and that the place does not hold: from the
- * last day one period may have ended to the first day the next may have
- * begun. A gap with an end not known has no length.
+ * Whether the gap between `period` and the one that follows it is certainly
+ * longer than `LONGEST_GAP_FILLED` years and one the place does not hold:
+ * from the last day the period may have ended to the first day the next may
+ * have begun. A gap with an end not known has no length.
  */
-function opensLongGap(held: readonly SourcedPeriod[], next: readonly SourcedPeriod[]): boolean {
-  const holds = (until: SourcedDate, from: SourcedDate) => held.some((period, index) =>
-    samePlaceDate(period.until, until) && samePlaceDate(held[index + 1]?.from ?? null, from));
-  return next.some((period, index) => {
-    const until = period.until;
-    const from = next[index + 1]?.from;
-    if (!until || !from || holds(until, from)) return false;
-    return periodOf(from).first - periodOf(until).last > LONGEST_GAP_DAYS;
-  });
+function isLongGap(held: readonly SourcedPeriod[], period: SourcedPeriod, following: SourcedPeriod | undefined): boolean {
+  const until = period.until;
+  const from = following?.from;
+  if (!until || !from) return false;
+  const holds = held.some((other, index) =>
+    samePlaceDate(other.until, until) && samePlaceDate(held[index + 1]?.from ?? null, from));
+  return !holds && periodOf(from).first - periodOf(until).last > LONGEST_GAP_DAYS;
+}
+
+/** Whether `next` opens such a gap in the place's standing. */
+const opensLongGap = (held: readonly SourcedPeriod[], next: readonly SourcedPeriod[]): boolean =>
+  next.some((period, index) => isLongGap(held, period, next[index + 1]));
+
+/**
+ * `next` with each such gap closed: the period before it runs on to the end
+ * of the one after it. What a list says beside the gap it is asked about,
+ * Bethlehem Chapel's "1391 → open" of "1391 → 1786, 1952 → open".
+ */
+function overLongGaps(held: readonly SourcedPeriod[], next: readonly SourcedPeriod[]): readonly SourcedPeriod[] {
+  const joined: SourcedPeriod[] = [];
+  for (const [index, period] of next.entries()) {
+    const before = index > 0 && isLongGap(held, next[index - 1], period) ? joined.pop() : undefined;
+    joined.push(before ? { ...period, from: before.from } : period);
+  }
+  return joined;
 }
 
 /**
@@ -150,24 +175,46 @@ function listAction(says: PeriodSays, next: readonly SourcedPeriod[], held: Held
   return gate.gated && gate.held ? 'hold' : 'write';
 }
 
+/**
+ * What the gate does with one list: the list it writes onto the place, if
+ * any, whether that is a fill, and whether the run's list is asked. Of a list
+ * that is asked, what it says beside a long gap is written where it only fills.
+ */
+function listDecision(says: PeriodSays, next: readonly SourcedPeriod[], held: HeldPeriods | undefined, gate: LifetimeGate) {
+  const action = listAction(says, next, held, gate);
+  if (action === 'keep') return { asked: false };
+  if (action !== 'hold') return { asked: false, write: next, fill: action === 'fill' };
+  const beside = says === PLACE_STOOD ? overLongGaps(held?.periods ?? [], next) : next;
+  return listAction(says, beside, held, gate) === 'fill' ? { asked: true, write: beside, fill: true } : { asked: true };
+}
+
 /** The gate over one place: what of the run's view it writes and holds back. Pure. */
 export function decideLifetime(
   stored: Partial<Record<PeriodSays, HeldPeriods>>,
   view: RecordPeriods,
   gate: LifetimeGate,
 ): LifetimeDecision {
-  const decision: LifetimeDecision = { write: {}, changes: [], heldBack: [] };
+  const decision: LifetimeDecision = { write: {}, changes: [], held: [] };
   for (const says of REPORTED_SAYS) {
     const reported = view[says] ?? [];
     const next = says === PLACE_STOOD && gate.pinned ? keptStanding(reported) : reported;
-    const held = stored[says];
-    const action = listAction(says, next, held, gate);
-    if (action === 'hold') decision.heldBack.push(says);
-    if (action !== 'fill' && action !== 'write') continue;
-    decision.write[says] = next;
-    decision.changes.push({
-      field: says, old: filed(held?.periods ?? []), new: filed(next), significance: 'minor', curatedConflict: false, held: false,
-      ...(action === 'fill' ? { passedTheGate: 'first-date' as const } : {}),
+    const before = stored[says]?.periods ?? [];
+    const { asked, write, fill } = listDecision(says, next, stored[says], gate);
+    if (write) {
+      decision.write[says] = write;
+      decision.changes.push({
+        field: says, old: filed(before), new: filed(write), significance: 'minor', curatedConflict: false, held: false,
+        ...(fill ? { passedTheGate: 'first-date' as const } : {}),
+      });
+    }
+    if (!asked) continue;
+    // Beside what the place holds once this run has written. A list that says
+    // the place is gone, or stands again, weighs as major: publishing it takes
+    // the place off today's lists or puts it back.
+    const holds = write ?? before;
+    decision.held.push({
+      field: says, old: filed(holds), new: filed(next), curatedConflict: false, held: true,
+      significance: says === PLACE_STOOD && standsBy(holds) !== standsBy(next) ? 'major' : 'minor',
     });
   }
   return decision;
@@ -239,15 +286,20 @@ export async function writeLifetime(
 }
 
 /**
- * The run's change set with what it wrote of the place's periods: an object
- * whose only write is a period is updated, as for any other field.
+ * The run's change set with what it wrote of the place's periods and what it
+ * held back: an object whose only write is a period is updated, as for any
+ * other field, and one whose only proposal is a held list is unchanged and
+ * holds it.
  */
 export function withLifetimeChanges(changeSet: ChangeSetResult, decision: LifetimeDecision): ChangeSetResult {
-  if (decision.changes.length === 0) return changeSet;
+  const filedNow = [...decision.changes, ...decision.held];
+  if (filedNow.length === 0) return changeSet;
+  const wrote = decision.changes.length > 0 && changeSet.changeType !== 'created';
   return {
     ...changeSet,
     changedFields: [...changeSet.changedFields, ...decision.changes],
-    changeType: changeSet.changeType === 'created' ? 'created' : 'updated',
-    significance: changeSet.significance ?? 'minor',
+    heldFields: [...changeSet.heldFields, ...decision.held],
+    changeType: wrote ? 'updated' : changeSet.changeType,
+    significance: changeSet.significance === 'major' || filedNow.some((change) => change.significance === 'major') ? 'major' : 'minor',
   };
 }

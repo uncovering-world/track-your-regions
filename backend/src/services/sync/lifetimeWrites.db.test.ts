@@ -133,7 +133,8 @@ describe('a run writes a place\'s periods through the gate (#2578)', () => {
       used: GOBEKLI.used,
     });
     expect(changed.changeSet.changedFields.filter((f) => ['stood', 'used'].includes(f.field))).toEqual([]);
-    expect(changed.changeSet.heldFields).toEqual([]);
+    // Both are one list, filed as held: what the place holds beside what its source reports.
+    expect(changed.changeSet.heldFields).toMatchObject([{ field: 'stood', held: true, significance: 'major', old: [{ ended: false }], new: [{ ended: true }] }]);
     expect((await placePeriods()).map((p) => [p.says, p.from_year, p.ended])).toEqual([['stood', -9999, false], ['used', null, true]]);
     expect(await standsToday()).toBe(true);
     expect(await recordPeriods()).toEqual([
@@ -145,7 +146,7 @@ describe('a run writes a place\'s periods through the gate (#2578)', () => {
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     )).rows[0];
-    expect(membership).toEqual({ state: 'verified', pointer: null });
+    expect(membership).toEqual({ state: 'verified', pointer: logId });
   });
 
   it('fills a gap into the period a seen place holds, and another in front of it, which move no date of it and leave it standing', async () => {
