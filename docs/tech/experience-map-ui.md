@@ -461,7 +461,8 @@ source, so MapLibre's control shows it while the imagery is drawn; the control i
 the map, so OpenStreetMap's credit stays in the corner beside it; that line runs the map's whole
 width over the imagery, which is why a move's legend stands in the top right corner. What the mosaic settles: a field
 of ruins, a tell or a town (Kunya-Urgench's move, Larsa). What it does not: a single building or a
-small dig, which waits for a detailed keyed source (ADR-0186 decision 4).
+small dig, which the satellite view behind the pin's Google Maps link shows; no keyed detailed
+source is waited on (#2204).
 
 Under the map, every look lists each point it drew — whose it is, its coordinate, and the links that
 open it in OpenStreetMap and Google Maps (`PinLinks`, built by `utils/mapsLink.ts`, ADR-0115). The

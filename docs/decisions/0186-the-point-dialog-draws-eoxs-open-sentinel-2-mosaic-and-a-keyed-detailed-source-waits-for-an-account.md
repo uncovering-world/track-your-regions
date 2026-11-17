@@ -1,7 +1,7 @@
 # ADR-0186: The point dialog draws EOX's open Sentinel-2 mosaic, and a keyed detailed source waits for an account
 
 **Date:** 2026-11-08
-**Status:** Accepted
+**Status:** Accepted — decision 4's wait for an account no longer holds: no keyed detailed source is waited on, and a pin the 10 m mosaic cannot resolve (Himera, Helike) is checked in the satellite view of the dialog's Google Maps link ([ADR-0115](0115-a-point-is-offered-to-several-maps-the-devices-own-first.md)), #2204, closed on 2026-11-08
 
 ---
 
