@@ -60,6 +60,9 @@ where a brick is cut between regions. On 2026-11-17 the maintainer confirmed (#2
 tolerance stays on every brick, cut or whole, and gave the reason: if territories are ever
 compared, different levels of simplified geometry may cause trouble, so an exact match must not
 be required.
+The same day the maintainer ruled (#2579) that a region that changes is either redrawn, and a
+tick on it carries over, or replaced as an entity, by a change of country or of power, and then
+the region is closed with its dates and kept with its ticks (decision 6).
 
 The third ruling replaces two lines of #768's direction of 2026-09-30, which is an issue and no
 ADR, so it is recorded here: that a visit is "not recorded against a world view's region", for
@@ -85,7 +88,9 @@ The scenes it is built from:
 2. The line under the tick offers to say where (#1170). The traveller skips it, or ticks the
    Uffizi from the region's places, or picks *Siena* from the list of settlements, or sets a
    point on a beach. Under *France* the same line offers France's places, its settlements and a
-   point on its map, and nothing makes them choose.
+   point on its map, and nothing makes them choose. The scenes are illustrations: under a lighter
+   tick such as *France*, the offer is the help of #2594 to name a region, and when it shows and
+   how often is #1170's mock (#2619 line 1.3, closed on 2026-11-17 as no contradiction).
 3. They switch the picker to the Wikivoyage view and expect Tuscany painted there, with no
    second tick.
 4. On the Louvre's card they tick the *Mona Lisa*, and the date offer asks when.
@@ -401,9 +406,40 @@ it. A region drawn by hand that holds no division is the exception (decision 3, 
 no bricks say whether a redrawn outline is the same ground, so redrawing it marks its ticks
 and asks the traveller; when it goes, its tick moves to its parent as a lighter tick that
 asks, never as a plain replacement; and no tick is moved onto such a region without the
-traveller's answer. When a region goes, the one writer of regions (`db/regionWriter.ts`) moves every tick on it,
-in the same transaction, before the row is deleted. No region is kept for the sake of a tick,
-and no outline is copied.
+traveller's answer.
+
+**A region that changes is either redrawn or replaced as an entity, and only a redrawing carries
+a visit over** (the maintainer, 2026-11-17,
+[#2579](https://github.com/uncovering-world/track-your-regions/issues/2579#issuecomment-6950332028)). The
+maintainer refused the recommendation that a tick moves to the region's successor in every case,
+as a simplification.
+
+- **A redrawing** changes nothing about the fact of a visit: an editor re-slices a view, or a
+  state redraws its own administrative borders, as France merged Languedoc-Roussillon into
+  Occitanie in 2016. The traveller was in that town, and its region is now cut or named
+  differently. The tick carries over, moving or asking, as the rest of this decision says.
+- **A replacement as an entity** is a change of country or of power: Artsakh, dissolved on
+  1 January 2024; the Estonian SSR, which is not today's Estonia. The region is closed with its
+  dates and kept, never deleted. The tick stays on the closed region and is not carried to what
+  holds the ground today: a visit to Artsakh in 2019 is not a visit to Azerbaijan, and one could
+  only be in the Estonian SSR while it existed.
+- **The model holds, at each change, which of the two it is**: an administrative redrawing, in
+  which nothing changes in fact, or a change of the entity that is tracked.
+
+Still to design, the session's, and not decided by this ADR:
+
+- how today's map shows ground visited under a closed region;
+- whether the traveller may, by their own act, count today's region too;
+- where the mark of a change is set, and by whom;
+- a change of sovereignty that leaves a region continuing (Hong Kong in 1997), which the mark
+  per change settles case by case, with no rule deciding it;
+- that the country of such a visit is read from the canon and not from an outside set of
+  historical borders (#616).
+
+What follows is the redrawing. When a region goes in one, the one writer of regions
+(`db/regionWriter.ts`) moves every tick on it, in the same transaction, before the row is
+deleted. No region is kept for the sake of a tick in a redrawing, and no outline is copied; a
+region replaced as an entity is kept, closed, for what it was (above).
 
 The tick moves to S, the region that takes the old one's place:
 
@@ -450,8 +486,11 @@ land and no covering region in any other view cannot be deleted, since nothing w
 hold the tick. It is named by that condition and by no kind of region. It is met by
 a root region whose bricks no other view covers; by a view replaced before its replacement
 is matched to the base layer, where no other view covers its ticked regions either; by a custom view of
-ground the other views divide differently or not at all; and by the last world view. The
-foreign key stops it, and the writer says which ticks stand in the way.
+ground the other views divide differently or not at all. It is never met by the last world view:
+the default world view cannot be deleted at all (`deleteWorldView` in
+`backend/src/controllers/worldView/worldViewCrud.ts`). The foreign key stops it, and the writer
+says which ticks stand in the way. The refusal stays as the design's safeguard (#2619 line 1.2,
+closed on 2026-11-17 as no product question).
 
 **7. A curator's placement of a record refers to a region the same way.** Thieboudienne added to
 *Senegal* is a manual row of `experience_regions` on that region, as today. Like a tick it is
@@ -465,6 +504,18 @@ transaction moves the row to S by decision 6, so the cascade no longer takes it.
 has no counting layer, so its replacement is plain only where S holds the same bricks. Anywhere
 else the row carries the same two marks, and the question is a curator's, in the review queue,
 with the new regions offered.
+
+When the region is not redrawn but replaced as an entity (decision 6: Artsakh), a placement does
+not stay on the closed region as a tick does: a placement says where the record belongs today, so
+the row is marked and the curator is asked where it goes, with the regions that now hold the ground
+offered. That is the session's rule of 2026-11-17 (#2619 line 1.22), open to the maintainer's veto.
+
+A region a source names for a record is that source's view, as ADR-0218 decision 10 says: kept on
+the source's record, the placement derived from it, and a curator's placement standing over it.
+Wikidata's country of origin names Senegal for thieboudienne, and a curator who adds it to
+*Senegal* writes the placement that stands. That is the session's rule of 2026-11-17 (#2619 line
+3.2), from ADR-0084's `reported_*` pattern and the maintainer's ruling of 2026-11-16 on #2579
+(comment of 18:33Z).
 
 **8. The traveller's own point keeps a coordinate, a name and a radius in metres.**
 
@@ -519,7 +570,7 @@ was there.
 | #2015 | The marks per kind and type, and their grades | A table of marks under `user_visits`, each optionally tied to a trip; a plain tick has no row |
 | #1173 | The local list of settlements | Decision 8: a pick writes an own point with the settlement's coordinate, name and size |
 | #2594 | The guide that narrows a lighter tick to a region | The lighter ticks of a traveller that hold no counted region (decision 3); the regions of the layer under the ticked one, or `offered_region_ids` where a region went; its answer moves the visit to the chosen region with its trips and notes |
-| #587 | The canon | `countedRegionSql`: the canon marks its layer and changes that predicate. A region visit then refers to a canon region |
+| #587, #770 | The canon, and a country as an explicit marking on one of its nodes, not a depth or a leaf (#770) | `countedRegionSql`: the canon marks its layer and changes that predicate. A region visit then refers to a canon region |
 | #1169, #1170, #1171 | How "somewhere in" is drawn and counted, the offer, the picker | Decision 9's read; decision 8 |
 | #2135 | A border place in every country a source names | Decision 4's comparison, for a region a source names |
 
@@ -582,6 +633,31 @@ decisions 6, 7 and 8, amended the same day. Nothing this ADR decides changes: a 
 trips as before, and the read of decision 9 never took a date or a listing into account. The
 "visit to a former place" the paragraph spoke of is gone with the rule that made one.
 
+**Amended while Draft (2026-11-17, #2579), to the maintainer's ruling of that day on a region
+that changes, and to the lines of #2619 the session closed the same day:** each change names its
+line in #2619.
+
+- **Decision 6, a region that changes (line 1.22).** A redrawing carries the visit over as this
+  decision had it; a replacement as an entity (a change of country or of power: Artsakh, the
+  Estonian SSR) closes the region with its dates and keeps it, the tick stays on it, and nothing
+  is carried to what holds the ground today. The model holds which of the two each change is
+  (the maintainer, 2026-11-17, [#2579](https://github.com/uncovering-world/track-your-regions/issues/2579#issuecomment-6950332028),
+  against the session's recommendation). This narrows the sentence "No region is kept for the
+  sake of a tick" to a redrawing. The Consequences' "no dead region … is kept" is narrowed the
+  same way, a trade-off is added, and the alternatives gain the recommendation the maintainer
+  refused, and the Context names the ruling. What is still to design is listed in decision 6 as
+  the session's, not decided.
+- **Decision 6, the one refusal (line 1.2).** It stays as the design's safeguard. "The last
+  world view" is taken off its cases, since the default world view cannot be deleted at all
+  (`deleteWorldView`).
+- **Scene 2 (line 1.3).** The scenes are illustrations: under a lighter tick the offer is the
+  help of #2594, and #1170's mock decides when it shows and how often.
+- **Decision 3 (line 1.4)** needs no change: a satisfied lighter tick stops waiting and its row is
+  kept, as it already says.
+- **Decision 7 (line 3.2).** A region a source names is that source's view, the session's rule,
+  as ADR-0218 decision 10 has it.
+- **The table of what this leaves (lines 3.5 and 6.20)** names #770 beside #587.
+
 ## Alternatives Considered
 
 | Option | Why rejected |
@@ -607,6 +683,7 @@ trips as before, and the read of decision 9 never took a date or a listing into 
 | Refuse a tick on a region drawn by hand that holds no division | A map paints it, so a traveller can click it, and a refusal would have nothing to say. It paints its own view only, since nothing compares it with another. |
 | Paint nothing above the listed regions while a place's side is not said | The Øresund Bridge ticked and never answered would leave Europe unpainted, though the traveller was certainly there. The common region painted lighter claims nothing false, as a whole Spain does in decision 4. |
 | Compute the mapping from the outlines when a region goes | An edit clears the outlines of the regions above it until they are computed again, and a region about to be deleted may hold none at that moment. The tree and the members are both there. |
+| A region whose country or power changes is redrawn like any other, and its tick moves to its successor (the recommendation on #2619 line 1.22) | The maintainer refused it on 2026-11-17 as a simplification (#2579): a visit to Artsakh in 2019 is not a visit to Azerbaijan, and one could only be in the Estonian SSR while it existed. |
 | Keep the refusal of #764 | A curator's edit fails because of a traveller they cannot see, and an import still cannot replace a view without deleting visits after a count. |
 | Record the tick against administrative divisions | #768 rejected a substrate unit, and a tick says a region, not the divisions it held that day. The bricks are read to compare two regions and are never written on a visit. |
 | Record it against a stable key of the region (a Wikidata item) | #768 rejected an atom id. Measured, the Administrative view carries no item and 768 items are shared by 2,147 Wikivoyage regions. |
@@ -638,8 +715,9 @@ trips as before, and the read of decision 9 never took a date or a listing into 
 - ADR-0199's read, ADR-0202's trips and the date offer, ADR-0206 and ADR-0211's `whole_leaves`
   and "k of N", the merge's carry of visits and #1887's question keep their logic. The visited
   set of 2,000 places (7.3 ms, #2121) is read from the same index.
-- The 409 path of every region writer and `db/regionVisits.ts` go. No dead region, no hidden
-  world view and no outline of a region that is gone is kept.
+- The 409 path of every region writer and `db/regionVisits.ts` go. No dead region of a
+  redrawing, no hidden world view and no outline of a region a redrawing took away is kept; a
+  region replaced as an entity is closed and kept for what it was (decision 6).
 
 **Negative / Trade-offs:**
 
@@ -698,6 +776,9 @@ trips as before, and the read of decision 9 never took a date or a listing into 
   built.
 - The exact coordinate of an own point is personal data held at full precision. Its protection
   is that nothing publishes, aggregates or logs it, which every later read must keep.
+- A region replaced as an entity stays in the model, closed, and no rule carries a tick on it to
+  the region that holds the ground today: Artsakh, ticked for 2019, is not Azerbaijan. How
+  today's map shows that ground is still to design (decision 6).
 
 ## References
 
@@ -707,4 +788,4 @@ trips as before, and the read of decision 9 never took a date or a listing into 
   `docs/security/SECURITY.md`, `docs/vision/vision.md`
 - Issues: #2579, #2580, #768, #1167, #1168, #1169, #1170, #1171, #1173, #773, #764, #2120,
   #2121, #2008, #1948, #1676, #616, #584, #2015, #1887, #606, #602, #2135, #594, #2594, #587,
-  Epic #2115
+  #770, #786, #2619, Epic #2115
