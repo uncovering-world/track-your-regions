@@ -67,7 +67,8 @@ describe('the curation activity feed (#611)', () => {
     renderPanel();
     const villa = (await screen.findByText('Villa Farnesina')).closest('tr')!;
     expect(within(villa).getByText('A curator')).toBeInTheDocument();
-    expect(within(villa).getByText('Lazio')).toBeInTheDocument();
+    // No region column until the log records one (#863): it was empty on every row (#956).
+    expect(screen.queryByRole('columnheader', { name: 'Region' })).toBeNull();
     expect(within(screen.getByText('Cologne Cathedral').closest('tr')!).getByText('The catalogue')).toBeInTheDocument();
     expect(within(screen.getByText('Kinkaku-ji').closest('tr')!).getByText('Administrator')).toBeInTheDocument();
     expect(lastAsked()).toMatchObject({ limit: 50, offset: 0 });

@@ -28,12 +28,12 @@ import {
   fetchCurationLog, takeBackMergeProposal, takeBackPointItem, undoPlaceMerge, undoSeparation, type CurationLogEntry,
 } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
-import { formatRelativeTime } from '../../utils/dateFormat';
 import { displayNameOf } from '../../utils/displayName';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
+import { CurationActTable, type ActEntry } from './CurationActTable';
 import {
-  actionLabel, catalogueActor, formatLogDetails, takeableItems, takeablePair, undoableMerge, undoableSeparation,
+  catalogueActor, takeableItems, takeablePair, undoableMerge, undoableSeparation,
   type TakeableItem,
 } from './curationLog';
 
@@ -59,10 +59,10 @@ function takeBackLabel(item: TakeableItem): string {
   return `Take back: ${point} ← ${item.label ?? item.item}`;
 }
 
-function HistoryRow({
-  entry, onUndo, undoLabel = 'Undo this merge', undoing, takeBacks = [], onTakeBack, takingBack, onTakeBackPair, takingBackPair,
+/** What a History row offers beside its act: undoing a merge or a separation, taking back an item or a pair's answer. */
+function HistoryActions({
+  onUndo, undoLabel = 'Undo this merge', undoing, takeBacks = [], onTakeBack, takingBack, onTakeBackPair, takingBackPair,
 }: {
-  entry: CurationLogEntry;
   /** Present on a merge, or a separation (ADR-0144), this place can still undo. */
   onUndo?: () => void;
   undoLabel?: string;
@@ -72,106 +72,63 @@ function HistoryRow({
   onTakeBack?: (item: TakeableItem) => void;
   /** The point whose take-back is in flight, if any. */
   takingBack?: number;
-  /** Present on a near pair's answer this place can still take back (#1991). */
+  /** Present on a pair's answer this place can still take back (#1991). */
   onTakeBackPair?: () => void;
   takingBackPair?: boolean;
 }) {
-  const actionInfo = actionLabel(entry.action) || { label: entry.action, color: '#6B7280' };
-  const details = formatLogDetails(entry);
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        gap: 1,
-        py: 0.75,
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        alignItems: 'flex-start',
-      }}
-    >
-      <Chip
-        label={actionInfo.label}
-        size="small"
-        sx={{
-          height: 20,
-          fontSize: '0.6rem',
-          fontWeight: 600,
-          color: actionInfo.color,
-          bgcolor: `${actionInfo.color}14`,
-          border: `1px solid ${actionInfo.color}30`,
-          flexShrink: 0,
-          '& .MuiChip-label': { px: 0.5 },
-        }}
-      />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="caption" sx={{ fontWeight: 500 }}>
-          {/* A curator who set no display name, or a blank one, is still somebody; the
-              catalogue's own acts are nobody's (ADR-0086, ADR-0141). */}
-          {catalogueActor(entry) ?? displayNameOf(entry.curator_name) ?? 'A curator'}
-        </Typography>
-        {entry.region_name && (
-          <Typography variant="caption" color="text.secondary">
-            {' '}in {entry.region_name}
-          </Typography>
-        )}
-        {entry.folded_id !== null && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontStyle: 'italic' }}>
-            About {entry.folded_name ?? 'an entry'} (#{entry.folded_id}), since merged into this place
-          </Typography>
-        )}
-        {details && (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', mt: 0.25, whiteSpace: 'pre-line', lineHeight: 1.3 }}
-          >
-            {details}
-          </Typography>
-        )}
-        {onUndo && (
-          <Button
-            size="small"
-            startIcon={<UndoIcon fontSize="small" />}
-            disabled={undoing}
-            onClick={onUndo}
-            sx={{ mt: 0.25, py: 0, textTransform: 'none', fontSize: '0.7rem' }}
-          >
-            {undoing ? 'Undoing…' : undoLabel}
-          </Button>
-        )}
-        {takeBacks.map(item => (
-          <Button
-            key={`${item.locationId}:${item.item}`}
-            size="small"
-            startIcon={<UndoIcon fontSize="small" />}
-            disabled={takingBack !== undefined}
-            onClick={() => onTakeBack?.(item)}
-            sx={{ mt: 0.25, py: 0, textTransform: 'none', fontSize: '0.7rem', display: 'flex' }}
-          >
-            {takingBack === item.locationId ? 'Taking back…' : takeBackLabel(item)}
-          </Button>
-        ))}
-        {onTakeBackPair && (
-          <Button
-            size="small"
-            startIcon={<UndoIcon fontSize="small" />}
-            disabled={takingBackPair}
-            onClick={onTakeBackPair}
-            sx={{ mt: 0.25, py: 0, textTransform: 'none', fontSize: '0.7rem' }}
-          >
-            {takingBackPair ? 'Taking back…' : 'Take back this answer'}
-          </Button>
-        )}
-      </Box>
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ flexShrink: 0, fontSize: '0.65rem' }}
-      >
-        {entry.created_at && formatRelativeTime(entry.created_at)}
-      </Typography>
-    </Box>
+    <>
+      {onUndo && (
+        <Button
+          size="small"
+          startIcon={<UndoIcon fontSize="small" />}
+          disabled={undoing}
+          onClick={onUndo}
+          sx={{ py: 0, textTransform: 'none', fontSize: '0.7rem' }}
+        >
+          {undoing ? 'Undoing…' : undoLabel}
+        </Button>
+      )}
+      {takeBacks.map(item => (
+        <Button
+          key={`${item.locationId}:${item.item}`}
+          size="small"
+          startIcon={<UndoIcon fontSize="small" />}
+          disabled={takingBack !== undefined}
+          onClick={() => onTakeBack?.(item)}
+          sx={{ py: 0, textTransform: 'none', fontSize: '0.7rem', display: 'flex' }}
+        >
+          {takingBack === item.locationId ? 'Taking back…' : takeBackLabel(item)}
+        </Button>
+      ))}
+      {onTakeBackPair && (
+        <Button
+          size="small"
+          startIcon={<UndoIcon fontSize="small" />}
+          disabled={takingBackPair}
+          onClick={onTakeBackPair}
+          sx={{ py: 0, textTransform: 'none', fontSize: '0.7rem' }}
+        >
+          {takingBackPair ? 'Taking back…' : 'Take back this answer'}
+        </Button>
+      )}
+    </>
   );
+}
+
+/** A History entry as the audit table reads it: who acted, and the folded entry it was about. */
+function actEntryOf(entry: CurationLogEntry): ActEntry {
+  return {
+    id: entry.id,
+    action: entry.action,
+    details: entry.details,
+    kind_name: entry.kind_name,
+    created_at: entry.created_at,
+    // A curator who set no display name, or a blank one, is still somebody; the
+    // catalogue's own acts are nobody's (ADR-0086, ADR-0141).
+    who: catalogueActor(entry) ?? displayNameOf(entry.curator_name) ?? 'A curator',
+    about: entry.folded_id === null ? undefined : `${entry.folded_name ?? 'an entry'} (#${entry.folded_id}), since merged into this place`,
+  };
 }
 
 export function CurationHistory({ experienceId, regionId }: CurationHistoryProps) {
@@ -289,25 +246,30 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
               No curation history yet.
             </Typography>
           )}
-          {log.map((entry) => {
-            const own = entry.folded_id === null;
-            const act = own ? undoableAct(entry, log, experienceId) : null;
-            const pair = own ? takeablePair(entry, log) : null;
-            return (
-              <HistoryRow
-                key={entry.id}
-                entry={entry}
-                onUndo={act === null ? undefined : () => startUndo(act)}
-                undoLabel={act !== null && 'separation' in act ? 'Undo this separation' : 'Undo this merge'}
-                undoing={act !== null && isUndoing(act)}
-                takeBacks={own ? takeableItems(entry, log) : []}
-                onTakeBack={item => takeBack.mutate(item)}
-                takingBack={takeBack.isPending ? takeBack.variables?.locationId : undefined}
-                onTakeBackPair={pair === null ? undefined : () => takeBackPair.mutate(pair)}
-                takingBackPair={takeBackPair.isPending && takeBackPair.variables === pair}
-              />
-            );
-          })}
+          {log.length > 0 && (
+            <CurationActTable
+              entries={log.map(actEntryOf)}
+              variant="history"
+              rowActions={(row) => {
+                const entry = log.find(e => e.id === row.id)!;
+                const own = entry.folded_id === null;
+                const act = own ? undoableAct(entry, log, experienceId) : null;
+                const pair = own ? takeablePair(entry, log) : null;
+                return (
+                  <HistoryActions
+                    onUndo={act === null ? undefined : () => startUndo(act)}
+                    undoLabel={act !== null && 'separation' in act ? 'Undo this separation' : 'Undo this merge'}
+                    undoing={act !== null && isUndoing(act)}
+                    takeBacks={own ? takeableItems(entry, log) : []}
+                    onTakeBack={item => takeBack.mutate(item)}
+                    takingBack={takeBack.isPending ? takeBack.variables?.locationId : undefined}
+                    onTakeBackPair={pair === null ? undefined : () => takeBackPair.mutate(pair)}
+                    takingBackPair={takeBackPair.isPending && takeBackPair.variables === pair}
+                  />
+                );
+              }}
+            />
+          )}
         </Box>
       </Collapse>
     </>
