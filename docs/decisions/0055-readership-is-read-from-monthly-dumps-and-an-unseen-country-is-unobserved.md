@@ -8,7 +8,7 @@
 ## Context
 
 #807 measured Wikipedia readership as a signal for the art-museum kind. It opens a second door
-to the world tier (ADR-0056) and a door to a regional tier that has no native source
+to the world tier (ADR-0056) and a candidate cut of the surroundings tier
 (ADR-0057). Both doors read the same numbers. Where those numbers come from, how they are
 cleaned and what they cannot show is decided once, here.
 
@@ -120,10 +120,10 @@ never read as zero there. The Top 25 Report's absolute rule is not used.
 **4. A burst is a flag, never a correction, and it is read on the series its door reads.** A work
 with a quarter of its year in one week, or a monthly coefficient of variation of 0.5 or more,
 carries a flag a curator sees: over every language for the world door of ADR-0056, and over the
-language that admitted the museum for the regional door of ADR-0057, so that a flag never comes
+language that admitted the museum for the surroundings-tier cut of ADR-0057, so that a flag never comes
 from a series its door does not read. A museum whose works peak in the same fortnight carries the
-flag too. The incidence above is the world door's cohort; a regional admission clears a far lower
-bar — about 500 views in Georgian — and its bursts are its own. The level a door reads stays the
+flag too. The incidence above is the world door's cohort; an admission through the surroundings-tier
+cut clears a far lower bar — about 500 views in Georgian — and its bursts are its own. The level a door reads stays the
 plain annual sum unless its own adoption slice changes it; ADR-0056 and ADR-0057 both leave
 that choice to #628, each with its own numbers beside it, and the flag stands either way.
 
