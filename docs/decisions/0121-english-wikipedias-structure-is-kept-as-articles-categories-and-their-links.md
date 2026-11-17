@@ -1,7 +1,7 @@
 # ADR-0121: English Wikipedia's structure is kept as articles, categories and their links
 
 **Date:** 2026-10-18
-**Status:** Accepted
+**Status:** Accepted — its decisions stand; the consequence that no build keeps readership's redirects no longer holds: the `wikipedia-redirects` build keeps each counted edition's redirects (#1650, migration 126), while the structure this ADR keeps still holds no redirect
 **Narrows:** [ADR-0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) decision 6 (which tables of Wikipedia's structure are read: `linktarget` joins them, `langlinks` is not kept)
 
 ---
