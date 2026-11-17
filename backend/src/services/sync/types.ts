@@ -383,7 +383,8 @@ export interface WikidataLandmark {
   /**
    * The curator's question from the door that alone admitted the row under
    * the line: the readership door's, a work's year against the bar (#2033),
-   * or the guide door's, that a Wikivoyage guide uses the place (ADR-0167).
+   * or the guide door's, that a Wikivoyage guide uses the place (the third bar of ADR-0175
+   * decision 1, which the guide door of ADR-0167 became).
    * Absent on a row the line admits.
    */
   readershipNote?: string;

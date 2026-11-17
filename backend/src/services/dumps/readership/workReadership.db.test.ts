@@ -105,7 +105,7 @@ describe('a work read back from the readership year', () => {
     expect([...await burstsAmong(year, [WORK, SPIKE], counted)]).toEqual([SPIKE]);
   });
 
-  it('names the items read at a bar in fewer editions than a floor, over the counted editions only (ADR-0152)', async () => {
+  it('names the items read at a bar in fewer editions than a floor, over the counted editions only', async () => {
     const year = (await readershipYear())!;
     const among = async (views: number, below: number) =>
       (await readAtLeast(year, views, below)).filter((item) => ITEMS.includes(item)).sort();

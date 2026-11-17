@@ -167,7 +167,7 @@ export interface ExperienceUpsertParams {
    * has existed since the schema's first day and no run has ever written it.
    * WKT rather than GeoJSON because that is what the source answers with, and
    * text rather than a parsed shape because PostGIS is where geometry is
-   * decided (ADR-0004's line, and #674's).
+   * decided (ADR-0064's line, and #674's).
    *
    * **Omitted is null for a source that reads extents** (`readsExtents`): its
    * collector sending none says this place has none, and the outline it drew is
