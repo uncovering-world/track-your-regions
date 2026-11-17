@@ -107,7 +107,10 @@ but for the end of a place no reader sees yet, which it asked and this writes:
   start and each end still an end, told the same way. Christ the Saviour held as "1883 → open" and
   reported as "1883 → 1931, 2000 → open" is one;
 - any other difference is asked under a gated source on a place readers see, as one question
-  showing the place's periods beside the source's;
+  showing the place's periods beside the source's. The run files the list as a held field of its
+  change set, named by what the list says, and the review queue's held card asks it as it asks a
+  held name. Taking the proposed list writes it whole as its source's list, with no curator's claim
+  on it; keeping the current one is remembered by value, so the same list is not asked again;
 - the end of a place's last standing period is never a fill: under a gated source it is always
   asked on a place readers see, and is written with the arrival on a new place, whose arrival card
   is the question (Nelson's Pillar). ADR-0214 decision 4 asked every end under a gated source, a
@@ -131,7 +134,9 @@ event is read for what it says of the whole place and of what was left of it, an
 
 A gap longer than a century is never a fill: it is asked on a place readers see under a gated
 source, and written with the arrival on a new one, as the end of the last standing period is. An
-item cannot say what stood in so long a gap. The Odeon of Herodes Atticus in Athens states a
+item cannot say what stood in so long a gap. What the list says beside such a gap does not wait for
+the answer: the same list with the gap closed is written where it only fills, so the Odeon holds
+"161 → open" while its gap is asked and after a curator refuses it. The Odeon of Herodes Atticus in Athens states a
 destruction in 267 and a reconstruction that ended in 1953, and its ruin was visited for all of
 that time: a traveller of 1900 was at the Odeon. Measured on the 40 gaps the reader derives on the
 subset (17 offered places, 20 arriving): four are longer than a century (1,686, 249, 171 and 166
@@ -227,6 +232,14 @@ have a gap (6 and 10 from inceptions and ends alone, as the first slice read the
 Context's count by a simpler rule was 21 and 31: that rule counted every start later than an end,
 Bath Abbey's among them, whose end of 1539 is its monastery's, before the church was built.
 
+**Amended as a Draft, from what its third slice built (#2578):** decision 3 says how a held list is
+asked and answered, on the review queue's held card, and that what a list says beside a gap longer
+than a century is written without waiting. The second slice's trade-off had the place hold no
+standing period until a curator answered; the maintainer's principle of 2026-11-16, that a curator
+answers a source's proposal and enters no date, would then leave the Odeon with no beginning after
+a curator refuses its gap. Two trade-offs are named: a refusal is remembered with the statements
+its dates were read from, and the card's sentence about today's lists runs ahead of the reads.
+
 ## Alternatives Considered
 
 | Option | Why rejected |
@@ -269,10 +282,15 @@ Bath Abbey's among them, whose end of 1539 is its monastery's, before the church
 - A site once listed in its own right and listed today inside a larger property (the Château de
   Chambord, 1981–2000) keeps no listing of its own unless a curator gives it one.
 - An event that is not a place waits for #1676 to say which row its periods hang on.
-- A gap longer than a century is asked and not filled, so the place holds no standing period of
-  that source until a curator answers: its beginning waits with its gap. Bethlehem Chapel in
-  Prague, truly gone from 1786 to 1952, is asked as the Odeon is. A trusted source writes such a
-  gap unasked, as it writes any difference.
+- A gap longer than a century is asked and not filled, so the place holds the list with that gap
+  closed until a curator answers: Bethlehem Chapel in Prague, truly gone from 1786 to 1952, reads
+  "1391 → open" until then, and is asked as the Odeon is. A trusted source writes such a gap
+  unasked, as it writes any difference.
+- A refusal is remembered for the list as filed, the statement each date was read from included,
+  so a statement entered anew on Wikidata with the same date asks again.
+- The card for an end says that the place leaves today's lists. Until the read as of a date is
+  built (decisions 5 to 7) no reader reads the derived column, and a published end changes no
+  list.
 - A gap of a century or less is filled as the item states it, right or not: the Liberty Bridge in
   Budapest reads as gone from 1945 to 2009, since its item prefers an inception of 2009 to the
   one of 20 August 1946 it also states.
