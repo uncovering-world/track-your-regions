@@ -8,7 +8,11 @@ decisions 1 and 3, and the slot sentence of decision 2;
 [ADR-0020](0020-experience-lifecycle-and-run-changeset.md) decision 2 (the `existence` axis);
 [ADR-0021](0021-source-may-restore-membership.md) and
 [ADR-0216](0216-a-withdrawn-part-stays-shown-until-a-curator-answers.md) decisions 2 and 3 (who
-writes `source_membership`: a trigger derives it from the listing periods)
+writes `source_membership`: a trigger derives it from the listing periods);
+ADR-0214 decision 4 (an end on a new place is written with its arrival, decision 3);
+[ADR-0213](0213-a-parts-gate-is-its-record-in-its-whole.md) decisions 1 and 3 (a part's
+`existence` goes, and the *former* and *lost* its site's card asks are written as periods,
+decisions 4 and 5)
 
 ---
 
@@ -41,7 +45,8 @@ Four more rulings of the maintainer followed on #2578, and this Draft is amended
 note under the Decision that names those two dates says where):
 
 - **A museum that closed for good** ends its record's standing. Frick Madison in New York was a
-  museum from 2021 to 2024, and its building stands (2026-11-16).
+  museum from 2021 to 2024, and its building stands (2026-11-16). A ruling of 2026-11-17 (below)
+  says that the standing which ends is that of the place's membership in Art Museums.
 - **What a visit counts as.** Four dates are told apart and never merged: a place entered a list,
   left a list, was built, was destroyed. A traveller at Machu Picchu in 1980 visited a World
   Heritage Site, though it was inscribed in 1983 (2026-11-16). Two sentences of that ruling were
@@ -54,7 +59,8 @@ note under the Decision that names those two dates says where):
   refuses. Named uses stay in the model, proposed from Wikidata (2026-11-16 and 2026-11-17).
 
 Three rulings of the maintainer of 2026-11-17 followed those (#2578, comments of 10:20Z, 10:24Z
-and 10:30Z), and the Draft is amended to them as well (the last note under the Decision). The
+and 10:30Z), and the Draft is amended to them as well (the note under the Decision that names those
+comments). The
 third completes the first two and is the one their wording is read by:
 
 - **A screen of a past date shows a place that already existed then,** whatever the date its
@@ -70,6 +76,22 @@ third completes the first two and is the one their wording is read by:
   read as of 1980). A place in either can be ticked from there. The start and the end of a
   listing are treated alike: neither hides the place from the screen, and both move it out of
   the counted list into a section that says why (10:30Z).
+
+Three more rulings of the maintainer of 2026-11-17 followed, each put to the maintainer from the
+audit of ADRs against issues (#2619), and the Draft is amended to them (the last note under the
+Decision):
+
+- **A closing belongs to the place's membership in a kind, not to the place**
+  ([#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949064473)). It ends, or
+  pauses, the membership in that one kind, and the place stands in every other kind that offers
+  it: the Museum of San Marco in Florence is offered in Art Museums and in Places of worship.
+  Standing is kept per membership.
+- **A work's link to its museum takes periods**, as a membership does
+  ([#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949225433)): Vermeer's
+  *The Concert* hung in the Isabella Stewart Gardner Museum in Boston until the theft of 1990.
+- **A place under construction is offered once it is there to visit as what it is offered as**
+  ([#2584](https://github.com/uncovering-world/track-your-regions/issues/2584#issuecomment-6949327510)): the
+  Sagrada Família is offered, and the Jeddah Tower is not until it opens.
 
 Measured on the development catalogue and the Wikidata subset on 2026-11-16, read-only. *Offered*
 is a place with an admitted, published record in a kind (4,019 places, 4,017 with an item in the
@@ -154,21 +176,46 @@ of four things:
 
 | says | example |
 |---|---|
-| `stood` | Christ the Saviour: 1883 → 5 Dec 1931, destroyed; 2000 → open. Nelson's Pillar in Dublin: 1809 → 8 Mar 1966, destroyed, and no open period. Frick Madison in New York: 2021 → 2024, closed, and no open period. |
+| `stood` | Christ the Saviour: 1883 → 5 Dec 1931, destroyed; 2000 → open. Nelson's Pillar in Dublin: 1809 → 8 Mar 1966, destroyed, and no open period. Frick Madison in New York, in Art Museums: 2021 → 2024, closed, and no open period. |
 | `used` | Hagia Sophia: a church 537 → 1453, a mosque 1453 → 1931, a museum 1935 → 2020, a mosque 2020 → open. Göbekli Tepe: about 10,000 BC → about 7000 BC. |
 | `closed` | The Pergamon Museum: October 2023 → 2027. |
 | `held` | Holy Week in Seville: 21 → 28 March 2027. |
 
 **"Stood" means "was there to visit as what it is offered as"** (the maintainer, 2026-11-16,
 #2578). For a bridge or a cathedral that is the structure. For a record offered as a museum it is
-that the museum was open as one: the museum's closing for good ends the record's standing, though
-its building stands. That ending has a word of its own, *closed*, beside destroyed, demolished,
+that the museum was open as one: the museum's closing for good ends the standing of the place's
+membership in Art Museums, though its building stands. That ending has a word of its own, *closed*, beside destroyed, demolished,
 removed and collapsed, and the card reads "closed in 2024" (Frick Madison). A building whose use
 changed is not affected: Hagia Sophia stands, and its years as a museum are one of its uses. The
 ending *closed* is not the `closed` period of the table, which is a closure a place comes back
 from. #2584 builds the ending.
 
-A place's standing periods do not overlap, and none ends in the future; a closure may.
+**Standing is kept per membership** (the maintainer, 2026-11-17,
+[#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949064473)). A closing
+ends, or pauses, the place's membership in one kind, and the place stands in every other kind
+that offers it. Were the Museum of San Marco in Florence, offered in Art Museums and in Places of
+worship, to close for good as a museum while its church stayed open, it would leave Art Museums,
+marked with the year it closed in that kind's section (decision 7), and stay in Places of worship. A
+closure until a date pauses one membership the same way and leaves the others untouched. So the
+key of `place_periods` carries the kind: a `stood` or `closed` period that names a kind holds for
+the place's membership in that kind. That a period which names no kind holds for the place in
+every kind, as Christ the Saviour's destruction does, and how decision 5 reads the two, is the
+session's reading, open to the maintainer's veto. A curator's controls for it ("end this
+membership", "pause this membership") are designed later, with the curator's section of the
+place's card, and nothing builds them before.
+
+**A place under construction is offered from when it is there to visit as what it is offered as**
+(the maintainer, 2026-11-17,
+[#2584](https://github.com/uncovering-world/track-your-regions/issues/2584#issuecomment-6949327510)). That is the
+meaning of "stood" applied to a beginning: the Sagrada Família in Barcelona, a basilica in use
+while it is still being built, is offered, and the Jeddah Tower, a stump on a building site, is
+not until it opens. A standing period may begin in the future, so a place with a known opening
+date appears by itself on that day. Which signal tells the two apart (an opening or a
+consecration date, visitors), measured on the catalogue with a card for the doubtful ones, and
+how many places the rule touches are the session's to settle before #2584 builds it.
+
+A place's standing periods for one kind, or for no kind, do not overlap. None ends in the future,
+though one may begin there; a closure may end there.
 
 **A named use is proposed by a run and answered by a curator** (the maintainer, 2026-11-16 and
 2026-11-17, #2578). This replaces the Draft's first text, "a use's name is a curator's words, and
@@ -198,11 +245,17 @@ but for the end of a place no reader sees yet, which it asked and this writes:
   reported as "1883 → 1931, 2000 → open" is one;
 - any other difference is asked under a gated source on a place readers see, as one question
   showing the place's periods beside the source's;
-- the end of a place's last standing period is never a fill: under a gated source it is always
-  asked on a place readers see, and is written with the arrival on a new place, whose arrival card
-  is the question (Nelson's Pillar). ADR-0214 decision 4 asked every end under a gated source, a
-  new place's included; the maintainer's decision of 2026-11-16 on #1719 narrows it there. A
-  museum's closing for good is such an end (decision 2);
+- the end of a place's last standing period, or of the last standing period of one of its
+  memberships, is never a fill: on a place readers see it is always asked, whatever the source
+  and whether or not it is gated, and on a new place it is written with the arrival, whose
+  arrival card is the question (Nelson's Pillar). ADR-0214 decision 4 asked every end under a gated source, a
+  new place's included; the maintainer's decision of 2026-11-16 on #1719 narrows it there. That
+  such an end is asked under a source that is not gated too is the session's, closed on
+  2026-11-17 on a measurement (#2619 line 1.6): of six museum end dates read, three date the
+  prison or the station the museum is in, and the Hamburger Bahnhof in Berlin, whose item dates
+  the station's end, is open. It carries the maintainer's rule of 2026-11-15 on #1719, that an
+  end which would hide a place is always asked, to its reason. A museum's closing for good is
+  such an end (decision 2);
 - a named use is never a fill, on any place: it is written only by a curator's answer
   (decision 2).
 
@@ -221,6 +274,12 @@ event is read for what it says of the whole place and of what was left of it, an
   standing throughout until a curator says otherwise;
 - a destruction that no start follows does not end the place, which is the gone rules' to read
   (#2585), and ends no use.
+
+An end its item dates where the gone rules read no state of use (Nelson's Pillar carries an end
+of existence and none) is asked on the ordinary card of a held end, with the source's date
+proposed, once #2585 has counted such rows so that the queue is not flooded. That follows from
+the maintainer's rule of 2026-11-15 on #1719 that an end which would hide a place is always
+asked, and #2619 line 1.12 closed it so on 2026-11-17.
 
 A gap longer than a century is never a fill: it is asked on a place readers see under a gated
 source, and written with the arrival on a new one, as the end of the last standing period is. An
@@ -250,7 +309,8 @@ the place, and leaving it is not its end (the maintainer, 2026-11-16, #2578; dec
 Picchu stood for five centuries before its listing began in 1983. For a list kept outside the
 catalogue (World Heritage, the kinds `KINDS_KEPT_AS_FORMER` names) neither date hides the place
 from a screen: each moves it between the list and a section beside it (decisions 6 and 7). A
-membership of a kind the catalogue fills by its own rule has no such section (decision 7).
+membership of a kind the catalogue fills by its own rule has no listing dates; its standing in the
+kind may still end, as a museum's does, and it is then in that kind's section (decisions 2 and 7).
 Both dates have a source that
 proposes them (decision 13). The start is the list's own: UNESCO's dataset gives the inscription
 date on every offered World Heritage record. The end is asked with the *former* question: when
@@ -258,20 +318,38 @@ the dataset drops a site, its record goes missing, and the card offers the end t
 World Heritage designation as the date ("UNESCO no longer lists this site. Wikidata says the
 listing ended on 21 July 2021", for Liverpool), which the curator confirms or corrects.
 
+**A work's link to its museum holds periods the same way** (the maintainer, 2026-11-17,
+[#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949225433)). Vermeer's
+*The Concert* and Rembrandt's *The Storm on the Sea of Galilee* hung in the Isabella Stewart
+Gardner Museum in Boston until the theft of 1990: read as of 1985 the museum's list of works
+holds them and they can be ticked, and today they stand in a section of what is no longer there
+(decision 7). A move is the same fact: *Guernica* was in New York until 1981 and is in Madrid
+since. The dates are proposed from Wikidata's dated location statements (location, P276;
+collection, P195) and answered by a curator (decision 13). The first cut may hold only an end
+("here until 1990"), and full periods follow with no change of the schema. The link's
+`missing_since` (`experience_treasures`) says only when a run stopped seeing the link, which is
+not the year the work left. An issue under Epic #2115 builds it.
+
 **5. A place is gone when it has standing periods and none is open.** That is the one statement.
-It is read with decision 2's meaning of "stood": Frick Madison is gone, as the museum it is
-offered as, while the building it used stands.
+It is read with decision 2's meaning of "stood", and per membership: the periods that name no
+kind say whether the place is gone, and a membership stands on a date when the place does and,
+where it has standing periods of its own, one of them holds. Frick Madison is not gone: its
+membership in Art Museums has ended, as the museum it is offered as, while the building it used
+stands. That reading of the ruling of 2026-11-17 (decision 2) is the session's.
 `experiences.existence` goes; a curator's *lost* closes the place's standing, and on a place with
 no standing period it writes one ended period whose start is not known; a rule that reads a
 place as gone reports that end on its record's view and the gate decides (#2584 converts the
 remaining refusals). `experiences.stands_today` is derived from the periods by a trigger and
 written by nothing else, as the place's `missing_since` is derived from its records (ADR-0084).
+A membership's standing today is derived beside its `source_membership` the same way (the
+session's reading of "standing is kept per membership").
 
 **6. The catalogue is read as of a date.** One predicate says whether a place is offered in a
-kind: it stands and is listed there, on a date, with today as the default
+kind: its membership there stands (decision 5) and is listed, on a date, with today as the default
 (`db/readerPredicates.ts`).
 
-- Today, it is the two derived columns, on rows the read already holds.
+- Today, it is the derived columns of decision 5 and `source_membership`, on rows the read
+  already holds.
 - On a past date, it asks the place's standing periods and the record's listing periods by their
   outer days. A date that does not settle the question offers the place, and a place with no
   standing period stood at every date.
@@ -279,6 +357,12 @@ kind: it stands and is listed there, on a date, with today as the default
 For a trip of 2015, Liverpool is a World Heritage Site and the Arch of Reunification in Pyongyang
 stands; for a trip of 1980 the Cathedral of Christ the Saviour is not offered. Admission and
 publication are not dated: the catalogue's own curation is not history.
+
+**The date of a traveller's past trip is in no public address and no shared cache key.** A screen
+read as of such a date is the traveller's own, as their own point is. The maintainer ruled on
+2026-11-16 (#2579, comment of 19:00Z) that a traveller's own point is in no log and no URL; the
+session carries that rule to the trip's date by the same reasoning (2026-11-17, #2619 line 3.6),
+open to the maintainer's veto.
 
 **A list read as of a date is the list as it stood on that date** (the maintainer, 2026-11-17,
 #2578, comment of 10:30Z, which completes the rulings of 10:20Z and 10:24Z of that day). The
@@ -311,12 +395,17 @@ The session reads two consequences from that ruling, each open to the maintainer
 is a second section built the same way** (the maintainer, 2026-11-16, #2578, comment of 13:27Z,
 for the first; 2026-11-17, #2578, comment of 10:30Z, for the second). After a kind's list comes
 what was offered in it before the date the catalogue is read at and is not offered on it: places
-that no longer stand, and places that left a list kept outside the catalogue (World Heritage; the
-kinds `KINDS_KEPT_AS_FORMER` names).
+that no longer stand, places whose membership in the kind closed (decision 2), and places that
+left a list kept outside the catalogue (World Heritage; the kinds `KINDS_KEPT_AS_FORMER` names).
 
 - Each is grouped under the kind it belonged to and marked from the period that ended: "destroyed
   in 1966" (Nelson's Pillar), "delisted in 2021" (Liverpool), "closed in 2024" (Frick Madison).
 - Today's main list never offers such a place.
+- Search finds such a place, marked with its end ("destroyed in 1966", Nelson's Pillar), and the
+  map shows it only while the section is open. That follows from the maintainer's ruling that a
+  place of the section can be ticked (2026-11-16, #2578, comment of 13:27Z), which it cannot be
+  if it cannot be found; #2619 line 1.11 closed it so on 2026-11-17, and the reading is the
+  session's.
 - A place that left a list is ticked there like any other place, and no question "when were you
   there?" is asked (the maintainer, 2026-11-17, #2578, comment of 10:24Z; for such a place it
   replaces the "asks when" of the ruling of 2026-11-16, comment of 13:27Z). Liverpool, ticked in
@@ -336,6 +425,11 @@ kinds `KINDS_KEPT_AS_FORMER` names).
   closed: Liverpool, delisted, would stay in it with a dock closed for works, marked as both.
 - There is no category such as "World Heritage 2004–2021", and #2009's virtual kind with its own
   pin colour is not built.
+- A membership the catalogue ends by a change of its own rule, while the place stands and is open,
+  is in neither section: nothing happened on the ground, and the sections say what happened there.
+  The place leaves the kind's list as any refusal takes it out. That is the session's rule of
+  2026-11-17 (#2619 line 1.5), open to the maintainer's veto; the ruling of that day replaced the
+  session's earlier rule only for a membership whose end is a fact of the world (a museum that closed).
 
 **The section of what is not yet listed** holds what existed on the date the catalogue is read
 at and entered the list later (the maintainer, 2026-11-17, #2578, comment of 10:30Z): Machu
@@ -354,10 +448,11 @@ session reads the rest from the ruling's "built the same way", open to the maint
   marked from the listing that ended. No World Heritage site has been listed twice, so no real
   place tests this.
 
-One rule here is the session's and not the maintainer's: a former membership of a kind the
-catalogue fills by its own rule is in no section, since the bridge still stands and only the
-catalogue's rule changed. The maintainer's ruling names "places that left the list" and gives a delisting as
-its example.
+A membership that closed is in its kind's section, whichever kind it is (the maintainer,
+2026-11-17, [#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949064473)):
+Frick Madison, "closed in 2024", is in the section of Art Museums, a kind the catalogue fills by
+its own rule. This replaces the session's rule of 2026-11-16 that a former membership of a kind
+the catalogue fills by its own rule is in no section.
 
 **8. A count is read over the list of the date shown, and when a visit happened changes none**
 (the maintainer, 2026-11-17, #2578, comments of 10:24Z and 10:30Z). This replaces the text this
@@ -411,7 +506,8 @@ The session reads these consequences from those rulings, each open to the mainta
   of 1980 by mistake. A tick on it counts in every list that holds the cathedral, today's among
   them, and no count leaves it out because a trip under it is dated 1980. This replaces the
   session's sentence of 2026-11-16 that such a trip "was not a visit to the cathedral": the
-  ruling has no count follow the date of a visit.
+  ruling has no count follow the date of a visit. The question #2619 line 1.8 held is closed by
+  that ruling (2026-11-17).
 - **A visit read through another one** (a whole through a part, a venue through a work seen in
   it, an area through a place inside it) is counted the same way, with no date read. A tick on
   the Pier Head makes Liverpool, once it is taken in, a visited place, counted among the World
@@ -483,7 +579,7 @@ measurement.
 |---|---|---|
 | A place's standing periods and their ends (decisions 2 and 3) | The run's view of its item's dates and events: a start on 2,249 offered places, an end on 184 | The card that shows a held difference to a curator |
 | An end with no date ("gone, when is not known") | A gone state or class with no dated end, on 9 offered places: the Temple of Artemis at Ephesus. The source proposes the row with no year, and a curator who adds the year completes a proposed row | The same card |
-| A museum's closing for good (decision 2) | The end and the official closure its item states. Right on three of six read: Frick Madison's is the museum's, and the Hamburger Bahnhof's is the station's. So it is a proposal. The maintainer's rule of 2026-11-15 (#1719) asks, under a gated source, every end that would hide a place readers see. The session reads that rule as holding for a museum's closing whatever its source's gate, since Art Museums is not gated today; that reading is open to the maintainer's veto | #2584 keeps a dissolved museum's record, which the reader drops today |
+| A museum's closing for good (decision 2) | The end and the official closure its item states. Right on three of six read: Frick Madison's is the museum's, and the Hamburger Bahnhof's is the station's. So it is a proposal. The maintainer's rule of 2026-11-15 (#1719) asks, under a gated source, every end that would hide a place readers see, and decision 3 asks it whatever the source: the session's, closed on that measurement on 2026-11-17 (#2619 line 1.6). The closing ends the membership in Art Museums only (the maintainer, 2026-11-17) | #2584 keeps a dissolved museum's record, which the reader drops today |
 | A named use (decision 2) | The classes and uses its item dates, on 151 offered places | Their reader, and the card |
 | A closure (decision 2) | OpenStreetMap's `opening_hours` on the place's object in the layer: proposals only. It says "closed now" (the Pergamon Museum) and seldom until when (Turku Cathedral), so the source proposes the row with no end, and a curator who adds the end completes a proposed row; else the end stays not known. Wikidata's *temporarily closed* is not read | #2128: a reader of the tag, the proposal and its card |
 | A season of a place (decision 9) | The text of English Wikivoyage read by a model, the sentence quoted on the card ("Boats sail May-Sep", Sceilg Mhichíl): proposals only. The months are facts, and none of the CC BY-SA text is kept. OpenStreetMap closes whole months on four places | The source's record in the register (`docs/sources/global/wikivoyage-see-listings.md`) says `model: none`: the record and the line of `docs/tech/external-services.md` (ADR-0148) are amended before any text is sent to a model |
@@ -493,6 +589,7 @@ measurement.
 | A listing's end (decision 4) | The run's missing detection proposes *former*, and the end time of the item's designation proposes the date: Liverpool, 21 July 2021 | The date offered on the *former* question |
 | The intake of a delisted site (decision 10) | The ended designations: seven candidates, three of them delistings, each an arrival card | The reader in the World Heritage run |
 | A past position (decision 11) | A coordinate its item dates with an end time: 2 offered places, 11 arriving | The table and its reader, with the past-trip map |
+| A work's time at its museum (decision 4) | Wikidata's dated location and collection statements (P276, P195): *The Concert* at the Gardner Museum until 1990, *Guernica* in New York until 1981 | The periods on the link, their reader and card, and the issue under Epic #2115 that builds them |
 
 **Amended as a Draft, from what its first slice built (#2578):** decision 1 says that a period has an
 end, not that it has ended, since a closure's end may lie ahead, and names the two outer days a
@@ -549,7 +646,7 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 - whether the closing of a museum ends the standing of a record that another kind offers as
   well, as a building;
 - whether the session's reading in decision 13 stands, that a museum's closing is asked under a
-  source that is not gated. Art Museums is not gated, and by decision 3 such a source writes a
+  source that is not gated. Art Museums is not gated on a database migrated from before #2335, and by decision 3 such a source writes a
   difference unasked: the Hamburger Bahnhof's item dates the station's end, and the museum is
   open;
 - the time of a work in its museum: *The Concert*, stolen from the Gardner Museum in 1990, which
@@ -610,6 +707,68 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   exists, with no question: Liverpool, ticked in today's section. Decision 7 says only that
   nothing is asked.
 
+**Amended as a Draft, to the maintainer's rulings of 2026-11-17 put from #2619 (#2578, #2584),
+and to the lines of #2619 the session closed the same day:** the session of queue #2458 put to
+the maintainer the questions the two notes above had left open, with others its audit of ADRs
+against issues found (#2619, group 1). Each change below names its line there.
+
+- **Decision 2, standing per membership (line 1.5).** A closing ends or pauses the place's
+  membership in one kind, and the place stands in every other kind that offers it (the
+  maintainer, 2026-11-17, [#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949064473)).
+  The key of `place_periods` carries the kind. Why: the Museum of San Marco in Florence is
+  offered in Art Museums and in Places of worship, and a museum's closing that ended the place's
+  standing would take its church out of Places of worship. The sentence that a museum's closing
+  "ends the record's standing" now says it ends the membership's. The curator's controls are
+  designed later, with the curator's section of the card.
+- **Decisions 4, 5, 6 and 7 follow decision 2**, since each read standing as the place's alone,
+  which the ruling makes false. Decision 4 no longer says that a membership of a kind the
+  catalogue fills by its own rule has no section. Decision 5 reads the place's own periods and a
+  membership's apart, and derives a membership's standing today; both are the session's reading.
+  Decision 6's predicate asks the membership's standing. Decision 7's section holds a membership
+  that closed, and the session's rule of 2026-11-16 that a former membership of a kind the
+  catalogue fills by its own rule is in no section is replaced.
+- **Decision 2, a place under construction (line 1.10).** A place is offered from when it is
+  there to visit as what it is offered as, and a standing period may begin in the future (the
+  maintainer, 2026-11-17, [#2584](https://github.com/uncovering-world/track-your-regions/issues/2584#issuecomment-6949327510)).
+  The sentence that no standing period "ends in the future" now says that one may begin there.
+- **Decision 3, an end under an ungated source (line 1.6).** An end that would take a place
+  readers see out of a list is asked whatever the source, gated or not. The session closed this
+  on the measurement in the Context: three of six museum end dates read were the prison's or the
+  station's (the Hamburger Bahnhof). Decision 13's row says so.
+- **Decision 3, an end the gone rules cannot classify (line 1.12).** It raises the ordinary card
+  of a held end once #2585 has counted the rows, which follows from the maintainer's rule of
+  2026-11-15 on #1719.
+- **Decision 4 and decision 13's table, a work's time at its museum (line 1.7).** A work's link
+  to its museum holds periods, proposed from Wikidata's dated location and collection statements
+  (the maintainer, 2026-11-17, [#2578](https://github.com/uncovering-world/track-your-regions/issues/2578#issuecomment-6949225433)).
+  The first cut may hold only an end.
+- **Decision 6, the date of a past trip (line 3.6).** It is in no public address and no shared
+  cache key: the session's rule, by the reasoning of the maintainer's rule on a traveller's own
+  point (#2579).
+- **Decision 7, search (line 1.11).** Search finds a place of the section, marked with its end,
+  and the map shows it only while the section is open. It follows from the maintainer's ruling
+  that such a place can be ticked; the reading is the session's.
+- **Decision 8, a trip dated inside a gap (line 1.8).** The consequence that a tick on the
+  Cathedral of Christ the Saviour counts whatever its trip's date is settled by the ruling of
+  10:24Z, under which no count reads the date of a visit.
+- **The header (line 6.21)** names ADR-0214 decision 4, which decision 3 already said it narrows,
+  and ADR-0213 decisions 1 and 3, whose `existence` and written *former* decisions 4 and 5
+  replace by periods. Read against the header as PR #2617 left it.
+- The Context names the three rulings. The alternatives gain the closing of the whole place and
+  the refusal of a place under construction, and lose the reason that a closed museum's
+  membership "is in no section". The consequences gain what follows.
+
+The questions the two notes above listed as not decided are all answered: the closing of a
+museum another kind offers as well (line 1.5), a museum's end under an ungated source (line 1.6),
+a work's time in its museum (line 1.7), a trip dated inside a gap (line 1.8), and whether a tick
+on a place that left a list tells the traveller that past-travels mode exists (line 1.9, closed
+as an interface detail drawn in #2009's mock, so decision 7 does not change).
+
+Not decided by this amendment, and the session's to settle before the slices that build them:
+the signal that tells a place under construction open to visitors from a building site, and the
+count of places it touches (decision 2); the curator's controls that end or pause one membership,
+designed with the curator's section of the card (decision 2).
+
 ## Alternatives Considered
 
 | Option | Why rejected |
@@ -624,7 +783,9 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 | A visit counts by when it happened: one made while the place was listed keeps counting under the list after the place leaves it, and a tick made today on a place no longer listed asks when the traveller was there (this Draft's text of 2026-11-16, from the maintainer's ruling of that day, #2578, comment of 21:06Z) | The maintainer replaced it on 2026-11-17 (#2578, comment of 10:24Z). A traveller who cannot say when they were in Liverpool has no answer to give, and the count would hang on it. Two travellers with the same ticks would read "11 of 21" and "10 of 21" over one list, the eleventh being a site that is not among the 21. |
 | Leave a place off the screen of a date before its listing began (this Draft's reading of "lists, kinds and counts are those of that date") | The maintainer ruled otherwise on 2026-11-17 (#2578, comment of 10:20Z). A traveller marking Peru in 1980 would not find Machu Picchu, though the visit counts as one to a World Heritage Site. |
 | Put a place listed later into the list of the earlier date (the first reading of the ruling of 10:20Z) | The maintainer completed the ruling on 2026-11-17 (#2578, comment of 10:30Z). The start of a listing would be ignored and its end read: the list of 1980 would hold Machu Picchu, and the list of 2023 would not hold Liverpool. A section of what is not yet listed treats the two alike, and the list stays the one of its date. |
-| A museum that closed for good read as the end of a use, or as the end of a membership | As a use, Frick Madison stays in today's list as if it were open. As a membership the catalogue fills by its own rule, it is in no section, and a trip of 2022 cannot find it. |
+| A museum that closed for good read as the end of a use | Frick Madison would stay in today's list as if it were open. |
+| A museum's closing ends the place's standing in every kind (this Draft's text of 2026-11-16, from the maintainer's ruling of that day) | The maintainer completed the ruling on 2026-11-17 (#2578): the Museum of San Marco in Florence, closing as a museum, would leave Places of worship though its church stayed open. Standing is kept per membership (decision 2). |
+| A place under construction is refused (#2584 as filed) | The maintainer ruled otherwise on 2026-11-17 (#2584): the Sagrada Família, visited daily while it is built, would be missing. |
 | Named uses entered by a curator alone (this Draft's first text, the session's) | A curator would enter Hagia Sophia's four uses from nothing, where its item states three of them with their years. The maintainer's principle of 2026-11-16 and 2026-11-17 refuses it. |
 | Write what a source proposes for a use, a closure or a museum's closing without a curator | Hagia Sophia's item deprecates its church period and dates a museum from 2024 that is its upper gallery; three of six museums' ends are the prison's or the station's; both museums Wikidata calls temporarily closed are open. |
 | A form for a movable event's dates of a year | No source states them for any of nine festivals read, so a curator would enter Holy Week's dates from nothing, every year. |
@@ -640,6 +801,9 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   Nelson's Pillar's end, Liverpool's listing, the Arch of Neutrality's move (when its table is
   built), the Pergamon Museum's closure, and Frick Madison's years as a museum. Holy Week in
   Seville holds its rule in words, and its dates of a year when a source gives them.
+- A closing takes a place out of one kind's list only: a museum that closed in a church stays a
+  place of worship. *The Concert* is in the Gardner Museum's list of 1985, and the Sagrada
+  Família is offered while it is built.
 - No count depends on a date the traveller may not remember: a visit made before a place was
   listed counts, Liverpool stays a visited place, and "k of N" is read over the list of the date
   the screen shows.
@@ -695,6 +859,13 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   one of 20 August 1946 it also states.
 - A destruction its item states as a fire or a bombardment is not read, so Kinkaku-ji is offered
   for a trip of 1952, when the pavilion was ash.
+- Standing is read per membership as well as per place, so a membership's standing today is one
+  more derived column to keep in step with the periods.
+- Every end that would take a place readers see out of a list is a curator's question, under an
+  ungated source too, so the runs of a kind that is not gated (Art Museums on a database migrated
+  from before #2335) add cards where they wrote ends unasked.
+- Which signal tells a place under construction that is open to visitors from a building site is
+  not measured yet, nor how many places it touches.
 
 ## References
 
@@ -706,4 +877,5 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   is read), ADR-0059 (what is taken from OpenStreetMap)
 - Related docs: `docs/tech/experiences.md` § A place's lifetime,
   `docs/sources/global/wikivoyage-see-listings.md`, `docs/tech/external-services.md`
-- Issues: #2578, #1719, #2128, #2008, #2009, #2584, #2585, #1676, #2134, #2127, #773, #2116, #2586
+- Issues: #2578, #1719, #2128, #2008, #2009, #2584, #2585, #1676, #2134, #2127, #773, #2116, #2586,
+  #2579, #2619, Epic #2115
