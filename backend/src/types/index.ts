@@ -1322,12 +1322,12 @@ export const curatorActivityQuerySchema = z.object({
   regionId: rowIdSchema.optional(),
   since: instantSchema.optional(),
   before: instantSchema.optional(),
+  /** A place's name, or part of it: the trail of what happened to one place. */
+  q: searchText(2, 100).transform(v => v.trim()).pipe(z.string().min(2)).optional(),
 });
 
 /** The feed across every curator: the same filters, and one author to narrow to. */
-export const curationActivityQuerySchema = curatorActivityQuerySchema.extend({
-  curatorId: rowIdSchema.optional(),
-});
+export const curationActivityQuerySchema = curatorActivityQuerySchema.extend({ curatorId: rowIdSchema.optional() });
 
 export const adminUserSearchQuerySchema = z.object({
   q: searchText(2, 255),

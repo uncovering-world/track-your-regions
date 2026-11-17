@@ -6883,6 +6883,16 @@
                 }
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "pattern": "^[^\\u0000]*$"
+            }
           }
         ],
         "responses": {
@@ -7036,6 +7046,16 @@
                   "pattern": "^(?:000[2-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-8]\\d{3}|9[0-8]\\d{2}|99[0-8]\\d|999[0-8])-.*(?:Z|[+-](?:(?:0\\d|1[0-3])(?::?[0-5]\\d)?|14(?::?00)?))$"
                 }
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "pattern": "^[^\\u0000]*$"
             }
           },
           {
@@ -23531,12 +23551,55 @@
             "items": {
               "$ref": "#/components/schemas/CuratorActivityEntry"
             },
-            "description": "Newest first."
+            "description": "Newest first, a batch publish as one entry."
           },
           "total": {
             "type": "integer",
             "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "How many entries the filters keep, a batch counting once."
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "againstTheRule": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Acts against what the rule decided: a place the rule kept out put back, a place it holds taken out of a kind."
+              },
+              "arrivalsTurnedAway": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Arrivals a curator answered no on the review page: the gate's routine review, not a dispute with the rule."
+              },
+              "keptOutAsTheRuleSaid": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "editedByHand": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "published": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Places published, every place of a batch counted."
+              }
+            },
+            "required": [
+              "againstTheRule",
+              "arrivalsTurnedAway",
+              "keptOutAsTheRuleSaid",
+              "editedByHand",
+              "published"
+            ],
+            "additionalProperties": false,
+            "description": "The filters' acts, counted by what an auditor reads them for (#956)."
           },
           "limit": {
             "type": "integer",
@@ -23559,6 +23622,7 @@
         "required": [
           "activity",
           "total",
+          "counts",
           "limit",
           "offset",
           "curators"
@@ -23792,12 +23856,55 @@
             "items": {
               "$ref": "#/components/schemas/CuratorActivityEntry"
             },
-            "description": "Newest first."
+            "description": "Newest first, a batch publish as one entry."
           },
           "total": {
             "type": "integer",
             "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "How many entries the filters keep, a batch counting once."
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "againstTheRule": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Acts against what the rule decided: a place the rule kept out put back, a place it holds taken out of a kind."
+              },
+              "arrivalsTurnedAway": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Arrivals a curator answered no on the review page: the gate's routine review, not a dispute with the rule."
+              },
+              "keptOutAsTheRuleSaid": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "editedByHand": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "published": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Places published, every place of a batch counted."
+              }
+            },
+            "required": [
+              "againstTheRule",
+              "arrivalsTurnedAway",
+              "keptOutAsTheRuleSaid",
+              "editedByHand",
+              "published"
+            ],
+            "additionalProperties": false,
+            "description": "The filters' acts, counted by what an auditor reads them for (#956)."
           },
           "limit": {
             "type": "integer",
@@ -23813,6 +23920,7 @@
         "required": [
           "activity",
           "total",
+          "counts",
           "limit",
           "offset"
         ],
@@ -23938,6 +24046,37 @@
               "null"
             ]
           },
+          "batch": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "How many places the batch published."
+                  },
+                  "names": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The names of the first of them, newest first."
+                  }
+                },
+                "required": [
+                  "count",
+                  "names"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A batch publish this entry stands for (#956): one curator's run of publications, each under a minute after the one before, five or more; null for a single act."
+          },
           "region_id": {
             "anyOf": [
               {
@@ -23986,6 +24125,7 @@
           "experience_image_url",
           "experience_image_credit",
           "kind_name",
+          "batch",
           "region_id",
           "region_name",
           "curator_id",
