@@ -98,3 +98,65 @@ export const EDITED_BY_HAND_ACTIONS = [
   'location_edited',
   'work_edited',
 ] as const satisfies readonly CurationLogAction[];
+
+/**
+ * Why a curator acted (#863): the code a log entry keeps in
+ * `details.reasonCode`, beside the curator's optional words in `details.note`.
+ * The why is the half of a curator's act a rule is tuned from, so it is a
+ * code a query can group by rather than free text; `other` keeps every
+ * surface answerable.
+ */
+export const CURATION_REASON_CODES = [
+  'not-this-kind',
+  'not-worth-a-visit',
+  'not-one-place',
+  'wrong-place',
+  'duplicate',
+  'gone',
+  'source-text',
+  'missing-from-rule',
+  'other',
+] as const;
+
+/** One reason a curator may give for an act. */
+export type CurationReasonCode = (typeof CURATION_REASON_CODES)[number];
+
+/** Each reason in a curator's words, as a chooser offers it. */
+export const CURATION_REASON_WORDS = {
+  'not-this-kind': 'Not this kind of place',
+  'not-worth-a-visit': 'Nothing to go and see',
+  'not-one-place': 'A route, network or type',
+  'wrong-place': 'Wrong point, region or identity',
+  'duplicate': 'Same as another place',
+  'gone': 'Destroyed, closed or never built',
+  'source-text': 'Source wording unusable as written',
+  'missing-from-rule': 'The rule should have brought it',
+  'other': 'Other',
+} as const satisfies Record<CurationReasonCode, string>;
+
+/**
+ * The reasons a refusal offers: an arrival turned away, a place kept out of
+ * a kind. Each surface offers only the reasons that fit its act.
+ */
+export const REFUSAL_REASON_CODES = [
+  'not-this-kind',
+  'not-worth-a-visit',
+  'not-one-place',
+  'gone',
+  'duplicate',
+  'wrong-place',
+  'other',
+] as const satisfies readonly CurationReasonCode[];
+
+/** The reasons a place put back into a kind, or added to one by hand, offers. */
+export const ADDITION_REASON_CODES = [
+  'missing-from-rule',
+  'other',
+] as const satisfies readonly CurationReasonCode[];
+
+/** The reasons an answer to a source's value offers: a value declined, or rewritten. */
+export const SOURCE_ANSWER_REASON_CODES = [
+  'source-text',
+  'wrong-place',
+  'other',
+] as const satisfies readonly CurationReasonCode[];
