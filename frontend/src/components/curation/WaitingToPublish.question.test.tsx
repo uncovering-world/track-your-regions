@@ -11,12 +11,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 vi.mock('../../api/articleLeads', () => ({ fetchArticleLead: vi.fn() }));
+vi.mock('../../api/kindNeighbours', () => ({ fetchKindNeighbours: vi.fn() }));
 
 import { fetchArticleLead } from '../../api/articleLeads';
+import { fetchKindNeighbours } from '../../api/kindNeighbours';
 import { GatedCard, leadStaleTime } from './WaitingToPublish';
+import { queryKeys } from '../../api/queryKeys';
 import type { GatedGroup } from './gatedGroup';
 
 const mockedLead = vi.mocked(fetchArticleLead);
+const mockedNeighbours = vi.mocked(fetchKindNeighbours);
 
 const DORMITION = { id: 47120, external_id: 'Q4129512', name: 'Dormition Cathedral, Kharkiv' };
 const ARTICLE = 'https://en.wikipedia.org/wiki/Dormition_Cathedral,_Kharkiv';
@@ -46,6 +50,7 @@ function renderCard(item: ReviewQueueItem, reuse?: QueryClient) {
 
 beforeEach(() => {
   mockedLead.mockReset();
+  mockedNeighbours.mockReset().mockResolvedValue({ kept: null, refused: null });
 });
 
 describe("an arrival's card asks its kind's question first (#2185)", () => {
@@ -173,5 +178,60 @@ describe("an arrival's card asks its kind's question first (#2185)", () => {
     expect(screen.getByRole('heading', { name: 'Is this an art museum?' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not an art museum' })).toBeInTheDocument();
     expect(screen.queryByText(/^Type:/)).toBeNull();
+  });
+
+  it("shows a kept and a refused place of its kind and type, each opening its own card", async () => {
+    mockedLead.mockResolvedValue(null);
+    mockedNeighbours.mockResolvedValue({
+      kept: { placeId: 40682, name: 'Pagoda of Fogong Temple', imageUrl: null, imageCredit: null },
+      refused: { placeId: 15020, name: 'Mast of a radio station', imageUrl: null, imageCredit: null, reason: 'kept out by a curator' },
+    });
+    renderCard(arrival());
+
+    const block = await screen.findByRole('region', { name: 'Towers in the catalogue' });
+    expect(within(block).getByText('— kept')).toBeInTheDocument();
+    expect(within(block).getByText('— kept out by a curator')).toBeInTheDocument();
+    expect(within(block).getByRole('button', { name: 'Curate Pagoda of Fogong Temple' })).toBeInTheDocument();
+    expect(mockedNeighbours).toHaveBeenCalledWith(88);
+  });
+
+  it("says a refused neighbour's own reason, never \"not a tower\" for a refusal about its fame", async () => {
+    mockedLead.mockResolvedValue(null);
+    mockedNeighbours.mockResolvedValue({
+      kept: null,
+      refused: {
+        placeId: 51230, name: 'Torre Scappi', imageUrl: null, imageCredit: null,
+        reason: '1 Wikipedia editions, under the 2 the surroundings tier asks for',
+      },
+    });
+    renderCard(arrival());
+
+    const block = await screen.findByRole('region', { name: 'Towers in the catalogue' });
+    expect(within(block).queryByText(/not a tower/)).toBeNull();
+    expect(within(block).getByText(/— kept out: /)).toBeInTheDocument();
+  });
+
+  it('says a hand-written refusal once, with no second "kept out"', async () => {
+    mockedLead.mockResolvedValue(null);
+    mockedNeighbours.mockResolvedValue({
+      kept: null,
+      refused: { placeId: 51231, name: 'Old Water Tower', imageUrl: null, imageCredit: null, reason: 'editorial exclusion: a water tank, not a tower to visit' },
+    });
+    renderCard(arrival());
+
+    const block = await screen.findByRole('region', { name: 'Towers in the catalogue' });
+    expect(within(block).queryByText(/kept out: kept out/i)).toBeNull();
+  });
+
+  it("keys the neighbours under the queue's key, so an answer or a closed card reads them again", () => {
+    const queue = queryKeys.curation.reviewQueueAll;
+    expect(queryKeys.curation.kindNeighbours(88).slice(0, queue.length)).toEqual([...queue]);
+  });
+
+  it('draws no block where neither a kept nor a refused place was answered', async () => {
+    mockedLead.mockResolvedValue(null);
+    renderCard(arrival());
+    await vi.waitFor(() => expect(mockedNeighbours).toHaveBeenCalled());
+    expect(screen.queryByRole('region', { name: 'Towers in the catalogue' })).toBeNull();
   });
 });

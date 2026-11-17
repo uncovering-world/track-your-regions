@@ -191,6 +191,8 @@ export const queryKeys = {
     /** The Wikivoyage articles that use a membership's item (#2520), read when a curator opens them. */
     guideArticles: (membershipId: number) => ['curation', 'guideArticles', membershipId] as const,
     articleLead: (placeId: number, article: string | null) => ['curation', 'articleLead', placeId, article] as const,
+    /** Under `reviewQueueAll`: an answer, or a place's card closing, changes which neighbour a kind has kept or turned away. */
+    kindNeighbours: (membershipId: number) => ['curation', 'reviewQueue', 'kindNeighbours', membershipId] as const,
   },
 
   /** Per user: each key names the caller. */
