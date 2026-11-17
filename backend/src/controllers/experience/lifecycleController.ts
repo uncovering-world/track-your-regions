@@ -273,7 +273,7 @@ async function publishArrivalContents(
   }
   // Un-refusing an arrival is a publication (ADR-0025 § 4.5), and a publication
   // takes everything that arrived with the object, not only its own fields —
-  // otherwise the button says "Put it back" and the curator watches the museum
+  // otherwise the button says "Put back" and the curator watches the museum
   // appear with no pin and no works, because nothing else here ever moves a
   // point or a link off `pending`. `publishContents` is `publishController.ts`'s
   // own answer to "which rows does a publish reach", shared rather than copied
@@ -488,7 +488,7 @@ export async function answerAdmissionUnderLock(
     const nextReason = admitted ? null : before.admission_reason;
 
     // A refusal overridden is a publication (ADR-0025 § 4.5): otherwise the
-    // button says "Put it back" and puts nothing anywhere — the curator
+    // button says "Put back" and puts nothing anywhere — the curator
     // un-refuses a museum, watches it stay invisible, and has to find it again
     // in another queue to say yes a second time. Only an override, and only
     // from `pending`: an `auto` row was already visible and this verdict says
@@ -569,7 +569,7 @@ export async function answerAdmissionUnderLock(
     admission: admitted ? 'admitted' : 'refused',
     published: publishes,
     // The rest mirrors `publish`'s own response, deliberately: a curator who
-    // clicks "Put it back" on an arrival gets both the admission verdict and
+    // clicks "Put back" on an arrival gets both the admission verdict and
     // the publish outcome that came with it, in the shape the review page
     // already knows how to say in one sentence. Never a held field — an
     // override does not apply a proposal; that is `/publish`'s question, not

@@ -7,8 +7,9 @@
  *
  * Each reason is a code from the list the act's surface offers
  * (`@tyr/shared/curationLog`), kept in the act's log entry
- * (`db/curationLogWriter.ts`). Optional: an act sent without one is recorded
- * without one.
+ * (`db/curationLogWriter.ts`). Required where every surface of the act asks
+ * it: an arrival turned away and a place put back against its kind's rule.
+ * Optional elsewhere, where an act sent without one is recorded without one.
  */
 
 import { z } from 'zod/v4';
@@ -23,21 +24,67 @@ const REASON_CODE = 'Why the curator acted, kept in the log entry the act writes
 const regionReasonSchema = z.enum(CURATION_REASON_CODES).optional().describe(REASON_CODE);
 /** The reason a refusal gives: an arrival turned away, a place kept out of a kind. */
 export const refusalReasonSchema = z.enum(REFUSAL_REASON_CODES).optional().describe(REASON_CODE);
-/** The reason a put-back, or a place added to a kind by hand, gives. */
+/** The reason a place added to a kind by hand gives. */
 export const additionReasonSchema = z.enum(ADDITION_REASON_CODES).optional().describe(REASON_CODE);
 /** The reason an answer to a source's value gives. */
 export const sourceAnswerReasonSchema = z.enum(SOURCE_ANSWER_REASON_CODES).optional().describe(REASON_CODE);
-/** The reason an answer to a rule's refusal gives: a refusal's on a confirmation, an addition's on a put-back. */
-export const admissionReasonSchema = z.enum([...REFUSAL_REASON_CODES, ...ADDITION_REASON_CODES]).optional()
-  .describe(`${REASON_CODE} A confirmation takes a refusal's reason, a put-back an addition's.`);
 
-/** Whether the reason fits the answer it was sent with: absent, or from that answer's list. */
-export function admissionReasonFits(
-  { decision, reasonCode }: { decision: 'confirm' | 'override'; reasonCode?: string },
-): boolean {
-  const offered: readonly string[] = decision === 'override' ? ADDITION_REASON_CODES : REFUSAL_REASON_CODES;
-  return reasonCode === undefined || offered.includes(reasonCode);
-}
+/**
+ * The membership a curator's answer is about (#1264, ADR-0084): a place in two
+ * kinds can have an arrival in one and a refusal or a held proposal in the
+ * other, and the card the curator answered names which. Optional: absent, the
+ * endpoint answers the membership `membershipToAnswerSql` picks, which is the
+ * place's only one until a merge (#1247). A membership of another place is no
+ * question this place has, and is refused as one already answered.
+ */
+export const answeredMembershipSchema = bodyRowIdSchema.optional();
+const NOTE = z.string().max(1000).optional();
+
+/**
+ * A curator's answer to a kind's rule refusing a place: `confirm` keeps the
+ * refusal, `override` puts the place back.
+ *
+ * Only a put-back must say why, from an addition's reasons: it goes against
+ * the rule, and every surface that offers it asks. A confirmation agrees with
+ * the rule and asks nothing; a reason sent with it is a refusal's.
+ *
+ * No `expected` block, because only one of the two needs a stale-view check.
+ * `confirm` hides, so it collides with the `curated_fields` pin a first
+ * answer left. `override` reveals and is idempotent across curators, so it
+ * stays open on a pinned row: that is the only way back from a refusal, and
+ * a way back an earlier click can close is not one.
+ */
+export const experienceAdmissionBodySchema = z.discriminatedUnion('decision', [
+  z.object({
+    decision: z.literal('confirm'),
+    note: NOTE,
+    membershipId: answeredMembershipSchema,
+    reasonCode: refusalReasonSchema,
+  }),
+  z.object({
+    decision: z.literal('override'),
+    note: NOTE,
+    membershipId: answeredMembershipSchema,
+    /**
+     * Whether later runs keep the row while the rule refuses it for the same
+     * reason (the pin, #1367). Absent, they do; false admits it for now and the
+     * next run applies the rule again (#1368).
+     */
+    remember: z.boolean().optional(),
+    reasonCode: z.enum(ADDITION_REASON_CODES).describe(`${REASON_CODE} A put-back always says why.`),
+  }),
+]);
+
+/**
+ * A curator turning away an arrival (#852, ADR-0053): why, from a refusal's
+ * reasons, which every surface that turns an arrival away asks, and the
+ * curator's words.
+ */
+export const refuseArrivalBodySchema = z.object({
+  note: NOTE,
+  membershipId: answeredMembershipSchema,
+  reasonCode: z.enum(REFUSAL_REASON_CODES).describe(`${REASON_CODE} Turning an arrival away always says why.`),
+});
 
 export const rejectExperienceBodySchema = z.object({
   regionId: bodyRowIdSchema,

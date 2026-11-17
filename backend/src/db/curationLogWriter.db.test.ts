@@ -3,6 +3,7 @@ import { pool } from './index.js';
 import { logCurationActs } from './curationLogWriter.js';
 import { keepOutUnderLock } from '../controllers/experience/keepOutController.js';
 import { publishUnderLock } from '../controllers/experience/publishController.js';
+import { answerAdmissionUnderLock } from '../controllers/experience/lifecycleController.js';
 import { answerRow } from '../controllers/experience/reviewAnswerDispatch.js';
 import {
   assignExperienceToRegion, rejectExperience, removeExperienceFromRegion, unassignExperienceFromRegion, unrejectExperience,
@@ -11,8 +12,9 @@ import {
 /**
  * What the curation log records about an act (#863), against PostgreSQL: the
  * membership and its kind on an act about one, the bulk mark on a publish one
- * click made over many places and on no other, and where a place stood in a
- * region before a curator moved it.
+ * click made over many places and on no other, the reason an act that must
+ * give one gives, and where a place stood in a region before a curator moved
+ * it.
  *
  * The fixture is the Capitoline Museums, shown as an art museum, and an
  * Archaeology arrival at Ostia Antica that a run brought, with a fixture world
@@ -152,10 +154,10 @@ describe('a publish', () => {
 
 describe('a batch answer in the review feed', () => {
   it('turning away a selection of many marks each refusal bulk, with the run that brought it', async () => {
-    const outcome = await answerRow(
-      { experienceId: OSTIA, userId: admin, logRegionId: null, runId, membershipId: arrival, bulk: true },
-      'waiting', 'reject',
-    );
+    const outcome = await answerRow({
+      experienceId: OSTIA, userId: admin, logRegionId: null, runId, membershipId: arrival, bulk: true,
+      reasonCode: 'not-worth-a-visit',
+    }, 'waiting', 'reject');
 
     expect(outcome).not.toHaveProperty('refusal');
     expect((await entry(OSTIA, 'arrival_refused')).details).toMatchObject({
@@ -164,12 +166,53 @@ describe('a batch answer in the review feed', () => {
   });
 
   it("a selection of one is the card's own answer and carries no mark", async () => {
-    await answerRow(
-      { experienceId: OSTIA, userId: admin, logRegionId: null, runId, membershipId: arrival, bulk: false },
-      'waiting', 'reject',
-    );
+    await answerRow({
+      experienceId: OSTIA, userId: admin, logRegionId: null, runId, membershipId: arrival, bulk: false,
+      reasonCode: 'not-worth-a-visit',
+    }, 'waiting', 'reject');
 
     expect((await entry(OSTIA, 'arrival_refused')).details).not.toHaveProperty('bulk');
+  });
+});
+
+describe('the reason an act that must give one gives (#863)', () => {
+  it('a batch that turns arrivals away keeps its one reason and the words in each entry', async () => {
+    const outcome = await answerRow({
+      experienceId: OSTIA, userId: admin, logRegionId: null, runId, membershipId: arrival, bulk: true,
+      reasonCode: 'not-one-place', note: 'a trail network, not one site',
+    }, 'waiting', 'reject');
+
+    expect(outcome).not.toHaveProperty('refusal');
+    expect((await entry(OSTIA, 'arrival_refused')).details).toMatchObject({
+      membershipId: arrival, kindId: archaeologyKind, reasonCode: 'not-one-place', note: 'a trail network, not one site',
+    });
+  });
+
+  it('a batch refuses an arrival rejected without a reason, and writes nothing', async () => {
+    const outcome = await answerRow({
+      experienceId: OSTIA, userId: admin, logRegionId: null, runId, membershipId: arrival, bulk: true,
+    }, 'waiting', 'reject');
+
+    expect(outcome).toMatchObject({ refusal: { status: 400 } });
+    const log = await pool.query('SELECT 1 FROM experience_curation_log WHERE experience_id = $1', [OSTIA]);
+    expect(log.rows).toHaveLength(0);
+    const membership = await pool.query('SELECT admission FROM source_records WHERE id = $1', [arrival]);
+    expect(membership.rows[0].admission).not.toBe('refused');
+  });
+
+  it('a put-back keeps the reason the curator picked', async () => {
+    await pool.query(
+      "UPDATE source_records SET admission = 'refused', admission_reason = 'not a museum class' WHERE id = $1", [artMembership],
+    );
+
+    const { refusal } = await answerAdmissionUnderLock(CAPITOLINE, admin, LAZIO, {
+      decision: 'override', membershipId: artMembership, reasonCode: 'missing-from-rule',
+    });
+
+    expect(refusal).toBeUndefined();
+    expect((await entry(CAPITOLINE, 'admission_overridden')).details).toMatchObject({
+      membershipId: artMembership, kindId: artKind, reasonCode: 'missing-from-rule', reason: 'not a museum class',
+    });
   });
 });
 

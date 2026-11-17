@@ -9,7 +9,7 @@
  * **A refusal is written as a curator's refusal of an arrival is.** The
  * membership takes `admission = 'refused'` with a reason that says a person
  * did it, and the admission pin, so the place leaves the kind at once, every
- * later run honours the answer, and the kept-out list's *Put it back* is the
+ * later run honours the answer, and the kept-out list's *Put back* is the
  * way back. Keeping writes nothing on the membership: the rule still decides
  * the place's admission, and the question, answered, is never raised again.
  * Either answer is recorded on the question, by whom and when, so how often a

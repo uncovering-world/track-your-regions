@@ -121,16 +121,20 @@ export const CURATION_REASON_CODES = [
 /** One reason a curator may give for an act. */
 export type CurationReasonCode = (typeof CURATION_REASON_CODES)[number];
 
-/** Each reason in a curator's words, as a chooser offers it. */
+/**
+ * Each reason in a curator's words, as a line of the chooser offers it
+ * (`ReasonMenu` in the web app): a few words read at a glance, since one click
+ * on the line is the whole act.
+ */
 export const CURATION_REASON_WORDS = {
   'not-this-kind': 'Not this kind of place',
-  'not-worth-a-visit': 'Nothing to go and see',
-  'not-one-place': 'A route, network or type',
-  'wrong-place': 'Wrong point, region or identity',
-  'duplicate': 'Same as another place',
-  'gone': 'Destroyed, closed or never built',
+  'not-worth-a-visit': 'Nothing to see',
+  'not-one-place': 'Not one place',
+  'wrong-place': 'Wrong place',
+  'duplicate': 'Same as another',
+  'gone': 'Gone or not built',
   'source-text': 'Source wording unusable as written',
-  'missing-from-rule': 'The rule should have brought it',
+  'missing-from-rule': 'The rule missed it',
   'other': 'Other',
 } as const satisfies Record<CurationReasonCode, string>;
 

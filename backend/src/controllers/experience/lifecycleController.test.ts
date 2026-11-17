@@ -47,6 +47,9 @@ import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
 const postState = routeAt(experienceCurationRoutes, '/:id/state', 'post');
 const postAdmission = routeAt(experienceCurationRoutes, '/:id/admission', 'post');
 
+/** A put-back as every surface sends it: with the reason the curator picked (#863). */
+const PUT_BACK = { decision: 'override', reasonCode: 'missing-from-rule' } as const;
+
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -498,7 +501,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[1]).toBe('admitted');
@@ -516,7 +519,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postAdmission,
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override', remember: false } } as never,
+      { params: { id: '5' }, user: ADMIN, body: { ...PUT_BACK, remember: false } } as never,
       makeRes() as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
@@ -524,6 +527,34 @@ describe('setExperienceAdmission', () => {
     expect(JSON.parse(String(update.params[3]))).not.toContain('admission');
     const log = queries.find(q => q.sql.includes('INSERT INTO experience_curation_log'))!;
     expect(JSON.parse(String(log.params[4]))).toMatchObject({ pinned: false });
+  });
+
+  it('keeps the reason a put-back gives in its log entry (#863)', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await answerRoute(postAdmission,
+      { params: { id: '5' }, user: ADMIN, body: { ...PUT_BACK, reasonCode: 'other', note: 'a chapel the rule read as a ruin' } } as never,
+      makeRes() as never);
+
+    const log = queries.find(q => q.sql.includes('INSERT INTO experience_curation_log'))!;
+    expect(JSON.parse(String(log.params[4])))
+      .toMatchObject({ reasonCode: 'other', note: 'a chapel the rule read as a ruin' });
+  });
+
+  it('refuses a put-back that gives no reason, or a refusal\'s, before anything is read', () => {
+    // Every surface that puts a place back asks why; a request without one is
+    // not an act the log can be tuned from.
+    expect(() => postAdmission.body!.parse({ decision: 'override' })).toThrow();
+    expect(() => postAdmission.body!.parse({ decision: 'override', reasonCode: 'not-worth-a-visit' })).toThrow();
+    expect(postAdmission.body!.parse(PUT_BACK)).toEqual(PUT_BACK);
+  });
+
+  it('takes a confirmation with no reason, and refuses one with an addition\'s', () => {
+    // "Keep out" agrees with the rule and asks nothing.
+    expect(postAdmission.body!.parse({ decision: 'confirm' })).toEqual({ decision: 'confirm' });
+    expect(() => postAdmission.body!.parse({ decision: 'confirm', reasonCode: 'missing-from-rule' })).toThrow();
   });
 
   it('pins a confirmation whatever the request says about remembering', async () => {
@@ -578,7 +609,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never,
       makeRes() as never);
 
     // An admitted museum without the badge is a legitimate state (ADR-0045
@@ -609,7 +640,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never,
       makeRes() as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
@@ -622,7 +653,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never,
       makeRes() as never);
 
     const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
@@ -636,7 +667,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.sql).toContain(`curation_state = 'verified'`);
@@ -665,7 +696,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       locationsPublished: 2, treasureLinksPublished: 12, treasuresPublished: 12,
@@ -690,7 +721,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ withdrawalsReleased: 1 }));
     const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
@@ -713,7 +744,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, makeRes() as never);
 
     expect(mockedPlace).not.toHaveBeenCalled();
   });
@@ -729,7 +760,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     // The publication itself still landed — a curator whose click did land
     // must not be told it failed because a follow-up step did.
@@ -756,7 +787,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.sql).not.toContain('curation_state');
@@ -825,7 +856,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, makeRes() as never);
 
     const read = queries.find(q => q.sql.includes('m.id AS membership_id'))!;
     for (const column of ['admission', 'admission_reason', 'curated_fields', 'curation_state']) {
@@ -856,7 +887,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[1]).toBe('admitted');
@@ -892,7 +923,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
@@ -928,7 +959,7 @@ describe('setExperienceAdmission', () => {
     const res = makeRes();
 
     await answerRoute(postAdmission, 
-      { params: { id: '5' }, user: CURATOR, body: { decision: 'override' } } as never, res as never);
+      { params: { id: '5' }, user: CURATOR, body: PUT_BACK } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(mockedConnect).not.toHaveBeenCalled();

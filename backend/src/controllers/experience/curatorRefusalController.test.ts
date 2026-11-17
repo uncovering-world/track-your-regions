@@ -99,15 +99,25 @@ beforeEach(() => {
 });
 
 describe('refuseArrival', () => {
+  /** A turn-away as the card sends it: with the reason the curator picked (#863). */
+  const TURNED_AWAY = { reasonCode: 'not-worth-a-visit' } as const;
+
+  it('refuses a turn-away that gives no reason, or an addition\'s, before anything is read', () => {
+    expect(() => postRefuseArrival.body!.parse({})).toThrow();
+    expect(() => postRefuseArrival.body!.parse({ note: 'a road bridge' })).toThrow();
+    expect(() => postRefuseArrival.body!.parse({ reasonCode: 'missing-from-rule' })).toThrow();
+    expect(postRefuseArrival.body!.parse(TURNED_AWAY)).toEqual(TURNED_AWAY);
+  });
+
   it('404s an experience that does not exist and 403s a curator out of scope', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     const missing = makeRes();
-    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, missing as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: TURNED_AWAY } as never, missing as never);
     expect(missing.status).toHaveBeenCalledWith(404);
 
     mockedScope.mockResolvedValueOnce({ permitted: false, logRegionId: null });
     const outOfScope = makeRes();
-    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, outOfScope as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: TURNED_AWAY } as never, outOfScope as never);
     expect(outOfScope.status).toHaveBeenCalledWith(403);
     expect(mockedConnect).not.toHaveBeenCalled();
   });
@@ -117,7 +127,7 @@ describe('refuseArrival', () => {
     const res = makeRes();
 
     await answerRoute(postRefuseArrival, 
-      { params: { id: '5' }, user: CURATOR, body: { note: 'a parish church' } } as never, res as never);
+      { params: { id: '5' }, user: CURATOR, body: { note: 'a parish church', reasonCode: 'not-this-kind' } } as never, res as never);
 
     const membership = client.queries.find(q => q.sql.includes('UPDATE source_records'));
     expect(membership?.sql).toContain("admission = 'refused'");
@@ -134,7 +144,9 @@ describe('refuseArrival', () => {
     expect(log?.params?.[3]).toBe(12);
     // The membership kept out and its kind ride in the details, which the kept-out card reads (#1264, #863).
     expect(JSON.parse(log?.params?.[4] as string))
-      .toEqual({ membershipId: 40, kindId: 4, reason: CURATOR_REFUSAL_REASON, note: 'a parish church' });
+      .toEqual({
+        membershipId: 40, kindId: 4, reasonCode: 'not-this-kind', reason: CURATOR_REFUSAL_REASON, note: 'a parish church',
+      });
 
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'refused', reason: CURATOR_REFUSAL_REASON });
@@ -142,7 +154,7 @@ describe('refuseArrival', () => {
 
   it('keeps an earlier pin beside the admission one', async () => {
     const client = makeClient({ ...ARRIVAL, curated_fields: ['is_iconic'] });
-    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: TURNED_AWAY } as never, makeRes() as never);
     const membership = client.queries.find(q => q.sql.includes('UPDATE source_records'));
     expect(JSON.parse(membership?.params?.[2] as string)).toEqual(['is_iconic', 'admission']);
   });
@@ -156,7 +168,7 @@ describe('refuseArrival', () => {
     const client = makeClient(membership, opts);
     const res = makeRes();
 
-    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, res as never);
+    await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: TURNED_AWAY } as never, res as never);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(client.queries.some(q => q.sql.trimStart().startsWith('UPDATE'))).toBe(false);
