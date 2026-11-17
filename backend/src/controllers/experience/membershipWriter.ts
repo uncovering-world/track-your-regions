@@ -28,6 +28,7 @@
  * verdict is, stays with the handler that decided it.
  */
 
+import { CURATOR_REFUSAL_REASON } from '@tyr/shared/lifecycle';
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import {
@@ -241,13 +242,8 @@ export async function refuseOnMembership(
     `, [membershipId, reason, JSON.stringify(curated), lock.id]);
 }
 
-/**
- * The reason a curator's refusal carries, in the words the kept-out list shows:
- * on an arrival's membership, and on a part's record in its whole, which the
- * schema's derivation of the record's gate writes in the same words
- * (`refresh_part_record_gates()`).
- */
-export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
+/** The reason a curator's refusal carries, declared once for both sides (`@tyr/shared/lifecycle`). */
+export { CURATOR_REFUSAL_REASON };
 
 /** What a curator answers about a serial site's parts nobody has read, or turned down. */
 export type PartRecordAnswer = 'publish' | 'refuse' | 'restore';
