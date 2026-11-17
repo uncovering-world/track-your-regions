@@ -4,7 +4,9 @@
 **Status:** Accepted — decisions 2 and 4 narrowed by
 [ADR-0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md): a refusal
 becomes the withdrawal of one membership in a kind, proposed by the run and confirmed by a
-curator rather than applied by the machine; decisions 1, 3 and 5 stand
+curator rather than applied by the machine; decision 5 narrowed by
+[ADR-0222](0222-a-curator-in-scope-reads-a-refused-place-by-id.md): a curator or admin in scope
+reads a refused place by id, readers still get 404; decisions 1 and 3 stand
 
 ---
 
