@@ -624,8 +624,8 @@ in draft). The world-tier door asks no country question at all. It serves art mu
 world tier: a work below 22 sitelinks whose views reach the median of the world tier's works,
 which this year adds 16 museums, from the Musée Fabre in Montpellier with Cabanel's *The Fallen
 Angel* to the Norman Rockwell Museum with *The Problem We All Live With*
-([ADR-0056](../decisions/0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md),
-in draft). Read in a country's own languages as *local fame* — a work's views over the median
+([ADR-0056](../decisions/0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md)).
+Read in a country's own languages as *local fame* — a work's views over the median
 views, in the same language, of the world tier's works — it is a candidate cut of the surroundings tier
 above for art museums: at 1 or more it finds 171 candidate art museums, 168 of
 them in 47 countries once the reader-country check has run, and Wikivoyage's See listings in
