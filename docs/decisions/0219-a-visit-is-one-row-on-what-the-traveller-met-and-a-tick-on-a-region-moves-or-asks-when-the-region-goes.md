@@ -1,7 +1,7 @@
 # ADR-0219: A visit is one row on what the traveller met, and a tick on a region moves or asks when the region goes
 
 **Date:** 2026-11-16
-**Status:** Accepted
+**Status:** Accepted — decisions 3, 4, 5 and 9 narrowed by [ADR-0224](0224-the-open-rules-of-adr-0217-to-adr-0219-are-the-maintainers-and-a-tick-paints-only-the-ground-the-traveller-was-on.md): a region drawn by hand is placed on the canon regions its outline lies on; no tolerance by area, so a region covers another only where it holds all of it, and the product asks the part; an event counts the region it was held in on the trip's date; a trip's date is held to the place's standing
 **Issue:** [#2579](https://github.com/uncovering-world/track-your-regions/issues/2579),
 [#2580](https://github.com/uncovering-world/track-your-regions/issues/2580), Epic #2115; it
 settles #768
