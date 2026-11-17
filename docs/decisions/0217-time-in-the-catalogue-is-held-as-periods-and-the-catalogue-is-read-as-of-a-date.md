@@ -37,19 +37,39 @@ a gone place stays in the catalogue with its dates (2026-10-25), a new place tha
 ended arrives with an arrival card, an end on a place readers see is asked of a curator, and a
 date filled where the place held none passes the gate (2026-11-15, 2026-11-16).
 
-Four more rulings of the maintainer followed on #2578, and this Draft is amended to them (the last
-note under the Decision says where):
+Four more rulings of the maintainer followed on #2578, and this Draft is amended to them (the
+note under the Decision that names those two dates says where):
 
 - **A museum that closed for good** ends its record's standing. Frick Madison in New York was a
   museum from 2021 to 2024, and its building stands (2026-11-16).
 - **What a visit counts as.** Four dates are told apart and never merged: a place entered a list,
   left a list, was built, was destroyed. A traveller at Machu Picchu in 1980 visited a World
-  Heritage Site, though it was inscribed in 1983 (2026-11-16).
+  Heritage Site, though it was inscribed in 1983 (2026-11-16). Two sentences of that ruling were
+  replaced the next day (below): that a visit made while a place was listed keeps counting after
+  the place leaves the list, and that a tick made today on a place no longer listed asks when.
 - **A temporarily closed place** stays in its list and is no category of its own: the Pergamon
   Museum, "closed until 2027" (2026-11-16).
 - **Nothing is put into the model that a curator would have to enter from nothing.** Every fact a
   curator sets has a source that proposes candidates, which the curator confirms, corrects or
   refuses. Named uses stay in the model, proposed from Wikidata (2026-11-16 and 2026-11-17).
+
+Three rulings of the maintainer of 2026-11-17 followed those (#2578, comments of 10:20Z, 10:24Z
+and 10:30Z), and the Draft is amended to them as well (the last note under the Decision). The
+third completes the first two and is the one their wording is read by:
+
+- **A screen of a past date shows a place that already existed then,** whatever the date its
+  listing began. A traveller marking Peru in 1980 finds Machu Picchu, inscribed in 1983, and
+  ticks it. The one bound is the place's own beginning (10:20Z).
+- **A count follows the list of the date shown, never the date of the visit.** When a visit
+  happened changes no count as long as the place still stands. What changed when Liverpool left
+  the list in 2021 is the list: a traveller reads "10 of 21" where it was "10 of 22". No
+  question "when were you there?" is asked for a place that left a list (10:24Z).
+- **A list read as of a date is the list as it stood on that date, with two sections beside
+  it.** *No longer listed* holds what had left the list by that date (Liverpool, read today),
+  and *not yet listed* holds what existed on that date and entered the list later (Machu Picchu,
+  read as of 1980). A place in either can be ticked from there. The start and the end of a
+  listing are treated alike: neither hides the place from the screen, and both move it out of
+  the counted list into a section that says why (10:30Z).
 
 Measured on the development catalogue and the Wikidata subset on 2026-11-16, read-only. *Offered*
 is a place with an admitted, published record in a kind (4,019 places, 4,017 with an item in the
@@ -227,7 +247,11 @@ dropped (ADR-0216) is *former* by its periods and not by a column written beside
 
 A listing's dates are the list's and never the place's: entering a list is not the beginning of
 the place, and leaving it is not its end (the maintainer, 2026-11-16, #2578; decision 8). Machu
-Picchu stood for five centuries before its listing began in 1983. Both dates have a source that
+Picchu stood for five centuries before its listing began in 1983. For a list kept outside the
+catalogue (World Heritage, the kinds `KINDS_KEPT_AS_FORMER` names) neither date hides the place
+from a screen: each moves it between the list and a section beside it (decisions 6 and 7). A
+membership of a kind the catalogue fills by its own rule has no such section (decision 7).
+Both dates have a source that
 proposes them (decision 13). The start is the list's own: UNESCO's dataset gives the inscription
 date on every offered World Heritage record. The end is asked with the *former* question: when
 the dataset drops a site, its record goes missing, and the card offers the end time of the item's
@@ -249,22 +273,62 @@ kind: it stands and is listed there, on a date, with today as the default
 
 - Today, it is the two derived columns, on rows the read already holds.
 - On a past date, it asks the place's standing periods and the record's listing periods by their
-  outer days. A date that does not settle the question offers the place.
+  outer days. A date that does not settle the question offers the place, and a place with no
+  standing period stood at every date.
 
 For a trip of 2015, Liverpool is a World Heritage Site and the Arch of Reunification in Pyongyang
 stands; for a trip of 1980 the Cathedral of Christ the Saviour is not offered. Admission and
 publication are not dated: the catalogue's own curation is not history.
 
-**7. What is no longer there is a section of each list, not a kind** (the maintainer, 2026-11-16,
-#2578). After a kind's list comes what was offered in it before the date the catalogue is read at
-and is not offered on it: places that no longer stand, and places that left a list kept outside
-the catalogue (World Heritage; the kinds `KINDS_KEPT_AS_FORMER` names).
+**A list read as of a date is the list as it stood on that date** (the maintainer, 2026-11-17,
+#2578, comment of 10:30Z, which completes the rulings of 10:20Z and 10:24Z of that day). The
+start and the end of a listing are read alike. Where the list is kept outside the catalogue,
+neither hides a place from the screen, and both move it out of the list into a section that
+says why (decision 7):
+
+- Machu Picchu, inscribed in 1983, is not in the World Heritage list of 1980. The screen of 1980
+  shows it in the section of what is not yet listed, and it is ticked from there.
+- Liverpool, listed from 2004 until 21 July 2021, is in the list of 2015. Read as of 2023, or
+  today, it is in the section of what is no longer listed; read as of 1990, in the section of
+  what is not yet listed.
+- **The one bound is the place's own beginning:** nothing is shown on a date before it existed.
+
+So the maintainer's sentence of 2026-11-16 (#2578, comment of 13:27Z) that "lists, kinds and
+counts are those of that date" stands for the list and its count, and does not say what the
+screen leaves out.
+
+The session reads two consequences from that ruling, each open to the maintainer's veto:
+
+- **A place built after the date is on no screen of that date, in the list or in a section.**
+  The Sydney Opera House, opened in 1973 and inscribed in 2007, is in the section of what is not
+  yet listed for a trip of 1980, and on no screen of 1960.
+- **Read as of a date before a list began, the list is empty and its places are in the section
+  of what is not yet listed.** The World Heritage List took its first sites in 1978: for a trip
+  of 1950, Machu Picchu is shown there as a future World Heritage Site, and the count over the
+  list has nothing to run over.
+
+**7. What is no longer there is a section of each list, not a kind, and what is not yet listed
+is a second section built the same way** (the maintainer, 2026-11-16, #2578, comment of 13:27Z,
+for the first; 2026-11-17, #2578, comment of 10:30Z, for the second). After a kind's list comes
+what was offered in it before the date the catalogue is read at and is not offered on it: places
+that no longer stand, and places that left a list kept outside the catalogue (World Heritage; the
+kinds `KINDS_KEPT_AS_FORMER` names).
 
 - Each is grouped under the kind it belonged to and marked from the period that ended: "destroyed
   in 1966" (Nelson's Pillar), "delisted in 2021" (Liverpool), "closed in 2024" (Frick Madison).
 - Today's main list never offers such a place.
-- Ticking one opens the past-trip flow, which asks when the traveller was there and tells them
-  that past-travels mode exists (decision 8).
+- A place that left a list is ticked there like any other place, and no question "when were you
+  there?" is asked (the maintainer, 2026-11-17, #2578, comment of 10:24Z; for such a place it
+  replaces the "asks when" of the ruling of 2026-11-16, comment of 13:27Z). Liverpool, ticked in
+  the section, is a visited place. The tick carries the date offer every tick carries
+  (ADR-0202), which may be left unanswered.
+- Ticking a place that no longer stands opens the past-trip flow, which tells the traveller that
+  past-travels mode exists and offers to say when they were there (the maintainer, 2026-11-16,
+  #2578, comment of 13:27Z; the rulings of 2026-11-17 speak of a place that left a list and
+  leave this standing). That the answer is no condition of counting is the session's reading: a
+  tick on Nelson's Pillar can only be a visit before 8 March 1966, so no count waits for the
+  date. It is offered to file the visit under a trip (ADR-0202), and may be left unanswered
+  (decision 8).
 - The same section stands in past-travels mode, relative to its date: for a trip of 2015 it holds
   what was already gone by 2015, so Nelson's Pillar is in it and Liverpool is in the main list.
 - A temporary closure is never a reason to be in it (decision 2), and takes no place out of it.
@@ -273,46 +337,90 @@ the catalogue (World Heritage; the kinds `KINDS_KEPT_AS_FORMER` names).
 - There is no category such as "World Heritage 2004–2021", and #2009's virtual kind with its own
   pin colour is not built.
 
+**The section of what is not yet listed** holds what existed on the date the catalogue is read
+at and entered the list later (the maintainer, 2026-11-17, #2578, comment of 10:30Z): Machu
+Picchu, read as of 1980, "as a future World Heritage Site". A place in it can be ticked from
+there, and the visit counts under the list of the date each screen shows (decision 8). The
+session reads the rest from the ruling's "built the same way", open to the maintainer's veto:
+
+- It is grouped under the kind and marked from the period that begins: "inscribed in 1983".
+- It holds only a place that stood on the date (decision 6), and only in a kind whose list is
+  kept outside the catalogue, the kinds the first section holds a delisted place for. A bridge is
+  a bridge whenever it stood, so no bridge is "not yet listed".
+- No question "when were you there?" is asked on a tick there, as none is in the first section:
+  no count depends on the answer.
+- Today's screens have none: what will enter a list after today is not known.
+- A place in a gap between two listings would be in the section of what is no longer listed,
+  marked from the listing that ended. No World Heritage site has been listed twice, so no real
+  place tests this.
+
 One rule here is the session's and not the maintainer's: a former membership of a kind the
 catalogue fills by its own rule is in no section, since the bridge still stands and only the
 catalogue's rule changed. The maintainer's ruling names "places that left the list" and gives a delisting as
 its example.
 
-**8. A visit counts under a kind when the traveller was there while the place stood and before
-its membership there ended** (the maintainer, 2026-11-16, #2578). This replaces the Draft's first
-text, in which a visit counted only inside a listing period and a visit with no dated trip
-"counts by today's state"; both were the session's.
+**8. A count is read over the list of the date shown, and when a visit happened changes none**
+(the maintainer, 2026-11-17, #2578, comments of 10:24Z and 10:30Z). This replaces the text this
+decision held from the maintainer's ruling of 2026-11-16 (#2578, comment of 21:06Z): that a visit
+made while a place was listed keeps counting under the list after the place leaves it, that only
+a visit after the delisting is "a visit to a former site", and that a traveller who ticks today
+a place no longer listed is asked when they were there. The Draft's first text, in which a visit
+counted only inside a listing period and a visit with no dated trip "counts by today's state",
+was the session's and went on 2026-11-16.
 
 - **Four dates are told apart and never merged:** a place entered a list, left a list, was built,
-  was destroyed. Entering a list is not the beginning of the place.
-- **A visit before the place entered a list counts as a visit to it.** A traveller at Machu Picchu
-  in 1980 visited a World Heritage Site, though it was inscribed in 1983: the place stood, and it
-  is on the list today. Only a visit after the place left the list is a visit to a former site.
-- **A visit made while the place was listed counts, and keeps counting after the place leaves the
-  list.** Liverpool, visited in 2015 or ticked while it was listed, is a World Heritage visit;
-  with a trip of 2023 it is a visit to a former site.
-- **A traveller who ticks today a place that is no longer listed or no longer stands is asked
-  when they were there,** and the answer decides what the visit counts as.
+  was destroyed. Entering a list is not the beginning of the place (the maintainer, 2026-11-16,
+  #2578, comment of 21:06Z; this part of that ruling stands).
+- **When a visit happened changes no count, as long as the place still stands.** A visit before
+  the place entered a list counts, and so does a visit after it left. A traveller at Machu Picchu
+  in 1980 visited a World Heritage Site, though it was inscribed in 1983.
+- **What changes when a place leaves a list is the list.** A count is read over the list as it is
+  on the date shown: today the traveller reads "10 of 21" where it was "10 of 22". Liverpool
+  stays a visited place; today it is not among the World Heritage Sites the count runs over.
+  Read as of 2015, the list holds it and the count includes it.
+- **No question "when were you there?" is asked for a place that left a list.** Nothing depends
+  on the answer.
+- **A place in either section can be ticked from there, and the visit counts on any screen under
+  the list of the date that screen shows.** The count on a screen runs over the list as it stood
+  on that screen's date (decision 6).
 
-The session reads four consequences from that ruling:
+The session reads these consequences from those rulings, each open to the maintainer's veto:
 
-- A visit is placed in time by its trips' dates and, where it has none, by the moment its tick
-  was recorded (`user_visited_experiences.marked_at`), which is the latest day the traveller can
-  have been there. That is what "ticked while it was listed" is read from, and no date is asked
-  of a tick made in time.
-- Standing is read as the listing is: a tick recorded while the place stood keeps counting after
-  it falls. The Arch of Reunification in Pyongyang, ticked in 2023 and taken down in 2024, is a
-  visit to the arch.
-- A standing period keeps both its ends, which a listing does not: a trip of 1980 to the
-  Cathedral of Christ the Saviour was not a visit to the cathedral. The question is asked by the
-  predicate of decision 6, so a place with no standing period stood at every date, and a date
-  that does not settle the question counts.
-- A visit read through another one (a whole through a part, a venue through a work seen in it, an
-  area through a place inside it) is placed in time by the trips of the visits it is read from,
-  beside its own. A tick on the Pier Head with a trip of 2015 makes Liverpool, once it is taken
-  in, a World Heritage visit: the listing read is the whole's membership in the kind, and the
-  part's record in its whole decides only whether the part is counted in "k of N". #2008 builds
-  the read.
+- **"k of N" on any screen is over the list of the date that screen shows.** N is the places
+  offered in the kind on that date (decision 6), and k is those of them the traveller has
+  visited. No count reads a trip's date or the moment a tick was recorded.
+- **Machu Picchu, ticked from the section of what is not yet listed for a trip of 1980,** is in
+  today's count of World Heritage Sites, where the list holds it, and in no count of the screen
+  of 1980, where it does not. That is how "a visit before the place entered a list counts" and
+  "the list as it stood" are read together.
+- **Liverpool counts by the screen and not by the visit.** A traveller who was there in 2023,
+  two years after the delisting, reads Liverpool as visited among the World Heritage Sites of
+  2015, as one who was there in 2015 does; neither reads it in today's count.
+- **A traveller who had ticked the place sees both numbers fall.** The ruling's "10 of 21" where
+  it was "10 of 22" is the count of a traveller who was never in Liverpool. One who was reads
+  "10 of 21" where it was "11 of 22", and finds Liverpool, ticked, in the section of decision 7.
+- **A place that no longer stands** is what the ruling's "as long as the place still stands"
+  leaves unsaid. A tick on Nelson's Pillar in Dublin can only be a visit before its end on
+  8 March 1966, so no date is needed to count it, and none is asked for counting (decision 7).
+  The pillar is in no list of today, so no count of today runs over it: it is a visited place in
+  the section of what is no longer there. Read as of 1960, the list of its kind holds it and the
+  count includes it. The Arch of Reunification in Pyongyang, ticked in 2023 and taken down in
+  2024, reads the same way: counted in the list of 2023, and a visited place in today's section.
+- **A place that stands again counts whatever its trip's date.** The Cathedral of Christ the
+  Saviour is not offered on the screens of 1980 (decision 6), so it is not ticked from the list
+  of 1980 by mistake. A tick on it counts in every list that holds the cathedral, today's among
+  them, and no count leaves it out because a trip under it is dated 1980. This replaces the
+  session's sentence of 2026-11-16 that such a trip "was not a visit to the cathedral": the
+  ruling has no count follow the date of a visit.
+- **A visit read through another one** (a whole through a part, a venue through a work seen in
+  it, an area through a place inside it) is counted the same way, with no date read. A tick on
+  the Pier Head makes Liverpool, once it is taken in, a visited place, counted among the World
+  Heritage Sites wherever the list shown holds Liverpool. The part's record in its whole decides
+  only whether the part is counted in the whole's own "k of N". #2008 builds the read.
+
+The session's consequence of 2026-11-16 that placed a visit with no trip by the moment its tick
+was recorded (`user_visited_experiences.marked_at`) goes with the rule it served: nothing needs
+to know when a visit was in order to count it.
 
 **9. What repeats every year is a season** (`place_seasons`): a window from one month, with a day
 where known, to another, which may wrap over the new year, saying *open* (Sceilg Mhichíl, mid-May
@@ -438,10 +546,6 @@ amendment above.
 
 Not decided by this amendment, and the maintainer's to decide before the ADR is accepted:
 
-- whether past-travels mode for 1980 lists Machu Picchu among the World Heritage Sites.
-  Decision 6 reads the list as it was, by the maintainer's ruling that "lists, kinds and counts are those of
-  that date", and decision 8 counts the visit all the same;
-- what the answer "I do not remember" to "when were you there?" counts as;
 - whether the closing of a museum ends the standing of a record that another kind offers as
   well, as a building;
 - whether the session's reading in decision 13 stands, that a museum's closing is asked under a
@@ -450,6 +554,61 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   open;
 - the time of a work in its museum: *The Concert*, stolen from the Gardner Museum in 1990, which
   #2578 asks to be decided before this ADR is accepted, or in an ADR beside it.
+
+**Amended as a Draft, to the maintainer's three rulings of 2026-11-17 on lists and counts (#2578,
+comments of 10:20Z, 10:24Z and 10:30Z):** the session of queue #2458 asked the maintainer the
+two questions the note above had left open, and the answers change what decisions 6, 7 and 8
+said. The ruling of 10:24Z replaces the maintainer's ruling of 2026-11-16 (#2578, comment of
+21:06Z) in two of its four points, and says so itself. The ruling of 10:30Z completes the other
+two, after the session pointed out that they treated a listing's start and its end differently.
+
+- **Why.** The rule of 2026-11-16 made a count depend on when a visit was. A traveller who
+  cannot say when they were in Liverpool had no answer to give, and two travellers with the
+  same ticks could read different counts over the same list. Now the count follows the list of
+  the date shown, and a place the list does not hold on that date is still on the screen, in a
+  section that says why.
+- Decision 6 keeps its predicate, which reads both ends of a listing, and says what the rulings
+  add: the list of a date is the list as it stood, neither end of a listing hides a place from
+  the screen, and the one bound is the place's own beginning. Machu Picchu is not in the list of
+  1980 and is on its screen. It gains the sentence that a place with no standing period stood at
+  every date, which stood in decision 8. Two consequences are the session's and marked so: a
+  place built after the date (the Sydney Opera House), and a date before the list began.
+- Decision 7 gains the section of what is not yet listed (the ruling of 10:30Z), with the
+  session's reading of "built the same way" marked. Its bullet "ticking one opens the past-trip
+  flow, which asks when" is split. For a place that left a list no "when were you there?" is
+  asked (the ruling of 10:24Z). For a place that no longer stands the flow of the ruling of
+  2026-11-16 (13:27Z) stays, and the session reads its date as an offer that files the visit
+  under a trip and is no condition of counting (Nelson's Pillar).
+- Decision 8 is rewritten to the rulings of 10:24Z and 10:30Z. Gone: that a visit made while a
+  place was listed keeps counting after the delisting, the "visit to a former site", and the
+  "when?" asked on a tick of a place no longer listed. Kept from the ruling of 2026-11-16: the
+  four dates told apart, and that a visit before a listing began counts. The session's
+  consequences are rewritten and marked: "k of N" is over the list of the date a screen shows,
+  Machu Picchu ticked for 1980 counts today and not on the screen of 1980, a place that no
+  longer stands counts in the lists of the dates it stood on, and a visit read through another
+  one reads no date. Two of the session's consequences of 2026-11-16 go: a visit placed in time
+  by when its tick was recorded, and a trip of 1980 that "was not a visit" to the Cathedral of
+  Christ the Saviour.
+- Decision 4 says that neither date of a listing hides a place from a screen, for a list kept
+  outside the catalogue; a kind the catalogue fills by its own rule keeps the session's rule
+  under decision 7.
+- The Context names the three rulings; the alternatives hold the rule of 2026-11-16 and the
+  first wording of the ruling of 10:20Z, each with the reason it was replaced; the consequences
+  no longer say that a visit keeps counting after a delisting or that a tick on Liverpool asks
+  when.
+- The note above listed two questions as not decided: whether past-travels mode for 1980 lists
+  Machu Picchu among the World Heritage Sites, and what "I do not remember" counts as. The first
+  is answered by the ruling of 10:30Z (in the section of what is not yet listed), and the second
+  no longer arises, since the question is not asked. Both are taken off that list.
+
+Not decided by this amendment, and the maintainer's to decide before the ADR is accepted:
+
+- whether a tick on a place that stands again counts when the only trip under it is dated inside
+  the gap: the Cathedral of Christ the Saviour with a trip of 1980. Decision 8 counts it, as the
+  session's reading;
+- whether ticking a place that left a list still tells the traveller that past-travels mode
+  exists, with no question: Liverpool, ticked in today's section. Decision 7 says only that
+  nothing is asked.
 
 ## Alternatives Considered
 
@@ -461,7 +620,10 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 | A composite Postgres type for a date | The driver returns a composite as text, so the generated row types and every response schema would need a parser. Columns under one CHECK function are what the tables already hold. |
 | The stands-today test as a probe of the periods on every read | An index probe on the hot reads for a fact that changes a few times a year. 99.5 % of offered places have one standing period or none (21 of 4,017 have a gap). |
 | Listing dates as columns of the record, or as a World Heritage kind fact | Columns cannot hold a second listing, and a fact of one kind cannot be asked "as of a date" by a reader of every kind. |
-| A visit counts only when its trip's date falls inside a listing period, and a visit with no date counts by today's state (this Draft's first text, the session's) | The maintainer replaced it on 2026-11-16. A traveller at Machu Picchu in 1980 would not have visited a World Heritage Site, and 645 of the 1,272 offered World Heritage records were inscribed in 2000 or later. A traveller who ticked Liverpool in 2019 and gave no date, which is never required, would have seen the visit turn into a visit to a former site in 2021. |
+| A visit counts only when its trip's date falls inside a listing period, and a visit with no date counts by today's state (this Draft's first text, the session's) | The maintainer replaced it on 2026-11-16 (#2578, comment of 21:06Z). A traveller at Machu Picchu in 1980 would not have visited a World Heritage Site, and 645 of the 1,272 offered World Heritage records were inscribed in 2000 or later. |
+| A visit counts by when it happened: one made while the place was listed keeps counting under the list after the place leaves it, and a tick made today on a place no longer listed asks when the traveller was there (this Draft's text of 2026-11-16, from the maintainer's ruling of that day, #2578, comment of 21:06Z) | The maintainer replaced it on 2026-11-17 (#2578, comment of 10:24Z). A traveller who cannot say when they were in Liverpool has no answer to give, and the count would hang on it. Two travellers with the same ticks would read "11 of 21" and "10 of 21" over one list, the eleventh being a site that is not among the 21. |
+| Leave a place off the screen of a date before its listing began (this Draft's reading of "lists, kinds and counts are those of that date") | The maintainer ruled otherwise on 2026-11-17 (#2578, comment of 10:20Z). A traveller marking Peru in 1980 would not find Machu Picchu, though the visit counts as one to a World Heritage Site. |
+| Put a place listed later into the list of the earlier date (the first reading of the ruling of 10:20Z) | The maintainer completed the ruling on 2026-11-17 (#2578, comment of 10:30Z). The start of a listing would be ignored and its end read: the list of 1980 would hold Machu Picchu, and the list of 2023 would not hold Liverpool. A section of what is not yet listed treats the two alike, and the list stays the one of its date. |
 | A museum that closed for good read as the end of a use, or as the end of a membership | As a use, Frick Madison stays in today's list as if it were open. As a membership the catalogue fills by its own rule, it is in no section, and a trip of 2022 cannot find it. |
 | Named uses entered by a curator alone (this Draft's first text, the session's) | A curator would enter Hagia Sophia's four uses from nothing, where its item states three of them with their years. The maintainer's principle of 2026-11-16 and 2026-11-17 refuses it. |
 | Write what a source proposes for a use, a closure or a museum's closing without a curator | Hagia Sophia's item deprecates its church period and dates a museum from 2024 that is its upper gallery; three of six museums' ends are the prison's or the station's; both museums Wikidata calls temporarily closed are open. |
@@ -478,8 +640,12 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
   Nelson's Pillar's end, Liverpool's listing, the Arch of Neutrality's move (when its table is
   built), the Pergamon Museum's closure, and Frick Madison's years as a museum. Holy Week in
   Seville holds its rule in words, and its dates of a year when a source gives them.
-- No visit is lost to a list's dates: a visit made before a place was listed counts, and one made
-  while it was listed keeps counting.
+- No count depends on a date the traveller may not remember: a visit made before a place was
+  listed counts, Liverpool stays a visited place, and "k of N" is read over the list of the date
+  the screen shows.
+- A list of a past date is the list as it stood, and nothing that existed then is missing from
+  its screen: Machu Picchu is ticked for a trip of 1980 from the section of what is not yet
+  listed.
 - Nothing is built that needs a curator to enter a fact from nothing: each fact a curator sets
   has a source that proposes it.
 - One statement says a place is gone and one says a membership is over; each has a derived column
@@ -511,8 +677,15 @@ Not decided by this amendment, and the maintainer's to decide before the ADR is 
 - A closure's end, a season outside English Wikivoyage's pages and OpenStreetMap's month
   closures, and a movable event's dates have no source, so the Pergamon Museum may read "closed" with no "until", and Holy Week in Seville shows
   no dates for next year.
-- A tick with no date is placed by when it was recorded, so a traveller who ticks Liverpool today
-  for a trip of 2015 is asked when, and one who ticked it in 2019 is not.
+- A count falls with no act of the traveller when a place leaves a list: one who had ticked
+  Liverpool read "11 of 22" and reads "10 of 21", and finds the site in the section of what is
+  no longer there.
+- A tick made on a screen may change no count on it: Machu Picchu, ticked for a trip of 1980,
+  is counted today and not among the World Heritage Sites of 1980.
+- Read as of a date before 1978, the World Heritage list is empty, and every site that stood is
+  in the section of what is not yet listed.
+- A tick on the Cathedral of Christ the Saviour counts though its only trip is dated 1980, when
+  a swimming pool was there: no count reads the date of a visit.
 - A gap longer than a century is asked and not filled, so the place holds no standing period of
   that source until a curator answers: its beginning waits with its gap. Bethlehem Chapel in
   Prague, truly gone from 1786 to 1952, is asked as the Odeon is. A trusted source writes such a
