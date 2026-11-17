@@ -7888,8 +7888,20 @@ in square brackets, as Kyaiktiyo Pagoda's Burmese, while "(German: Lötschberg-B
 included (an answer that comes later is still kept, and two cards asking at once share one read),
 answers no sentence older than a day, and leaves out a place Wikipedia did not answer for; the card
 asks again a minute after an empty answer.
-Under the place stands its type ("Type: Bell tower") where its kind files types, and the answers are
-the question's: *Keep*, *Not a tower* (`notOfKind`) and *Another kind…*.
+Under the place, "<Kind> in the catalogue" shows the kind's line from real answers (`KindNeighbours`):
+one place of the same kind and type a curator kept and one a curator turned away, each with its
+thumbnail, its name opening its own card and the answer ("Pagoda of Fogong Temple — kept" under a
+pagoda arriving in Towers). It is read from `GET /api/experiences/review/kind-neighbours/:membershipId`
+(`kindNeighbours.ts`), answered only for a membership whose place the caller may be shown. The kept
+one is a verified, admitted membership of the same kind and type on a place readers are offered, the
+most recently published, since a curator's publish is what verifies a membership; the refused one is
+the most recent `arrival_refused` or `admission_confirmed` the log records for a membership of the
+same kind and type that is still refused, of a place the caller may be shown, labelled by its
+recorded reason in words (`refusalSummary`): "kept out by a curator", or the rule's reason a curator
+upheld, which may be about the place's fame or state rather than its kind, so it is never called
+"not a tower" on a reason it does not give. A kind that files no types matches on the kind alone. Nothing is drawn where neither was answered. Under them stands the
+place's type ("Type: Bell tower") where its kind files types, and the answers are the question's:
+*Keep*, *Not a tower* (`notOfKind`) and *Another kind…*.
 
 **An arrival can be answered with the kind it belongs in** (#2213). Beside *Keep* and *Not a
 tower*, an arrival's card offers *Another kind…* (`ArrivalKindChoice`, whose form is a
