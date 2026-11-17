@@ -1,7 +1,8 @@
 # ADR-0055: Readership is read from Wikimedia's monthly dumps, and a country the data does not show is unobserved, not unread
 
 **Date:** 2026-09-11
-**Status:** Draft
+**Status:** Accepted
+**Built by:** #807, #1433, #1436, #1650, #1702, #2230, #2415, #1574, #1756, #1757, #2033, #2145, #1910, #2179
 
 ---
 
@@ -198,6 +199,11 @@ a candidate. What changed:
 
 The context and the consequences are the record of the 2026-09-11 measurement and are not
 restated.
+
+**Accepted on 2026-11-17** (#2619 line 4.10), after the amendment above. Decisions 1 to 3 are
+built (#1436, #1650, #1702). Decision 4 is built for the work door (#1574), except the museum-wide
+flag. Decision 5 waits for a door that asks where a work is read. Decision 6 is the maintainer's
+of 2026-11-17. Accepted ADR-0056, ADR-0101 decision 6 and ADR-0162 rest on it.
 
 ## Alternatives Considered
 
