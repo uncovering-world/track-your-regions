@@ -1,7 +1,7 @@
 # ADR-0114: Work is held in queues, one issue per goal, with a checkable end and a journal
 
 **Date:** 2026-10-16
-**Status:** Accepted
+**Status:** Accepted — decisions 1, 2, 4 and 5 narrowed by [ADR-0223](0223-a-queue-keeps-two-pull-requests-open-at-most-and-the-dev-stacks-keeper-holds-no-queue.md): a queue keeps at most two pull requests open, and under that cap an open one with green gates lets the next item start; the dev stack's keeper holds no queue; a standing queue waits at its end rather than closing
 
 ---
 

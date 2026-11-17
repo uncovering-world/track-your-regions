@@ -32,7 +32,9 @@ Without a subcommand, run `status`.
   to another queue. When an item is turned away, say where it went.
 - **A detour is an item with an end condition.** It closes when the condition holds.
 - **No new item starts while the current one lacks evidence that it ended.** Evidence is a
-  merged PR, a measurement, a closed issue, or an explicit "deferred because…".
+  merged PR, a measurement, a closed issue, or an explicit "deferred because…". Under the cap of
+  two open pull requests, an item whose pull request is open with its gates green is enough for
+  the next item to start; it is marked done only at its merge (ADR-0223 decision 1).
 - **The maintainer sets the goal and the priorities; the agent decides the slicing.** Ask the
   maintainer before you:
   - set or change a goal or its *Done when*;
@@ -60,10 +62,16 @@ Without a subcommand, run `status`.
   - merges the pull request itself once `/pr-create` § 8 *Done* holds. An item whose issue is
     *Human-led* is the exception: the maintainer leads it and tests it by hand, so its PR is
     merged only after the maintainer says the test passed;
+  - keeps at most two of the queue's pull requests open (ADR-0223 decision 1): while two are
+    open, it builds the next item up to its pull request and opens it once one of the two merges;
   - marks the item done with that merge as its evidence, and starts the next item.
 
   It asks the maintainer only what is the maintainer's: product questions, and the calls the
   rule above reserves.
+- **The dev stack is no queue's claim** (ADR-0223 decision 2). Its keeper is a session that
+  holds no queue: a pull, a migration, a panel run, a build, a restart, the frontend mode, a perf
+  lane, a heavy run and the order of merges between sessions are asked of it ("merge #N?" before
+  a merge, "merged #N, sha" after), and the answer goes into the journal.
 - **A session that stops working a queue releases it.** It sets *Owner* to `released` with
   the time, writes an `owner` entry saying where the work stopped, and moves the queue's board
   Status back (`scripts/board.sh status <n> Backlog`). A queue whose owner
@@ -101,7 +109,6 @@ Out of scope: <what this queue does not do, and where it goes instead>.
 - code: <path or area> (<item>)
 - migration: <number> (<item>)
 - worktree: <path> (<item>)
-- dev stack: keeper — pull, migrate, frontend mode, panel runs and builds
 ```
 
 - **An item is one checkbox line**, in order of work. The first line that is not done and not
@@ -132,8 +139,8 @@ Out of scope: <what this queue does not do, and where it goes instead>.
   or `waiting`. A blocker of an item that has not started is a blocked-by link on its issue
   (`gh issue edit <N> --add-blocked-by <B>`), and the item stays `next` or `deferred`.
 - **A detour line starts with `detour:`.** It names the item it serves and its end condition.
-- **A claim names the item it is for.** It is removed when that item is done. The dev stack is
-  claimed by one queue only: its keeper's.
+- **A claim names the item it is for.** It is removed when that item is done. No queue claims
+  the dev stack (ADR-0223 decision 2).
 
 ## The journal
 
@@ -168,7 +175,7 @@ gh issue comment <n> --body-file <scratch>/journal.md
    is not an item, and an issue blocked by an open issue goes after its blocker.
 3. **Draft the claims** the first items will take: code areas, migration numbers (the next
    free one is one past the highest in `db/migrations/` and in every open queue's claims),
-   worktrees, and the dev stack only if this queue keeps it.
+   and worktrees; never the dev stack, which is its keeper's (ADR-0223 decision 2).
 4. **Show the body to the maintainer, then create the queue:**
 
    ```bash
@@ -231,7 +238,8 @@ gh api --paginate "repos/uncovering-world/track-your-regions/issues/<n>/comments
 
    An item whose PR has merged or whose issue is closed is done: mark it with its evidence. An
    item whose PR waits on review or CI stays `in progress`, and its PR is babysat (`/pr-create`
-   § Babysit the PR until it is mergeable) before a new item starts. Refresh the claims so they
+   § Babysit the PR until it is mergeable); a new item starts only as the cap allows (ADR-0223
+   decision 1). Refresh the claims so they
    name what the in-flight items hold. Write the `done` and `claim` entries these edits call
    for.
 
@@ -245,7 +253,10 @@ gh api --paginate "repos/uncovering-world/track-your-regions/issues/<n>/comments
    - what ends it;
    - the next item after it.
 
-   Then start the current item: `/feature` or `/fix` on its issue, or the named step.
+   Then start the current item: `/feature` or `/fix` on its issue, or the named step. When the
+   current item's pull request is open with green gates, babysit it and start the first item that
+   has no pull request open; while two are open, build it up to its pull request (ADR-0223
+   decision 1).
 
 ### `check`
 
@@ -269,7 +280,8 @@ hides the merges before it.
 - **Leftovers of finished items:** an item marked done whose PR is still open, whose branch or
   worktree is still there, or whose claims are still listed.
 - **A current item with no evidence of its end** while a later item is in progress. That
-  breaks the third rule; name both items.
+  breaks the third rule, unless the current item's pull request is open with green gates under
+  the cap (ADR-0223 decision 1); name both items.
 - **A detour whose end condition holds** but which is still open.
 - **An owner that has not touched the queue in seven days.**
 - **An item and an ADR where only one names the other.** Run the check over the queue's open
@@ -307,8 +319,12 @@ hides the merges before it.
 
 ### `close`
 
-1. **Check *Done when* against the facts.** Run the measure and read its result, or confirm
-   each issue it lists is closed. If it does not hold, say what is missing and stop.
+1. **Read the journal for a standing designation first:** an entry in which the maintainer
+   keeps the queue open as a standing role (#1595's of 2026-11-01). Such a queue is not closed.
+   Then **check *Done when* against the facts.** Run the measure and read its result, or confirm
+   each issue it lists is closed. If it does not hold, say what is missing and stop. A standing
+   queue (#1595, ADR-0223 decision 3) is not closed when it holds: it waits (⏳ Waiting) for its
+   next item, and closing it is the maintainer's call.
 2. **Move the leftovers explicitly.** Every item not done gets a line in the closing entry. The
    line says where it went: to the backlog (`scripts/board.sh status <N> Backlog`), to another
    queue (a `change` there), or dropped. A drop is asked of the maintainer first, as in
@@ -340,7 +356,8 @@ hides the merges before it.
    - one migration number claimed twice, or claimed while a file with that number already
      exists in `db/migrations/` on `origin/main`;
    - a dev-stack action (a pull, a migration, a frontend mode switch, a panel run or build)
-     claimed by a queue that is not the dev stack's keeper.
+     claimed by any queue: the dev stack is its keeper's, a session that holds no queue
+     (ADR-0223 decision 2).
 5. **Say how each conflict is settled:** the session that would touch another queue's claim
    asks that queue's owner through `SendMessage` (another agent asks the maintainer), and both
    queues record the outcome as an `ask` entry.
