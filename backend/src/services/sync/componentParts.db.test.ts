@@ -19,6 +19,8 @@ import { partsBehind } from './componentListings.js';
 
 const THEBES = 9950;
 const GIZA = 9951;
+/** Where the lower-id case numbers its parts from: under Ancient Thebes and the E2E fixture's 9001–9005, where no spec pins an id. */
+const LOWER_PARTS_FROM = 8900;
 const KARNAK = { name: 'Temple of Karnak', externalRef: '87-001', lon: 32.6573, lat: 25.7188 };
 const LUXOR = { name: 'Luxor Temple', externalRef: '87-002', lon: 32.6390, lat: 25.6995 };
 const NECROPOLIS = { name: 'Theban Necropolis', externalRef: '87-003', lon: 32.6060, lat: 25.7330 };
@@ -572,10 +574,20 @@ describe("the site's run locks its parts before its points take the region keys 
   });
 
   it("locks a site before its part of a lower id, as a curator's word on the pair does", async () => {
-    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    // Karnak is made a place after Ancient Thebes and still holds a lower id, as a
+    // place adopted as a component or nested by a curator does. The lane's sequences
+    // start above every pinned id (#2602), so the parts are numbered from a range
+    // below the site on purpose, and the sequence goes back to where it stood.
+    const { rows: [{ stood }] } = await pool.query<{ stood: string }>(
+      `SELECT last_value AS stood FROM pg_sequences WHERE sequencename = 'experiences_id_seq'`,
+    );
+    await pool.query(`SELECT setval('experiences_id_seq', $1)`, [LOWER_PARTS_FROM]);
+    try {
+      await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    } finally {
+      await pool.query(`SELECT setval('experiences_id_seq', $1)`, [stood]);
+    }
     const [karnak] = await parts(THEBES);
-    // Karnak was made a place after Ancient Thebes and still holds a lower id,
-    // as a place adopted as a component or nested by a curator does.
     expect(karnak.part_id).toBeLessThan(THEBES);
 
     // Someone holds Karnak; a curator's word on the pair queues behind them,
