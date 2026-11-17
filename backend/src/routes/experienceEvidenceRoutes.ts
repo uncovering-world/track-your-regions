@@ -11,8 +11,10 @@ import { defineRoute } from '../api/route.js';
 import { ReviewArticleLeads } from '../api/responses/articleLeads.js';
 import { GuideArticles } from '../api/responses/guideArticles.js';
 import { KindNeighbours } from '../api/responses/kindNeighbours.js';
-import { getGuideArticles, getKindNeighbours, getReviewArticleLeads } from '../controllers/experience/index.js';
+import { KindRule } from '../api/responses/kindRule.js';
+import { getGuideArticles, getKindNeighbours, getKindRule, getReviewArticleLeads } from '../controllers/experience/index.js';
 import { guideArticlesParamSchema } from '../types/guideArticlesSchema.js';
+import { kindRuleParamSchema } from '../types/kindRuleSchema.js';
 import { reviewQueueMapNamesQuerySchema } from '../types/index.js';
 
 export const experienceEvidenceRoutes = [
@@ -40,5 +42,12 @@ export const experienceEvidenceRoutes = [
     params: guideArticlesParamSchema,
     response: KindNeighbours,
     handler: getKindNeighbours,
+  }),
+  defineRoute({
+    method: 'get', path: '/review/kind-rule/:kindId', access: 'curator', cache: 'no-store',
+    summary: "A kind's rule as its code and its last run state it: what it keeps out and the fame lines it admits by",
+    params: kindRuleParamSchema,
+    response: KindRule,
+    handler: getKindRule,
   }),
 ];
