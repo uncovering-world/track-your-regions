@@ -44,3 +44,4 @@ export { getPlaceIdentifiers, settlePlaceIdentifier } from './placeIdentifierCon
 export { getGuideArticles } from './guideArticlesController.js';
 export { getReviewArticleLeads } from './reviewArticleLeads.js';
 export { getKindNeighbours } from './kindNeighbours.js';
+export { getKindRule } from './kindRule.js';

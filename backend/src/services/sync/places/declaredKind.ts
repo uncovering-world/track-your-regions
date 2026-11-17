@@ -135,6 +135,54 @@ const carries = (classes: readonly string[], set: ReadonlySet<string> | undefine
 /** Every refusal before the kind's classes are read: the gone, then the kind's own kills. */
 const killsOf = <Type extends string>(decl: PlaceKindDeclaration<Type>) => ({ ...GONE, ...decl.kills });
 
+/**
+ * When a refusal of the declaration does not hold: `types` where a type of
+ * `types` names the place (a skyscraper is a tower when an observation-tower
+ * class names it), `anyType` where any type of the kind does, `ownClass` where
+ * a class of the kind's own names it too, `anotherClass` where a class of the
+ * kind's own other than the one the refusal reads names it (Cœur Défense is a
+ * building complex only the plain `tower` names); null where it always holds.
+ */
+export type KeptOutUnless = 'types' | 'anyType' | 'ownClass' | 'anotherClass';
+
+/** One refusal of a declaration, in its own words, with when it does not hold. */
+export interface KeptOut {
+  reason: string;
+  unless: KeptOutUnless | null;
+  /** The types that lift it, where `unless` is `types`. */
+  unlessTypes: readonly string[];
+}
+
+const always = (reason: string): KeptOut => ({ reason, unless: null, unlessTypes: [] });
+const unlessTyped = (reason: string, types: readonly string[] | undefined): KeptOut =>
+  (types ? { reason, unless: 'types', unlessTypes: types } : { reason, unless: 'anyType', unlessTypes: [] });
+
+/**
+ * Everything the declaration keeps out, in its own words, each with the
+ * condition the verdict reads it under (`refusedByItsClasses`,
+ * `refusedByTheKind`), in the order the verdict tries them: the gone and the
+ * kind's kills, the other kinds' classes, the classes it shares with another
+ * kind, its exceptions, and what it tells apart from having no class of its
+ * own. A curator reads it behind ⓘ on an arrival's card (#2185), so a refusal
+ * an exception lifts is never shown as one that always holds; the bare "no
+ * tower class" is the question itself, so it is not repeated.
+ */
+export function keptOutOf<Type extends string>(decl: PlaceKindDeclaration<Type>): KeptOut[] {
+  const refusals: KeptOut[] = [
+    ...Object.values(killsOf(decl)).map(({ reason }) => always(reason)),
+    ...Object.values(decl.others).map(({ reason, unlessTyped: types }) => (types ? unlessTyped(reason, types) : always(reason))),
+    ...Object.values(decl.shared ?? {}).map(({ reason }): KeptOut => ({ reason, unless: 'ownClass', unlessTypes: [] })),
+    ...(decl.exceptions ?? []).map((exception): KeptOut => (exception.refuse === 'untyped'
+      ? unlessTyped(exception.reason, exception.unlessTyped)
+      : { reason: exception.reason, unless: 'anotherClass', unlessTypes: [] })),
+    // Read only of a candidate no class of the kind names (`refusedByItsClasses`): a flight of
+    // locks Wikidata files under canal is a flight.
+    ...(decl.noClass.unless ?? []).map(({ reason }): KeptOut => ({ reason, unless: 'ownClass', unlessTypes: [] })),
+  ];
+  const seen = new Set<string>();
+  return refusals.filter(({ reason }) => !seen.has(reason) && seen.add(reason));
+}
+
 /** Walk every tree the declaration names, each root asked once, each its own step. */
 export async function fetchDeclaredTrees<Type extends string>(decl: PlaceKindDeclaration<Type>, run: QueryRunner): Promise<DeclaredTrees<Type>> {
   const asked = new Map<string, Set<string>>();
