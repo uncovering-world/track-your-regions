@@ -1,7 +1,7 @@
 # ADR-0087: Jev suggests an answer on a curator's card, and a curator decides
 
 **Date:** 2026-10-08
-**Status:** Accepted
+**Status:** Accepted — decision 1's last sentence ("every answer to the queue is still a person's") narrowed by [ADR-0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) and [ADR-0150](0150-wikidatas-part-of-answers-a-near-pair.md): the catalogue answers an exact component candidate, and a near pair Wikidata's part-of settles, by a rule and with no model, while Jev's suggestion is still never applied; the dedication [ADR-0201](0201-a-dedication-two-language-models-read-alike-from-a-places-lead-is-written-without-a-curators-yes.md) writes is a run's value, not an answer to the queue, and leaves decision 1 standing
 
 ---
 
