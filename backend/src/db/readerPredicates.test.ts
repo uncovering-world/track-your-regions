@@ -148,9 +148,11 @@ describe('experienceOfferedToReaderSql', () => {
 });
 
 describe('readableByIdSql', () => {
-  it('serves a curator an admitted place unread or not, and a reader only an offered one (#1275)', () => {
+  it('serves a curator in scope a place refused or unread (ADR-0222), and a reader only an offered one (#1275)', () => {
     const sql = readableByIdSql('$2::boolean', 'x');
-    expect(sql).toContain(`(($2::boolean AND (${placeAdmittedSql('x')} OR `);
+    // A membership of any admission, or a whole that holds one, so the card has a kind to name.
+    expect(sql).toMatch(/^\(\(\$2::boolean AND \(EXISTS \(SELECT 1 FROM source_records hm WHERE hm.experience_id = x.id AND hm.kind_id IS NOT NULL\)/);
+    expect(sql).not.toContain(placeAdmittedSql('x'));
     // The reader's arm is the lists' rule, one membership both admitted and
     // passed, never the two one-sided fragments side by side, or a part
     // offered where its whole is (ADR-0100).

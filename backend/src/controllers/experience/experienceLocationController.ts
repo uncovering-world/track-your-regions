@@ -300,7 +300,8 @@ export async function getExperienceLocations(
   // its (also pending) locations. See `maySeeUnreadExperience` (ADR-0025).
   const maySeeUnread = await maySeeUnreadExperience(caller?.id, caller?.role, experienceId);
 
-  // Verify the experience exists *and* is one this catalogue still offers.
+  // Verify the experience exists *and* is one this catalogue still offers to a
+  // reader, or one a curator in scope may open whatever its kind said (ADR-0222).
   //
   // Without the second half this read answered 200 with a refused museum's name
   // and coordinates while `GET /:id` answered 404 for the same row — measured

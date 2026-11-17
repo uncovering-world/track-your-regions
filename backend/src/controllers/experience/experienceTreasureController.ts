@@ -126,8 +126,9 @@ export async function getExperienceTreasures(
     JOIN experiences e ON e.id = et.experience_id
     WHERE et.experience_id = $1
       -- The contents follow the container: a refused museum's works are not on
-      -- offer either, and answering with them would put back on screen exactly
-      -- what hiding the museum took off it (ADR-0024).
+      -- offer to a reader either, and answering with them would put back on
+      -- screen exactly what hiding the museum took off it (ADR-0024). A curator
+      -- whose scope reaches the museum reads them with it (ADR-0222).
       -- Three predicates, not one: ADR-0025 gates the experience, the link and
       -- the treasure separately, because a published museum can hold newly
       -- written, unread paintings the container gate never reaches. All three

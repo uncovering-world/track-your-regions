@@ -48,9 +48,9 @@ import { leafCountSql, showsOwnPointSql } from '../../db/visits.js';
  * Get single experience by ID
  * GET /api/experiences/:id
  *
- * optionalAuth: two different things can 404 the row itself now — a refused
- * admission (ADR-0024) and an unread `pending` row a caller's scope does not
- * reach (ADR-0025, relaxed by `maySeeUnreadExperience` below) — before this
+ * optionalAuth: a place no membership offers answers 404 — refused (ADR-0024)
+ * or unread (ADR-0025) — unless the caller's scope reaches it
+ * (`maySeeUnreadExperience` below), which serves a curator either (ADR-0222). Before this
  * row/no-row question is even reached, its region/world-view assignments are
  * filtered by visibility separately — admins see every assignment, everyone
  * else only assignments whose world view is both active and public. The
@@ -189,15 +189,15 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
     WHERE e.id = $1
       -- A by-id read does not offer a *set* to go through, which is what the
       -- lost predicate protects, but it does still offer somewhere to go
-      -- (ADR-0024) — so a refused row answers 404 rather than handing back a card
+      -- (ADR-0024) -- so a refused row answers a reader 404 rather than a card
       -- for something its kind has turned down. An object judged lost is
       -- deliberately not filtered here and never was: that gap predates this
       -- axis, and closing it would be a separate decision about a different
       -- question.
-      -- Unread stays hidden for everyone except a curator or admin whose scope
-      -- reaches this experience (ADR-0025) -- the one relaxation this predicate
-      -- gets; a reader is served the place only where a membership offers it,
-      -- as the lists serve it (#1275). $2 is read twice: here, and by the
+      -- A curator or admin whose scope reaches this experience is served it
+      -- unread (ADR-0025) or refused (ADR-0222), to open its Curate dialog; a
+      -- reader is served the place only where a membership offers it, as the
+      -- lists serve it (#1275). $2 is read twice: here, and by the
       -- position rule in the select list, so the places a curator is
       -- positioned by are the same rows this gate let them have.
       AND ${readableByIdSql('$2::boolean')}
