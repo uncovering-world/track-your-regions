@@ -1,7 +1,7 @@
 # ADR-0199: A visit is one row on the place ticked, and a whole is read through its parts
 
 **Date:** 2026-11-12
-**Status:** Accepted — decisions 2, 3, 5 and 6 narrowed by [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md): partly visited is retired, and with it `partialIds`; a whole is visited once any place below it is, the belfries through a work seen in Antwerp Cathedral among them, with a count of its offered leaves beside it
+**Status:** Accepted — decisions 2, 3, 5 and 6 narrowed by [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md): partly visited is retired, and with it `partialIds`; a whole is visited once any place below it is, the belfries through a work seen in Antwerp Cathedral among them, with a count of its offered leaves beside it; decision 1 narrowed by [ADR-0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md): the one visit table also holds a work seen, a tick on a region and the traveller's own point
 
 ---
 

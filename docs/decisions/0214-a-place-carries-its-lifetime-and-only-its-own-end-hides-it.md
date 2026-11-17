@@ -1,9 +1,9 @@
 # ADR-0214: A place carries its lifetime, and only the place's own end hides it
 
 **Date:** 2026-11-15
-**Status:** Draft — decisions 1 and 3 are replaced by [ADR-0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md) (Draft) once it is accepted; decision 4 is narrowed by ADR-0217 decision 3 once it is accepted, for the end of a place no reader sees yet, which is written with its arrival; decisions 2 (but for its sentence on which date may hold no year), 4 otherwise and 5 stand
+**Status:** Accepted — decisions 1 and 3 replaced by [ADR-0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md), and decision 4 narrowed by ADR-0217 decision 3, for the end of a place no reader sees yet, which is written with its arrival; decisions 2 (but for its sentence on which date may hold no year), 4 otherwise and 5 stand
 **Issue:** [#1719](https://github.com/uncovering-world/track-your-regions/issues/1719), Epic #2115
-**Narrows (once accepted):** [ADR-0020](0020-experience-lifecycle-and-run-changeset.md) decision 2
+**Narrows:** [ADR-0020](0020-experience-lifecycle-and-run-changeset.md) decision 2
 (the `existence` axis), [ADR-0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) decision 1
 (for `metadata.year` alone)
 

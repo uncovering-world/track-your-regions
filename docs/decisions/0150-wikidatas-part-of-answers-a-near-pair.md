@@ -1,7 +1,7 @@
 # ADR-0150: Wikidata's part-of answers a near pair
 
 **Date:** 2026-10-25
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): a statement answers a near pair without a curator only toward a record that already has parts
 **Issue:** [#1991](https://github.com/uncovering-world/track-your-regions/issues/1991)
 
 ---

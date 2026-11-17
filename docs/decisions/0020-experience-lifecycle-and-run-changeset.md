@@ -1,7 +1,7 @@
 # ADR-0020: Record a changeset per sync run, and split an experience's lifecycle into two axes
 
 **Date:** 2026-08-02
-**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0021](0021-source-may-restore-membership.md), decision 1 also narrowed by [ADR-0026](0026-a-run-records-what-a-container-holds.md), decision 2 also narrowed by [ADR-0024](0024-a-category-may-refuse-what-the-source-still-lists.md), decision 3 narrowed by [ADR-0022](0022-locations-are-marked-not-deleted.md)
+**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0021](0021-source-may-restore-membership.md), decision 1 also narrowed by [ADR-0026](0026-a-run-records-what-a-container-holds.md), decision 2 also narrowed by [ADR-0024](0024-a-category-may-refuse-what-the-source-still-lists.md), decision 3 narrowed by [ADR-0022](0022-locations-are-marked-not-deleted.md); decision 2 also narrowed by [ADR-0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md) and [ADR-0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md): the `existence` axis goes, and a place is gone when it has standing periods and none is open
 
 ---
 

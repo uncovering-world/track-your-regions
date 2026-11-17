@@ -1,7 +1,7 @@
 # ADR-0202: A visit holds its trips, each with an approximate date
 
 **Date:** 2026-11-13
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md): a trip hangs under a visit to a place, a work, a region or the traveller's own point
 
 ---
 

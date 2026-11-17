@@ -1,10 +1,10 @@
 # ADR-0217: Time in the catalogue is held as periods, and the catalogue is read as of a date
 
 **Date:** 2026-11-16
-**Status:** Draft
+**Status:** Accepted
 **Issue:** [#2578](https://github.com/uncovering-world/track-your-regions/issues/2578), Epic #2115
 **Built by:** #2578, #1719, #2128, #2008, #2009, #2584, #1676, #2622
-**Narrows (once accepted):** [ADR-0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md)
+**Narrows:** [ADR-0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md)
 decisions 1 and 3, and the slot sentence of decision 2;
 [ADR-0020](0020-experience-lifecycle-and-run-changeset.md) decision 2 (the `existence` axis);
 [ADR-0021](0021-source-may-restore-membership.md) and
@@ -769,6 +769,12 @@ Not decided by this amendment, and the session's to settle before the slices tha
 the signal that tells a place under construction open to visitors from a building site, and the
 count of places it touches (decision 2); the curator's controls that end or pause one membership,
 designed with the curator's section of the card (decision 2).
+
+**Accepted on 2026-11-17** (#2619 line 4.9), after the maintainer's rulings of 2026-11-16 and
+2026-11-17 recorded on #2578, #2577 and #2579 and in #2619. No decision changes with the
+acceptance. What is still to design is the session's and is named in the note above: the signal
+that tells a place under construction open to visitors from a building site, and the curator's
+controls that end or pause one membership (decision 2).
 
 ## Alternatives Considered
 

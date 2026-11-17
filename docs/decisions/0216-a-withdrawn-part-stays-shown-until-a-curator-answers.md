@@ -1,7 +1,7 @@
 # ADR-0216: A withdrawn part stays shown until a curator answers
 
 **Date:** 2026-11-16
-**Status:** Accepted
+**Status:** Accepted — decisions 2 and 3 narrowed by [ADR-0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md): a trigger derives the record's `source_membership` from its listing periods
 **Issue:** [#2123](https://github.com/uncovering-world/track-your-regions/issues/2123), Epic #2115
 **Narrows:** [ADR-0213](0213-a-parts-gate-is-its-record-in-its-whole.md) decision 1
 

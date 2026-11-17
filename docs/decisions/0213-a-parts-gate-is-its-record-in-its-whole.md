@@ -1,7 +1,7 @@
 # ADR-0213: A part's gate is its record in its whole, by the rules of its whole's source
 
 **Date:** 2026-11-15
-**Status:** Accepted — decision 1 narrowed by [ADR-0216](0216-a-withdrawn-part-stays-shown-until-a-curator-answers.md): a withdrawn part stays shown until a curator answers
+**Status:** Accepted — decision 1 narrowed by [ADR-0216](0216-a-withdrawn-part-stays-shown-until-a-curator-answers.md): a withdrawn part stays shown until a curator answers; decisions 1 and 3 narrowed by [ADR-0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md): a part's `existence` goes, and the *former* and *lost* its site's card asks are written as periods
 **Issue:** [#2123](https://github.com/uncovering-world/track-your-regions/issues/2123), Epic #2115
 
 ---

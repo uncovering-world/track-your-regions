@@ -1,13 +1,13 @@
 # ADR-0219: A visit is one row on what the traveller met, and a tick on a region moves or asks when the region goes
 
 **Date:** 2026-11-16
-**Status:** Draft
+**Status:** Accepted
 **Issue:** [#2579](https://github.com/uncovering-world/track-your-regions/issues/2579),
 [#2580](https://github.com/uncovering-world/track-your-regions/issues/2580), Epic #2115; it
 settles #768
 **Built by:** #2579, #2580, #768, #2008, #1948, #1676, #616, #584, #2015, #1173, #2594, #587,
 #1169, #1170, #1171, #2135
-**Narrows (once accepted):**
+**Narrows:**
 [ADR-0199](0199-a-visit-is-one-row-on-the-place-ticked-and-a-whole-is-read-through-its-parts.md)
 decision 1 (the one visit table also holds a work seen, a tick on a region and the traveller's
 own point);
@@ -659,6 +659,11 @@ line in #2619.
 - **Decision 7 (line 3.2).** A region a source names is that source's view, the session's rule,
   as ADR-0218 decision 10 has it.
 - **The table of what this leaves (lines 3.5 and 6.20)** names #770 beside #587.
+
+**Accepted on 2026-11-17** (#2619 line 4.9), after the maintainer's rulings of 2026-11-16 and
+2026-11-17 recorded on #2578, #2577 and #2579 and in #2619. No decision changes with the
+acceptance. What is still to design is the session's and is listed in decision 6, under "Still
+to design".
 
 ## Alternatives Considered
 
