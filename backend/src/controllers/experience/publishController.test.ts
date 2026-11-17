@@ -130,8 +130,8 @@ describe('publishing an arrival', () => {
     // is read by a person reconstructing a decision months later and a key
     // silently absent reads as "nothing was skipped".
     const log = only(queries, 'INSERT INTO experience_curation_log');
-    expect(log.sql).toContain(`'published'`);
-    expect(JSON.parse(String(log.params[3]))).toEqual({
+    expect(log.params[2]).toBe('published');
+    expect(JSON.parse(String(log.params[4]))).toEqual({
       scope: 'object',
       fields: [],
       claimedFieldsSkipped: [],
@@ -187,7 +187,7 @@ describe('publishing an arrival', () => {
 
     await publish({ expectedSyncLogId: 53 }, client);
 
-    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[3])))
+    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[4])))
       .toMatchObject({ fields: ['subtitle'], claimedFieldsSkipped: ['name'], fromSyncLogId: 53 });
   });
 

@@ -16625,6 +16625,26 @@
               "maximum": 2147483647
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "reasonCode",
+            "schema": {
+              "description": "Why the curator acted, kept in the log entry the act writes.",
+              "type": "string",
+              "enum": [
+                "not-this-kind",
+                "not-worth-a-visit",
+                "not-one-place",
+                "wrong-place",
+                "duplicate",
+                "gone",
+                "source-text",
+                "missing-from-rule",
+                "other"
+              ]
+            },
+            "description": "Why the curator acted, kept in the log entry the act writes."
           }
         ],
         "responses": {
@@ -16685,6 +16705,26 @@
               "maximum": 2147483647
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "reasonCode",
+            "schema": {
+              "description": "Why the curator acted, kept in the log entry the act writes.",
+              "type": "string",
+              "enum": [
+                "not-this-kind",
+                "not-worth-a-visit",
+                "not-one-place",
+                "wrong-place",
+                "duplicate",
+                "gone",
+                "source-text",
+                "missing-from-rule",
+                "other"
+              ]
+            },
+            "description": "Why the curator acted, kept in the log entry the act writes."
           }
         ],
         "responses": {
@@ -18507,6 +18547,14 @@
           "note": {
             "type": "string",
             "maxLength": 1000
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "missing-from-rule",
+              "other"
+            ]
           }
         },
         "required": [
@@ -19486,6 +19534,14 @@
             "type": "string",
             "maxLength": 1000
           },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "missing-from-rule",
+              "other"
+            ]
+          },
           "membershipId": {
             "type": "integer",
             "exclusiveMinimum": 0,
@@ -19584,6 +19640,21 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "wrong-place",
+              "duplicate",
+              "gone",
+              "source-text",
+              "missing-from-rule",
+              "other"
+            ]
           }
         },
         "required": [
@@ -22648,6 +22719,14 @@
           },
           "wikipediaUrl": {
             "type": "string"
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "missing-from-rule",
+              "other"
+            ]
           }
         },
         "required": [
@@ -24830,6 +24909,15 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "source-text",
+              "wrong-place",
+              "other"
+            ]
           }
         },
         "required": [
@@ -26765,6 +26853,20 @@
           },
           "remember": {
             "type": "boolean"
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes. A confirmation takes a refusal's reason, a put-back an addition's.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "gone",
+              "duplicate",
+              "wrong-place",
+              "other",
+              "missing-from-rule"
+            ]
           }
         },
         "required": [
@@ -30622,6 +30724,19 @@
           "note": {
             "type": "string",
             "maxLength": 1000
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "gone",
+              "duplicate",
+              "wrong-place",
+              "other"
+            ]
           }
         },
         "required": [
@@ -36702,6 +36817,19 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "gone",
+              "duplicate",
+              "wrong-place",
+              "other"
+            ]
           }
         }
       },
@@ -38367,6 +38495,21 @@
           "reason": {
             "type": "string",
             "maxLength": 1000
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "wrong-place",
+              "duplicate",
+              "gone",
+              "source-text",
+              "missing-from-rule",
+              "other"
+            ]
           }
         },
         "required": [
@@ -43232,6 +43375,21 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes.",
+            "type": "string",
+            "enum": [
+              "not-this-kind",
+              "not-worth-a-visit",
+              "not-one-place",
+              "wrong-place",
+              "duplicate",
+              "gone",
+              "source-text",
+              "missing-from-rule",
+              "other"
+            ]
           }
         },
         "required": [

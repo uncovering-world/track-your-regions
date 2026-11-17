@@ -19,6 +19,7 @@
 
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS, keptAsFormerSql } from '../../db/membership.js';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 import { refuseOnMembership, setMembershipListingVerdict } from './membershipWriter.js';
@@ -84,7 +85,7 @@ export async function answerKindListingUnderLock(
       });
     }
     const read = await client.query(
-      `SELECT m.source_membership, m.missing_since, m.curated_fields, ${keptAsFormerSql('m')} AS kept
+      `SELECT m.kind_id, m.source_membership, m.missing_since, m.curated_fields, ${keptAsFormerSql('m')} AS kept
          FROM ${MEMBERSHIPS} m WHERE m.id = $1 AND m.experience_id = $2`,
       [membershipId, experienceId],
     );
@@ -117,11 +118,11 @@ export async function answerKindListingUnderLock(
       const curated = [...new Set([...((before.curated_fields as string[]) ?? []), 'admission'])];
       await refuseOnMembership(client, locked.lock, membershipId, NO_LONGER_LISTED_REASON, curated);
     }
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [experienceId, userId, membership === 'former' ? 'marked_former' : 'missing_dismissed', logRegionId,
-      JSON.stringify({ membershipId, takenOutOfKind: takesOut, note: note ?? null })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: membership === 'former' ? 'marked_former' : 'missing_dismissed',
+      regionId: logRegionId, membership: { id: membershipId, kindId: before.kind_id as number },
+      details: { takenOutOfKind: takesOut, note: note ?? null },
+    });
 
     await client.query('COMMIT');
     return { result: { experienceId, sourceMembership: membership, existence: locked.row.existence } };

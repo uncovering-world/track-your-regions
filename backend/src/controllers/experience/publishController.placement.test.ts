@@ -307,7 +307,7 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     // The publication's own record. A reader looking at why a pin moved has the
     // audit row and nothing else — the run that proposed the move is a different
     // row in a different table, and says nothing about when it took effect.
-    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[3])))
+    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[4])))
       .toMatchObject({ withdrawalsReleased: 1 });
   });
 

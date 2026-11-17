@@ -115,6 +115,9 @@ export async function answerReviewRows(
         {
           experienceId: row.id, userId, logRegionId, runId: row.runId, membershipId: row.membershipId,
           scopedSourceIds: sourceIds,
+          // One answer over a selection of many is a bulk act; a selection of
+          // one is the card's own answer (#863).
+          bulk: distinct.length > 1,
         },
         row.kind, answer);
       if ('refusal' in outcome) {

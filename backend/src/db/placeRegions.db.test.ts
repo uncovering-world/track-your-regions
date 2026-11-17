@@ -408,7 +408,7 @@ describe("a place's regions (ADR-0197)", () => {
       [MUSEUM, LEAF_A],
     );
     await unassignExperienceFromRegion({
-      params: { id: MUSEUM, regionId: LEAF_A }, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
+      params: { id: MUSEUM, regionId: LEAF_A }, query: {}, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
     });
 
     expect(await rows(MUSEUM)).toEqual(offered(ROOT, LEAF_A));
@@ -434,7 +434,7 @@ describe("a place's regions (ADR-0197)", () => {
     );
     try {
       await expect(unassignExperienceFromRegion({
-        params: { id: MUSEUM, regionId: LEAF_A }, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
+        params: { id: MUSEUM, regionId: LEAF_A }, query: {}, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
       })).rejects.toThrow(/fixture refuses/);
     } finally {
       await pool.query(`DROP TRIGGER IF EXISTS ${REFUSING_TRIGGER} ON experience_regions`);
@@ -474,7 +474,7 @@ describe("a place's regions (ADR-0197)", () => {
     const before = await rows(MUSEUM);
 
     await withLogRefusing('removed_from_region', () => removeExperienceFromRegion({
-      params: { id: MUSEUM, regionId: LEAF_A }, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
+      params: { id: MUSEUM, regionId: LEAF_A }, query: {}, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
     }));
 
     expect(await rows(MUSEUM)).toEqual(before);
@@ -515,7 +515,7 @@ describe("a place's regions (ADR-0197)", () => {
 
       let withdrawn = false;
       const withdrawal = unassignExperienceFromRegion({
-        params: { id: MUSEUM, regionId: LEAF_A }, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
+        params: { id: MUSEUM, regionId: LEAF_A }, query: {}, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
       }).then(() => { withdrawn = true; });
       await new Promise(resolve => setTimeout(resolve, 300));
       expect(withdrawn).toBe(false);

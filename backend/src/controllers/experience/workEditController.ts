@@ -28,6 +28,7 @@ import { offeredLinkSql } from '../../db/readerPredicates.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { userAgent } from '../../config/userAgent.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { correctWork, lockWork } from './workWriter.js';
 
 /**
@@ -157,14 +158,13 @@ export async function editWork(
       curatedFields: withClaims(before.curated_fields ?? [], claims),
     });
 
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'work_edited', $3, $4)`,
-      // Only the keys this edit actually changed. The queue's claim attribution
-      // asks `details ? '<column>'` to find who claimed a field, so a key present
-      // and null would make a rename answer for the attribution — naming a
-      // curator who never touched it.
-      [experienceId, userId, logRegionId, JSON.stringify({
+    // Only the keys this edit actually changed. The queue's claim attribution
+    // asks `details ? '<column>'` to find who claimed a field, so a key present
+    // and null would make a rename answer for the attribution — naming a
+    // curator who never touched it.
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'work_edited', regionId: logRegionId,
+      details: {
         treasureId,
         ...(name === undefined ? {} : { name: { old: before.name, new: name } }),
         ...(artists === undefined
@@ -177,8 +177,8 @@ export async function editWork(
         ...(picture === undefined
           ? {}
           : { image_url: { old: before.image_url, new: picture } }),
-      })],
-    );
+      },
+    });
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);

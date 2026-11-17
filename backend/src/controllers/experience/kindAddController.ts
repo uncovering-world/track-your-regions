@@ -31,6 +31,7 @@ import type { addToKindBodySchema, idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { insertCuratorKindMembership } from './membershipWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
 
 type AddToKind = z.output<typeof addToKindBodySchema>;
@@ -76,7 +77,7 @@ export async function addUnderLock(
   userId: number,
   logRegionId: number | null,
   sourceId: number,
-  { kindId, type, note }: AddToKind,
+  { kindId, type, note, reasonCode }: AddToKind,
 ): Promise<{ result?: KindAddedToPlace; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -92,12 +93,11 @@ export async function addUnderLock(
     const added = await addKindWithin(client, locked.lock, kindId, sourceId, type ?? null, userId);
     if ('refusal' in added) return await refuse(added.refusal);
     const { membershipId, kind } = added;
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'kind_added', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      membershipId, kindId, kind, type: type ?? null, note: note ?? null,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'kind_added', regionId: logRegionId,
+      membership: { id: membershipId, kindId }, reasonCode,
+      details: { kind, type: type ?? null, note: note ?? null },
+    });
     await client.query('COMMIT');
     return { result: { experienceId, membershipId, kindId } };
   } catch (error) {

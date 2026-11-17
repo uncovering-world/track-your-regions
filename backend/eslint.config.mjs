@@ -324,6 +324,17 @@ const FIND_SITE_LINK_WRITE = 'find_site_links is written by its writer modules o
 const FIND_SITE_LINK_WRITE_RULES = spelledWriteRules('find_site_links', FIND_SITE_LINK_WRITE);
 
 /**
+ * What a curator did, in the curation log (#863): `logCurationAct` and
+ * `logCurationActs` in `src/db/curationLogWriter.ts`, which name the
+ * membership and its kind on every act about one, so no caller can leave
+ * them out.
+ */
+const CURATION_LOG_WRITE = 'experience_curation_log is written by its writer module only (#863): record an act through '
+  + 'logCurationAct or logCurationActs in src/db/curationLogWriter.ts, naming the membership and its kind where the act '
+  + 'is about one.';
+const CURATION_LOG_WRITE_RULES = spelledWriteRules('experience_curation_log', CURATION_LOG_WRITE);
+
+/**
  * A run's record of what it proposed, written once and never rewritten (a
  * changeset is what happened, ADR-0020): `recordSyncChanges` in
  * `src/services/sync/changeRecorder.ts`.
@@ -510,7 +521,7 @@ const SOURCE_RULE_FAMILIES = [
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
   VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES, FIND_SITE_LINK_WRITE_RULES,
-  KIND_SUGGESTION_WRITE_RULES, PLANNED_KIND_ANSWER_WRITE_RULES,
+  KIND_SUGGESTION_WRITE_RULES, PLANNED_KIND_ANSWER_WRITE_RULES, CURATION_LOG_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -523,7 +534,7 @@ const TABLE_WRITE_FAMILIES = [
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
   VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES, FIND_SITE_LINK_WRITE_RULES,
-  KIND_SUGGESTION_WRITE_RULES, PLANNED_KIND_ANSWER_WRITE_RULES,
+  KIND_SUGGESTION_WRITE_RULES, PLANNED_KIND_ANSWER_WRITE_RULES, CURATION_LOG_WRITE_RULES,
 ];
 
 /**
@@ -851,6 +862,12 @@ export default [
     files: ['src/services/sync/changeRecorder.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(SYNC_CHANGE_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/db/curationLogWriter.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(CURATION_LOG_WRITE_RULES),
     },
   },
   {

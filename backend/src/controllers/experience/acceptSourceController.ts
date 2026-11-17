@@ -24,8 +24,9 @@ import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
-import { withTypeClaim } from '../../db/membership.js';
+import { MEMBERSHIPS, withTypeClaim } from '../../db/membership.js';
 import { shownByPartsSql } from '../../db/readerPredicates.js';
+import { logCurationAct, membershipRead } from '../../db/curationLogWriter.js';
 import { acceptTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 import { releaseAnchorPointClaim, movePointTo } from './experienceLocationWriter.js';
@@ -84,9 +85,13 @@ export async function acceptSourceUnderLock(
   logRegionId: number | null,
   fields: string[] | 'all',
   expectedSyncLogId: number,
+  /** Set when one answer took the values of a selection of many (#863). */
+  bulk?: { syncLogId: number | null },
 ): Promise<{ result?: AcceptSourceResult; refusal?: { error: string; fromSyncLogId?: number } }> {
   const pictureCredit = await proposedPictureCredit(experienceId, fields);
-  const outcome = await applyProposedFields(experienceId, userId, logRegionId, fields, expectedSyncLogId, pictureCredit);
+  const outcome = await applyProposedFields(
+    experienceId, userId, logRegionId, fields, expectedSyncLogId, pictureCredit, bulk,
+  );
   if (outcome.refusal) return { refusal: outcome.refusal };
   const {
     applied, released, releasedPoints, movedPoints, releasedCredit, fromSyncLogId, movesPlace,
@@ -216,6 +221,7 @@ async function applyProposedFields(
   fields: string[] | 'all',
   expectedSyncLogId: number,
   pictureCredit: PictureCredit | null,
+  bulk: { syncLogId: number | null } | undefined,
 ): Promise<{
   applied: string[];
   released: string[];
@@ -244,12 +250,14 @@ async function applyProposedFields(
     // Same predicate as the queue, withdrawal check included: a conflict a
     // later run stopped proposing must not be writable here either, or the
     // guard below would refuse a newer proposal while letting a retracted one
-    // through.
+    // through. The proposing source's membership in its kind is what the
+    // answer is about.
     const proposal = await client.query(`
-      SELECT ch.sync_log_id, l.source_id, ch.changed_fields, ch.contents
+      SELECT ch.sync_log_id, l.source_id, ch.changed_fields, ch.contents, m.id AS membership_id, m.kind_id
       FROM experience_sync_changes ch
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
+      LEFT JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = l.source_id AND m.kind_id IS NOT NULL
       WHERE ch.experience_id = $1
         AND ${conflictChangeOpenSql('e', 'ch', 'l')}
       ORDER BY ch.id DESC
@@ -454,25 +462,26 @@ async function applyProposedFields(
     // Any standing refusal of these fields goes with the claim it belonged to.
     await releaseConflictRefusals(client, locked.lock, open.map(p => p.field));
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'accepted_source', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      fields: loggedFields(open, written),
-      // Only when there were any, so the trail of every other accepted field
-      // reads as it did before this rule existed. Both lists, because they are
-      // different facts: a released point kept its coordinate, a moved one was
-      // put back on the source's, and only the second is a placement event.
-      releasedPoints: releasedPoints.length > 0 ? releasedPoints : undefined,
-      movedPoints: movedPoints.length > 0 ? movedPoints : undefined,
-      // The credit deleted with the picture, on the same footing as the pin and
-      // for the same reason: the value dropped is always the curator's own —
-      // `editExperience` claims `image_url` only when it wrote the picture, and
-      // writes the credit in that same statement — and the card they answered
-      // said nothing about a photographer. Without this, the line under the
-      // picture disappears with no trace anywhere of what it said.
-      releasedCredit: releasedCredit || undefined,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'accepted_source', regionId: logRegionId,
+      membership: membershipRead(proposal.rows[0]), bulk,
+      details: {
+        fields: loggedFields(open, written),
+        // Only when there were any, so the trail of every other accepted field
+        // reads as it did before this rule existed. Both lists, because they are
+        // different facts: a released point kept its coordinate, a moved one was
+        // put back on the source's, and only the second is a placement event.
+        releasedPoints: releasedPoints.length > 0 ? releasedPoints : undefined,
+        movedPoints: movedPoints.length > 0 ? movedPoints : undefined,
+        // The credit deleted with the picture, on the same footing as the pin and
+        // for the same reason: the value dropped is always the curator's own —
+        // `editExperience` claims `image_url` only when it wrote the picture, and
+        // writes the credit in that same statement — and the card they answered
+        // said nothing about a photographer. Without this, the line under the
+        // picture disappears with no trace anywhere of what it said.
+        releasedCredit: releasedCredit || undefined,
+      },
+    });
     await client.query('COMMIT');
     return {
       applied: written,

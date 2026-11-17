@@ -549,6 +549,6 @@ describe('publishing only the object\'s held fields ({ fieldsOnly: true })', () 
     // An object publish that happened to hold no unread contents writes the same
     // zeros as this does, so the trail says which act it was in words.
     const log = only(queries, 'experience_curation_log');
-    expect(JSON.parse(String(log.params[3])).scope).toBe('fields');
+    expect(JSON.parse(String(log.params[4])).scope).toBe('fields');
   });
 });

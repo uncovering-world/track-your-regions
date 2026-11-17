@@ -24,6 +24,7 @@ import type { z } from 'zod/v4';
 import type { VisitQuestionAnswered } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, visitQuestionAnswerBodySchema } from '../../types/index.js';
@@ -80,9 +81,10 @@ export async function answerVisitQuestionUnderLock(
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     // In a statement after the lock's, so the row read is the one the lock holds (`db/locks.ts`).
     const read = await client.query<{
-      kind: string; reading: string; confidence: string; witnesses: string[]; curated_fields: string[] | null;
+      kind: string; kind_id: number; reading: string; confidence: string; witnesses: string[];
+      curated_fields: string[] | null;
     }>(
-      `SELECT kd.name AS kind, q.reading, q.confidence, q.witnesses, m.curated_fields
+      `SELECT kd.name AS kind, m.kind_id, q.reading, q.confidence, q.witnesses, m.curated_fields
          FROM experience_visit_questions q
          JOIN ${MEMBERSHIPS} m ON m.id = q.membership_id
          JOIN experiences e ON e.id = m.experience_id
@@ -106,13 +108,16 @@ export async function answerVisitQuestionUnderLock(
         WHERE membership_id = $1 AND answer IS NULL`,
       [membershipId, answer, userId],
     );
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'visit_question_answered', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      membershipId, kind: question.kind, answer, reading: question.reading,
-      confidence: Number(question.confidence), witnesses: question.witnesses, note: note ?? null,
-    })]);
+    // The question asked whether there is anything to see, so a refusal's why is that there is not.
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'visit_question_answered', regionId: logRegionId,
+      membership: { id: membershipId, kindId: question.kind_id },
+      ...(answer === 'refused' ? { reasonCode: 'not-worth-a-visit' as const } : {}),
+      details: {
+        kind: question.kind, answer, reading: question.reading,
+        confidence: Number(question.confidence), witnesses: question.witnesses, note: note ?? null,
+      },
+    });
     await client.query('COMMIT');
     return {
       result: { experienceId, membershipId, answer, admission: answer === 'refused' ? 'refused' : 'admitted' },

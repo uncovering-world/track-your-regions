@@ -4,7 +4,8 @@
  * `conflictDecisions.ts`, a held answer by `heldDecisions.ts`, a run's record
  * of its changes by `changeRecorder.ts`, and a place's membership by
  * `membershipWriter.ts` and the run's own membership writers — spelled out or
- * through `${MEMBERSHIPS}`, which is how the code names the table.
+ * through `${MEMBERSHIPS}`, which is how the code names the table — and a
+ * curator's act in the curation log by `curationLogWriter.ts` (#863).
  *
  * Asserted against the repo's own `eslint.config.mjs` in both directions, as
  * `catalogueWriteLint.test.ts` asserts the catalogue's: the code base passes the
@@ -40,6 +41,7 @@ const VISIT_SUGGESTION = /^experience_visit_suggestions is written by its writer
 const VISIT_QUESTION = /^experience_visit_questions is written by its writer modules only/;
 const KIND_SUGGESTION = /^experience_kind_suggestions is written by its writer module only/;
 const PLANNED_KIND_ANSWER = /^experience_planned_kind_answers is written by its writer module only/;
+const CURATION_LOG = /^experience_curation_log is written by its writer module only/;
 
 const draws = async (code: string, file: string, message: RegExp) =>
   (await reported(code, file)).some(m => message.test(m));
@@ -104,6 +106,15 @@ describe('the curation gate lint rules', () => {
     ['a pair of near places answered by a handler', MERGE_PROPOSAL,
       "export const q = `UPDATE experience_merge_proposals SET answer = 'two' WHERE id = $1`;\n",
       'src/controllers/experience/mergeProposalController.ts'],
+    ["a curator's act logged by a handler", CURATION_LOG,
+      "export const q = `INSERT INTO experience_curation_log (experience_id, action) VALUES ($1, 'kept_out')`;\n",
+      'src/controllers/experience/keepOutController.ts'],
+    ["the catalogue's own act logged by a run", CURATION_LOG,
+      "export const q = 'insert into experience_curation_log (experience_id, action) values ($1, $2)';\n",
+      'src/services/sync/mergeProposalFinder.ts'],
+    ['a log entry rewritten by a script', CURATION_LOG,
+      'export const q = `UPDATE experience_curation_log SET details = $2 WHERE id = $1`;\n',
+      'src/scripts/releaseBatchPins.ts'],
   ])('refuses a write to a gate table outside its writers: %s', async (_, message, code, file) => {
     expect(await draws(code, file, message)).toBe(true);
   });
@@ -197,6 +208,12 @@ describe('the curation gate lint rules', () => {
     ['another table whose name starts the same', SYNC_CHANGE,
       "export const q = `UPDATE experience_sync_logs SET status = 'failed' WHERE id = $1`;\n",
       'src/controllers/lint-fixture.ts'],
+    ['the curation log writer', CURATION_LOG,
+      'export const q = `INSERT INTO experience_curation_log (experience_id, action) VALUES ($1, $2)`;\n',
+      'src/db/curationLogWriter.ts'],
+    ["a read of the curation log in a handler", CURATION_LOG,
+      'export const q = `SELECT cl.details FROM experience_curation_log cl WHERE cl.experience_id = $1`;\n',
+      'src/controllers/experience/curationLogController.ts'],
   ])('lets a statement stand where it belongs, or one that is no write to the table: %s', async (_, message, code, file) => {
     expect(await draws(code, file, message)).toBe(false);
   });

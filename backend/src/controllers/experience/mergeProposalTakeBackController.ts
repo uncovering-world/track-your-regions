@@ -19,6 +19,7 @@ import type { z } from 'zod/v4';
 import type { MergeProposalTakenBack } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockTwoExperiences } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { mergeProposalParamsSchema } from '../../types/index.js';
@@ -76,14 +77,13 @@ export async function takeBackMergeProposalAnswer(
     if (!taken) {
       return await refuse(409, `This pair is not answered part of or two places — a merge is undone from its own row${RELOAD}`);
     }
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'merge_proposal_taken_back', $3, $4)`,
-      [pair.place_a, caller.id, logRegionId, JSON.stringify({
+    await logCurationAct(client, {
+      experienceId: pair.place_a, curatorId: caller.id, action: 'merge_proposal_taken_back', regionId: logRegionId,
+      details: {
         proposalId: pair.id, otherId: pair.place_b, otherName: pair.other_name, answer: taken.answer,
         ...(taken.partId === null ? {} : { partId: taken.partId }), ...(taken.catalogue ? { catalogue: 'wikidata' } : {}),
-      })],
-    );
+      },
+    });
     await client.query('COMMIT');
     return { proposalId: pair.id, answer: taken.answer, partId: taken.partId, catalogue: taken.catalogue };
   } catch (error) {

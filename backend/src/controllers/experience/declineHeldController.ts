@@ -36,6 +36,7 @@ import {
 } from './heldSelection.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct, membershipRead } from '../../db/curationLogWriter.js';
 import { clearAnsweredHeldPointers, clearHeldPointer } from './membershipWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { pointMovedToProposed } from './movedPoint.js';
@@ -132,6 +133,8 @@ export async function refuseUnderLock(
   selection: { fields?: string[]; parts?: SelectedPart[] } | null,
   expectedSyncLogId: number,
   namedMembershipId: number | null = null,
+  /** Set when one answer refused the held values of a selection of many (#863). */
+  bulk?: { syncLogId: number | null },
 ): Promise<{ result?: DeclineHeldResult; refusal?: DeclineRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -162,7 +165,7 @@ export async function refuseUnderLock(
     // below (`db/locks.ts`). Which membership: the one the card named (#1264),
     // or the one holding a proposal where it named none.
     const read = await client.query(
-      `SELECT m.id AS membership_id, m.pending_change_sync_log_id
+      `SELECT m.id AS membership_id, m.kind_id, m.pending_change_sync_log_id
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
         WHERE e.id = $1`,
@@ -231,34 +234,35 @@ export async function refuseUnderLock(
 
     const declinedFields = selected.filter(row => row.ref.kind === null).map(row => row.ref.field);
     const declinedParts = groupParts(selected);
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'declined_held', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      // Named with the values, as `declined_source` records them: the answer is
-      // about *those* values, so a curator meeting the field again next month is
-      // being told the source changed its mind rather than that the click failed.
-      fields: selected
-        .filter(row => row.ref.kind === null)
-        .map(row => ({ field: row.ref.field, declined: row.proposed })),
-      // A part's rows carry their values too, and one entry per field rather
-      // than the response's grouping: `experience_held_decisions` holds one
-      // *standing* answer per row and the next upsert overwrites it, so the log
-      // is the only place the value refused for a work's attribution survives
-      // once the source proposes something else. The object's arm above has
-      // said so since the endpoint existed; this said only which fields.
-      parts: selected
-        .filter(row => row.ref.kind !== null)
-        .map(row => ({
-          kind: row.ref.kind,
-          name: row.ref.name ?? row.ref.ref ?? 'an unnamed part',
-          field: row.ref.field,
-          declined: row.proposed,
-        })),
-      fromSyncLogId: pointer,
-      heldLeftOpen,
-      movedPointRefused,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'declined_held', regionId: logRegionId,
+      membership: membershipRead(read.rows[0]), bulk,
+      details: {
+        // Named with the values, as `declined_source` records them: the answer is
+        // about *those* values, so a curator meeting the field again next month is
+        // being told the source changed its mind rather than that the click failed.
+        fields: selected
+          .filter(row => row.ref.kind === null)
+          .map(row => ({ field: row.ref.field, declined: row.proposed })),
+        // A part's rows carry their values too, and one entry per field rather
+        // than the response's grouping: `experience_held_decisions` holds one
+        // *standing* answer per row and the next upsert overwrites it, so the log
+        // is the only place the value refused for a work's attribution survives
+        // once the source proposes something else. The object's arm above has
+        // said so since the endpoint existed; this said only which fields.
+        parts: selected
+          .filter(row => row.ref.kind !== null)
+          .map(row => ({
+            kind: row.ref.kind,
+            name: row.ref.name ?? row.ref.ref ?? 'an unnamed part',
+            field: row.ref.field,
+            declined: row.proposed,
+          })),
+        fromSyncLogId: pointer,
+        heldLeftOpen,
+        movedPointRefused,
+      },
+    });
 
     await client.query('COMMIT');
     result = {

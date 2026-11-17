@@ -46,6 +46,8 @@ import { contentsAnswerableSql, contentsMembershipToAnswerSql } from './waitingC
 import { lockExperience, recordDecisionOnExperience, type UnderLock } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
+import type { CurationReasonCode } from '@tyr/shared/curationLog';
 
 /**
  * Keep out an object nobody has passed.
@@ -139,7 +141,11 @@ export async function refuseArrivalUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { note, membershipId: namedMembershipId }: { note?: string; membershipId?: number },
+  { note, membershipId: namedMembershipId, reasonCode, bulk }: {
+    note?: string; membershipId?: number; reasonCode?: CurationReasonCode;
+    /** Set when one answer turned away a selection of many (#863). */
+    bulk?: { syncLogId: number | null };
+  },
   alsoUnderLock?: UnderLock,
 ): Promise<{ result?: RefuseArrivalResult; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
@@ -160,7 +166,7 @@ export async function refuseArrivalUnderLock(
     const locked = await lockExperience<{ missing_since: Date | null }>(client, experienceId, 'missing_since');
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     const read = await client.query(
-      `SELECT m.id AS membership_id, m.admission, m.curation_state, m.curated_fields
+      `SELECT m.id AS membership_id, m.kind_id, m.admission, m.curation_state, m.curated_fields
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
         WHERE e.id = $1`,
@@ -187,13 +193,14 @@ export async function refuseArrivalUnderLock(
     await refuseOnMembership(client, locked.lock, membershipId, CURATOR_REFUSAL_REASON, curated);
     await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'arrival_refused', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      // The membership kept out (#1264), which the kept-out card reads.
-      membershipId, reason: CURATOR_REFUSAL_REASON, note: note ?? null,
-    })]);
+    // The membership kept out (#1264), which the kept-out card reads; the
+    // membership's own reason stays the constant, and the curator's why is the
+    // entry's reason code (#863).
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'arrival_refused', regionId: logRegionId,
+      membership: { id: membershipId, kindId: before.kind_id as number }, reasonCode, bulk,
+      details: { reason: CURATOR_REFUSAL_REASON, note: note ?? null },
+    });
     await alsoUnderLock?.(client, locked.lock);
 
     await client.query('COMMIT');
@@ -225,8 +232,10 @@ export async function refuseContentsUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { locationIds, treasureIds, note, membershipId }: {
+  { locationIds, treasureIds, note, membershipId, bulk }: {
     locationIds?: number[]; treasureIds?: number[]; note?: string; membershipId?: number;
+    /** Set when one answer refused the contents of a selection of many (#863). */
+    bulk?: { syncLogId: number | null };
   },
 ): Promise<{ result?: RefuseContentsResult; refusal?: AnswerRefusal }> {
   const anyNamed = locationIds !== undefined || treasureIds !== undefined;
@@ -253,7 +262,7 @@ export async function refuseContentsUnderLock(
     // objects they apply to. The columns beside it are what the message branches
     // on, not the verdict.
     const read = await client.query(
-      `SELECT m.id AS membership_id, m.admission, m.curation_state,
+      `SELECT m.id AS membership_id, m.kind_id, m.admission, m.curation_state,
               (${contentsAnswerableSql()}) AS answerable
          FROM experiences e
          -- Through the membership the body names, else the first holding
@@ -299,19 +308,20 @@ export async function refuseContentsUnderLock(
       });
     }
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'contents_refused', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      locations: locationsRefused,
-      treasureLinks: treasureLinksRefused,
-      // The ids where the caller named them, so the trail says which twelve
-      // paintings rather than "twelve": a refused part is invisible everywhere
-      // else, and this row is where a person finds it again.
-      ...(locationIds === undefined ? {} : { locationIds }),
-      ...(treasureIds === undefined ? {} : { treasureIds }),
-      note: note ?? null,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'contents_refused', regionId: logRegionId,
+      membership: { id: answering, kindId: before.kind_id as number }, bulk,
+      details: {
+        locations: locationsRefused,
+        treasureLinks: treasureLinksRefused,
+        // The ids where the caller named them, so the trail says which twelve
+        // paintings rather than "twelve": a refused part is invisible everywhere
+        // else, and this row is where a person finds it again.
+        ...(locationIds === undefined ? {} : { locationIds }),
+        ...(treasureIds === undefined ? {} : { treasureIds }),
+        note: note ?? null,
+      },
+    });
 
     await client.query('COMMIT');
   } catch (error) {

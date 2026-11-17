@@ -31,6 +31,7 @@ import type {
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { handBackAdmissionPin } from './membershipWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
 import { ADDED_BY, ADDED_BY_CURATOR, PINNED_BY } from './reviewQueuePinQuestions.js';
 
@@ -137,9 +138,9 @@ export async function handBackPinUnderLock(
     // In a statement after the lock's, so the row read is the one the lock holds (`db/locks.ts`).
     const read = await client.query<{
       admission: 'admitted' | 'refused'; verdict: 'admitted' | 'refused' | null; reason: string | null; kind: string;
-      added: boolean;
+      kind_id: number; added: boolean;
     }>(
-      `SELECT m.admission, m.admission_pin_verdict AS verdict, m.admission_pin_reason AS reason, kd.name AS kind,
+      `SELECT m.admission, m.admission_pin_verdict AS verdict, m.admission_pin_reason AS reason, kd.name AS kind, m.kind_id,
               ${ADDED_BY_CURATOR} AS added
          FROM experiences e
          JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
@@ -167,12 +168,11 @@ export async function handBackPinUnderLock(
     }
 
     await handBackAdmissionPin(client, locked.lock, membershipId);
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'admission_pin_handed_back', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      membershipId, kind: pin.kind, answer: pin.admission, reason: pin.reason, note: note ?? null,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'admission_pin_handed_back', regionId: logRegionId,
+      membership: { id: membershipId, kindId: pin.kind_id },
+      details: { kind: pin.kind, answer: pin.admission, reason: pin.reason, note: note ?? null },
+    });
     await client.query('COMMIT');
     return { result: { experienceId, membershipId, admission: pin.admission } };
   } catch (error) {

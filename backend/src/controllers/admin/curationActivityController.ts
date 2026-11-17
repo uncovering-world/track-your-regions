@@ -89,9 +89,9 @@ const BATCH_NAMES = 12;
  * less than `BATCH_GAP_SECONDS` after the one before, `BATCH_MIN` or more, read
  * as "Published 563 places" with its first names. On dev's log 1,007 of 1,286 acts in 30 days were publications, nearly
  * all in such batches, and the calls against the rule were lost among them. A
- * batch names no kind: a publication logs none, and a place's first source is
- * not the kind it was published in (Belém Tower, brought by UNESCO, published
- * in Towers).
+ * batch names no kind: its publications may be in several, each logging its
+ * own (`details.kindId`, #863), and a place's first source is not the kind it
+ * was published in (Belém Tower, brought by UNESCO, published in Towers).
  */
 async function readCurationActivity(
   { curatorId, action, regionId, since, before, q, limit, offset }: ActivityFilters,

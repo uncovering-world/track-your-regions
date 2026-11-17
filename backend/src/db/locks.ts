@@ -66,12 +66,12 @@
  *   statement's own row locks last only as long as it does, so it can wait for
  *   an object's lock and never be half of a cycle — which is why none takes
  *   `lockExperience`'s token. The lines' statement locks its rows in id order.
- * - `assignExperienceToRegion` and the rejection writers touch
- *   `experience_regions` and `experience_rejections`. A refresh (below) may
- *   wait for one of those rows, and none of these waits for anything after
- *   writing it: their only other reach into `experiences` is the audit row's
- *   key share, and the mode below is chosen so that never conflicts. So none
- *   of them is ever half of a cycle, and none takes a place's region keys.
+ * - The curator's region acts (`curationRegionController.ts`: assign,
+ *   withdraw, reject, take a rejection back) are under the rule: each takes
+ *   the place's object lock, then its region keys, then its rows
+ *   (`standingIn`). The object lock holds off another curator's act and the
+ *   keys a run's placement (`refresh_place_regions()`), so the standing a row
+ *   records as `before` is the one its write replaces (#863).
  * - `assignRegionsForExperiences` — placement — is the one outside the rule that
  *   does reach the contents: its INSERT into `experience_location_regions`
  *   key-shares the point rows themselves. Nothing but a place's own delete

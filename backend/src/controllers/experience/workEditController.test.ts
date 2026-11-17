@@ -251,10 +251,9 @@ describe('editWork', () => {
     await answerRoute(patchWorksEdit, request({ artists: ['Agasias of Ephesus'] }) as never, makeRes() as never);
 
     const log = only(queries, 'experience_curation_log');
-    // The action is a literal in the statement, not a parameter, and it has to
-    // be one the table's CHECK admits — migration 040 widens it.
-    expect(log.sql).toContain("'work_edited'");
-    const details = JSON.parse(String(log.params[3]));
+    // The action has to be one the table's CHECK admits — migration 040 widens it.
+    expect(log.params[2]).toBe('work_edited');
+    const details = JSON.parse(String(log.params[4]));
     expect(details).toEqual({
       treasureId: TREASURE_ID,
       artists: { old: ['Agasias of Ephesus', 'Nicolas Cordier'], new: ['Agasias of Ephesus'] },
@@ -343,7 +342,7 @@ describe('editWork', () => {
 
     await answerRoute(patchWorksEdit, request({ imageUrl: COMMONS_FILE }) as never, makeRes() as never);
 
-    const details = JSON.parse(String(only(queries, 'experience_curation_log').params[3]));
+    const details = JSON.parse(String(only(queries, 'experience_curation_log').params[4]));
     expect(details).toEqual({
       treasureId: TREASURE_ID,
       image_url: { old: null, new: COMMONS_FILE },

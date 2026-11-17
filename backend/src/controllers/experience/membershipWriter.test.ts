@@ -132,10 +132,17 @@ describe('the other curator writes', () => {
     expect(queries[0].params).toEqual([MEMBERSHIP, KUNSTHALLE.id]);
   });
 
-  it('inserts the manual create\'s membership for the place whose token it spends', async () => {
-    const { client, queries } = fakeClient();
-    await insertManualMembership(client, KUNSTHALLE, 2, null);
+  it('inserts the manual create\'s membership for the place whose token it spends, and answers it with its kind', async () => {
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        queries.push({ sql, params });
+        return { rows: [{ id: 77, kind_id: 2 }], rowCount: 1 };
+      }),
+    } as unknown as PoolClient;
+    expect(await insertManualMembership(client, KUNSTHALLE, 2, null)).toEqual({ id: 77, kindId: 2 });
     expect(collapse(queries[0].sql)).toContain('INSERT INTO source_records');
+    expect(collapse(queries[0].sql)).toContain('RETURNING id, kind_id');
     expect(queries[0].params).toEqual([412, 2, null]);
   });
 });

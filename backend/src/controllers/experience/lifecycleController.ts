@@ -33,10 +33,15 @@ import { answerKindListingUnderLock } from './kindListingController.js';
 import {
   lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
 } from '../../db/experienceWriter.js';
+import { logCurationAct, membershipRead } from '../../db/curationLogWriter.js';
+import type { CurationLogAction, CurationReasonCode } from '@tyr/shared/curationLog';
 
 /** The object's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experiences', 'source_membership'>;
 type Existence = CheckValue<'experiences', 'existence'>;
+
+/** The verdicts on a place as a whole, in the curation log's words. */
+type PlaceVerdictAction = Extract<CurationLogAction, 'marked_former' | 'marked_lost' | 'state_restored' | 'missing_dismissed'>;
 
 /** What a curator sends about an object's lifecycle, and the row they were looking at. */
 export interface StateAnswer {
@@ -212,15 +217,16 @@ export async function answerStateUnderLock(
     });
     await setListingVerdict(client, locked.lock, nextMembership);
 
+    // A verdict on the place as a whole: about no one membership.
     for (const action of actions) {
-      await client.query(`
-        INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [experienceId, userId, action, logRegionId, JSON.stringify({
-        membership: { old: before.source_membership, new: nextMembership },
-        existence: { old: before.existence, new: nextExistence },
-        note: note ?? null,
-      })]);
+      await logCurationAct(client, {
+        experienceId, curatorId: userId, action, regionId: logRegionId,
+        details: {
+          membership: { old: before.source_membership, new: nextMembership },
+          existence: { old: before.existence, new: nextExistence },
+          note: note ?? null,
+        },
+      });
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -338,7 +344,7 @@ export async function setExperienceAdmission(
   // card (`remember`, #1368), which is the only say a request has in the pin.
   const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
     decision: body.decision, note: body.note, membershipId: body.membershipId,
-    pin: body.decision === 'confirm' || body.remember !== false,
+    pin: body.decision === 'confirm' || body.remember !== false, reasonCode: body.reasonCode,
   });
   if (outcome.refusal) {
     const { status, ...body } = outcome.refusal;
@@ -365,6 +371,10 @@ export interface AdmissionAnswer {
    * unticked "Remember a put-back on later runs" (`remember`, #1368).
    */
   pin?: boolean;
+  /** Why the curator answered so, kept in the answer's log entry (#863). */
+  reasonCode?: CurationReasonCode;
+  /** Set when one answer settled a selection of many (#863). */
+  bulk?: { syncLogId: number | null };
 }
 
 /** Answered by a card (the admission pin) or by a batch (the mark, ADR-0067). */
@@ -387,7 +397,7 @@ export async function answerAdmissionUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { decision, note, pin = true, membershipId: namedMembershipId }: AdmissionAnswer,
+  { decision, note, pin = true, membershipId: namedMembershipId, reasonCode, bulk }: AdmissionAnswer,
 ): Promise<{ result?: AdmissionResult; refusal?: AnswerRefusal }> {
   const admitted = decision === 'override';
   const client = await pool.connect();
@@ -426,7 +436,7 @@ export async function answerAdmissionUnderLock(
     // is re-read once it is granted (`db/locks.ts`). Which membership: the one
     // the card named (#1264), or the refused one where it named none.
     const read = await client.query(
-      `SELECT m.id AS membership_id, m.admission, m.admission_reason, m.curated_fields,
+      `SELECT m.id AS membership_id, m.kind_id, m.admission, m.admission_reason, m.curated_fields,
               m.curation_state, m.admission_answered_at IS NOT NULL AS batch_answered
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'refused', '$2::int')}
@@ -532,18 +542,17 @@ export async function answerAdmissionUnderLock(
     // release one exactly as `publishController.ts`'s own publish can — same
     // unit, same consequence, so it gets the same follow-up below.
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [experienceId, userId, admitted ? 'admission_overridden' : 'admission_confirmed', logRegionId,
-      // The membership answered (#1264), so a kept-out card reads its own
-      // decision and note rather than the place's latest.
-      JSON.stringify({
-        membershipId,
+    // The membership answered (#1264), so a kept-out card reads its own
+    // decision and note rather than the place's latest.
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: admitted ? 'admission_overridden' : 'admission_confirmed',
+      regionId: logRegionId, membership: membershipRead(before), reasonCode, bulk,
+      details: {
         reason: before.admission_reason, note: note ?? null, published: publishes, pinned: pin,
         locations: locationsPublished, treasureLinks: treasureLinksPublished,
         treasures: treasuresPublished, withdrawalsReleased,
-      })]);
+      },
+    });
 
     await client.query('COMMIT');
   } catch (error) {
@@ -616,8 +625,8 @@ function decidedActions(
   existing: { source_membership: string; existence: string },
   membership: Membership,
   existence: Existence,
-): string[] {
-  const actions: string[] = [];
+): PlaceVerdictAction[] {
+  const actions: PlaceVerdictAction[] = [];
   if (membership === 'former' && existing.source_membership !== 'former') actions.push('marked_former');
   if (existence === 'lost' && existing.existence !== 'lost') actions.push('marked_lost');
   // One restoration however many axes it undid — two identical rows would read

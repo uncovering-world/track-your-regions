@@ -24,6 +24,7 @@ import type { z } from 'zod/v4';
 import type { FindSiteCandidates, FindSiteLinkAnswerResult, FindSiteLinks } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type {
   findSiteCandidatesQuerySchema, findSiteLinkAnswerBodySchema, findSiteLinkParamsSchema, idParamSchema,
@@ -144,14 +145,13 @@ export async function answerFindSiteLinkRequest(
     if (!answered) throw notFound('Link not found');
     // In the place's history like every other curator act (#863): which find,
     // the answer, and whether a no took back a link already confirmed.
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'find_site_answered', $3, $4)`,
-      [id, caller.id, logRegionId, JSON.stringify({
+    await logCurationAct(client, {
+      experienceId: id, curatorId: caller.id, action: 'find_site_answered', regionId: logRegionId,
+      details: {
         treasureId, find: answered.find, answer, wasConfirmed: answered.was === 'confirmed',
         ...(byHand ? { byHand: true } : {}),
-      })],
-    );
+      },
+    });
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);

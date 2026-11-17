@@ -22,6 +22,7 @@ import type { z } from 'zod/v4';
 import type { IdentifierSettled, PlaceIdentifiers } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, identifierVerdictBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -173,16 +174,15 @@ export async function settleIdentifierUnderLock(
     }
 
     const after = await registryRow(client, locked.lock, scheme, value);
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'identifier_settled', $3, $4)`,
-      [experienceId, userId, logRegionId, JSON.stringify({
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'identifier_settled', regionId: logRegionId,
+      details: {
         scheme, value, verdict,
         before: { identifies: before?.identifies ?? false, claimsIdentity: before?.claims_identity ?? false, verdict: standing },
         after: { identifies: after?.identifies ?? false },
         note: note ?? null,
-      })],
-    );
+      },
+    });
     await client.query('COMMIT');
     return { result: { experienceId, scheme, value, verdict, identifies: after?.identifies ?? false } };
   } catch (error) {

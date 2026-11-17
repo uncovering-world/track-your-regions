@@ -338,8 +338,8 @@ describe('declineHeldValue', () => {
     // The decision row is the standing answer and is overwritten by the next
     // one, so the log is where "what did we refuse in August" survives.
     const log = queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(log?.sql).toContain(`'declined_held'`);
-    const details = JSON.parse(String(log?.params[3]));
+    expect(log?.params[2]).toBe('declined_held');
+    const details = JSON.parse(String(log?.params[4]));
     expect(details.fields).toEqual([
       { field: 'name', declined: 'Getbol, Korean Tidal Flats' },
     ]);
@@ -361,7 +361,7 @@ describe('declineHeldValue', () => {
     // refused in August survives only here. One entry per field, as the object's
     // arm has always written them.
     const log = queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(JSON.parse(String(log?.params[3])).parts).toEqual([{
+    expect(JSON.parse(String(log?.params[4])).parts).toEqual([{
       kind: 'treasures', name: 'The Wine Glass', field: 'artist',
       declined: 'Jan Vermeer van Haarlem the Elder',
     }]);
@@ -381,8 +381,8 @@ describe('declineHeldValue', () => {
     expect(marks).toHaveLength(1);
     expect(marks[0].sql).toContain('SET refused_at = NOW()');
     expect(marks[0].params).toEqual([1138, [15624], 'kept out by a curator']);
-    const log = queries.find(q => q.sql.includes("'declined_held'"));
-    expect(JSON.parse(log?.params?.[3] as string)).toMatchObject({ movedPointRefused: 15624 });
+    const log = queries.find(q => q.sql.includes('experience_curation_log'));
+    expect(JSON.parse(log?.params?.[4] as string)).toMatchObject({ movedPointRefused: 15624 });
     // Re-placed after the COMMIT, with the client back in the pool.
     expect(placeAfterRelease).toHaveBeenCalledWith(1138, expect.stringContaining('turned down'));
     expect(client.release.mock.invocationCallOrder[0])

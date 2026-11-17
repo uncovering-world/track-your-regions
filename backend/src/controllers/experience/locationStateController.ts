@@ -23,6 +23,8 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience, setLifecycleVerdict, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
+import type { POINT_VERDICT_ACTIONS } from '@tyr/shared/curationLog';
 import { setPointVerdict } from './experienceLocationWriter.js';
 import { setPartRecordListingVerdict } from './membershipWriter.js';
 import { MEMBERSHIPS, partRecordSql, partRecordWithdrawnSql } from '../../db/membership.js';
@@ -32,6 +34,9 @@ import { answeringPlaceSql } from '../../db/placePoints.js';
 /** The point's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experience_locations', 'source_membership'>;
 type Existence = CheckValue<'experience_locations', 'existence'>;
+
+/** One verdict on one point, in the curation log's words. */
+type PointVerdictAction = (typeof POINT_VERDICT_ACTIONS)[number];
 
 /**
  * Name each transition this call makes, so the log reads as events rather than as
@@ -46,8 +51,8 @@ function decidedActions(
   before: { source_membership: string; existence: string },
   membership: Membership,
   existence: Existence,
-): string[] {
-  const actions: string[] = [];
+): PointVerdictAction[] {
+  const actions: PointVerdictAction[] = [];
   if (membership === 'former' && before.source_membership !== 'former') {
     actions.push('location_marked_former');
   }
@@ -419,15 +424,15 @@ export async function answerLocationStateUnderLock(
       // Against the experience, because the trail a curator reads is the object's —
       // and then naming the point, or a serial site with seven components records
       // seven indistinguishable verdicts.
-      await client.query(`
-        INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [experienceId, userId, action, logRegionId, JSON.stringify({
-        locationId,
-        membership: { old: before.source_membership, new: nextMembership },
-        existence: { old: before.existence, new: nextExistence },
-        note: note ?? null,
-      })]);
+      await logCurationAct(client, {
+        experienceId, curatorId: userId, action, regionId: logRegionId,
+        details: {
+          locationId,
+          membership: { old: before.source_membership, new: nextMembership },
+          existence: { old: before.existence, new: nextExistence },
+          note: note ?? null,
+        },
+      });
     }
     await client.query('COMMIT');
   } catch (error) {

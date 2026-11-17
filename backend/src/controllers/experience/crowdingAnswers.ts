@@ -36,6 +36,7 @@ import type { z } from 'zod/v4';
 import type { CrowdingAnswered } from '../../api/responses/crowding.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience, type UnderLock } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { FAME, KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { Refusal } from '../../middleware/errorHandler.js';
 import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
@@ -123,6 +124,7 @@ interface Answerer {
 
 /** The membership as the answer reads it under the place's lock. */
 interface Standing {
+  kind_id: number;
   kind_name: string;
   type: string | null;
   admission: string;
@@ -233,15 +235,16 @@ async function writePin(
   if (before === pin) return;
   // What the rule said when the curator answered, so the answer can be read
   // against it later (#863): the count and where it put the place.
-  await client.query(`
-    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-    VALUES ($1, $2, 'crowding_answered', $3, $4)
-  `, [who.experienceId, who.userId, who.logRegionId, JSON.stringify({
-    membershipId: who.membershipId, kind: standing.kind_name, type: standing.type,
-    answer, pin, before,
-    outrankedBy: standing.outranked_by, ruleCrowded: standing.rule_crowded,
-    note: who.note,
-  })]);
+  await logCurationAct(client, {
+    experienceId: who.experienceId, curatorId: who.userId, action: 'crowding_answered', regionId: who.logRegionId,
+    membership: { id: who.membershipId, kindId: standing.kind_id },
+    details: {
+      kind: standing.kind_name, type: standing.type,
+      answer, pin, before,
+      outrankedBy: standing.outranked_by, ruleCrowded: standing.rule_crowded,
+      note: who.note,
+    },
+  });
 }
 
 /** A pin written, or handed back, on a place no publish or refusal answers: its own transaction. */
@@ -306,7 +309,7 @@ async function readStanding(
   client: Pool | PoolClient, who: Pick<Answerer, 'membershipId' | 'experienceId'>,
 ): Promise<Standing | undefined> {
   const result = await client.query<Standing>(
-    `SELECT k.name AS kind_name, m.type, m.admission, m.curation_state,
+    `SELECT m.kind_id, k.name AS kind_name, m.type, m.admission, m.curation_state,
             (${membershipOfferedSql('m')}) AS offered,
             e.missing_since IS NOT NULL AS missing,
             k.crowding_limit IS NOT NULL AS rule,

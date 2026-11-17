@@ -36,6 +36,7 @@ import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { addableKinds } from './kindAddController.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { refuseOnMembership } from './membershipWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { crowdingOf } from './reviewQueueCrowding.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
 import { ADDED_BY, ADDED_BY_CURATOR, PINNED_BY } from './reviewQueuePinQuestions.js';
@@ -70,7 +71,7 @@ export async function keepOutUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { membershipId, note }: KeepOut,
+  { membershipId, note, reasonCode }: KeepOut,
   alsoUnderLock?: UnderLock,
 ): Promise<{ result?: KeptOutOfKind; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
@@ -84,8 +85,8 @@ export async function keepOutUnderLock(
 
     const locked = await lockExperience(client, experienceId);
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
-    const read = await client.query<{ kind: string; curated_fields: string[] | null }>(
-      `SELECT kd.name AS kind, m.curated_fields
+    const read = await client.query<{ kind: string; kind_id: number; curated_fields: string[] | null }>(
+      `SELECT kd.name AS kind, m.kind_id, m.curated_fields
          FROM ${MEMBERSHIPS} m
          JOIN ${KINDS} kd ON kd.id = m.kind_id
         WHERE m.id = $1 AND m.experience_id = $2 AND ${membershipOfferedSql('m')}`,
@@ -101,12 +102,11 @@ export async function keepOutUnderLock(
     // Pinned, so no run puts it back, and in the kept-out list where one click does.
     const curated = [...new Set([...(membership.curated_fields ?? []), 'admission'])];
     await refuseOnMembership(client, locked.lock, membershipId, CURATOR_REFUSAL_REASON, curated);
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'kept_out', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      membershipId, kind: membership.kind, reason: CURATOR_REFUSAL_REASON, note: note ?? null,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'kept_out', regionId: logRegionId,
+      membership: { id: membershipId, kindId: membership.kind_id }, reasonCode,
+      details: { kind: membership.kind, reason: CURATOR_REFUSAL_REASON, note: note ?? null },
+    });
     await alsoUnderLock?.(client, locked.lock);
     await client.query('COMMIT');
     return { result: { experienceId, membershipId, admission: 'refused' } };

@@ -188,8 +188,8 @@ describe('declineSourceValue', () => {
     // answer and is overwritten by the next one, so the log is where "what did we refuse
     // in July" survives.
     const log = queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(log?.sql).toContain("'declined_source'");
-    expect(String(log?.params[3])).toContain('Renamed upstream');
+    expect(log?.params[2]).toBe('declined_source');
+    expect(String(log?.params[4])).toContain('Renamed upstream');
   });
 
   it('refuses a run other than the one the card showed', async () => {
