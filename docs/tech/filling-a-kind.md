@@ -624,8 +624,8 @@ August 2026 on the museum import's own placement — 9,967 works at 1,005 venues
 monthly pageview dumps, setting automated traffic aside against each edition's own share of
 phone views, and — where the regional cut below asks who reads a work — treating a country
 Wikimedia's reader-country data does not show as unobserved, never as unread
-([ADR-0055](../decisions/0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md),
-in draft). The world-tier door asks no country question at all. It serves art museums in two ways. Read in every language, it is a second door to the
+([ADR-0055](../decisions/0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md)).
+The world-tier door asks no country question at all. It serves art museums in two ways. Read in every language, it is a second door to the
 world tier: a work below 22 sitelinks whose views reach the median of the world tier's works,
 which this year adds 16 museums, from the Musée Fabre in Montpellier with Cabanel's *The Fallen
 Angel* to the Norman Rockwell Museum with *The Problem We All Live With*
