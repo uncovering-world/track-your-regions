@@ -20,6 +20,7 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../db/index.js';
 import { lockExperience } from '../db/experienceWriter.js';
+import { logCurationAct } from '../db/curationLogWriter.js';
 import { releaseAdmissionPin } from '../controllers/experience/membershipWriter.js';
 
 const BATCH_FROM = '2026-09-14T16:33:50Z';
@@ -32,6 +33,7 @@ const NOTE_KEPT = 'kept when the batch answer of 14 September 2026 was read';
 interface BatchPin {
   placeId: number;
   membershipId: number;
+  kindId: number;
   name: string;
   kind: string;
   reason: string;
@@ -44,7 +46,9 @@ function argument(name: string): string | undefined {
 
 /** The batch's pins as they stand today: the place after any merge, the membership of the kind the batch pinned. */
 async function batchPins(): Promise<BatchPin[]> {
-  const result = await pool.query<{ place_id: number; membership_id: number; name: string; kind: string; reason: string }>(
+  const result = await pool.query<{
+    place_id: number; membership_id: number; kind_id: number; name: string; kind: string; reason: string;
+  }>(
     `WITH batch AS (
        SELECT l.experience_id, l.details->>'reason' AS reason
          FROM experience_curation_log l
@@ -56,7 +60,7 @@ async function batchPins(): Promise<BatchPin[]> {
                          ORDER BY m.id DESC LIMIT 1), b.experience_id) AS place
          FROM batch b
      )
-     SELECT n.place AS place_id, km.id AS membership_id, e.name, k.name AS kind, n.reason
+     SELECT n.place AS place_id, km.id AS membership_id, km.kind_id, e.name, k.name AS kind, n.reason
        FROM now_at n
        JOIN experiences o ON o.id = n.orig
        JOIN experience_sources s ON s.id = o.source_id
@@ -68,7 +72,8 @@ async function batchPins(): Promise<BatchPin[]> {
     [BATCH_FROM, BATCH_TO],
   );
   return result.rows.map(row => ({
-    placeId: row.place_id, membershipId: row.membership_id, name: row.name, kind: row.kind, reason: row.reason,
+    placeId: row.place_id, membershipId: row.membership_id, kindId: row.kind_id, name: row.name, kind: row.kind,
+    reason: row.reason,
   }));
 }
 
@@ -95,12 +100,11 @@ async function answer(pin: BatchPin, keep: boolean, curatorId: number): Promise<
     }
     if (!keep) await releaseAdmissionPin(client, locked.lock, pin.membershipId, { admitted: false, reason: pin.reason });
     // The membership named, as the kept-out list reads a refusal's note by it.
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, details)
-       VALUES ($1, $2, $3, $4)`,
-      [pin.placeId, curatorId, keep ? 'admission_overridden' : 'admission_pin_released',
-        JSON.stringify({ reason: pin.reason, systemNote: keep ? NOTE_KEPT : NOTE_RELEASED, kind: pin.kind, membershipId: pin.membershipId })],
-    );
+    await logCurationAct(client, {
+      experienceId: pin.placeId, curatorId, action: keep ? 'admission_overridden' : 'admission_pin_released',
+      membership: { id: pin.membershipId, kindId: pin.kindId },
+      details: { reason: pin.reason, systemNote: keep ? NOTE_KEPT : NOTE_RELEASED, kind: pin.kind },
+    });
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);

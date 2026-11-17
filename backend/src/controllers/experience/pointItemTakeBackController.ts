@@ -29,6 +29,7 @@ import type { z } from 'zod/v4';
 import type { PointItemTakenBack } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { locationIdParamSchema, takeBackPointItemBodySchema } from '../../types/index.js';
@@ -96,11 +97,10 @@ export async function takeBackPointItemUnderLock(
     const item = point.wikidata_item;
     const cleared = await releasePointItem(client, lock, locationId);
     await reopenConfirmed(client, lock, locationId, item);
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'component_item_taken_back', $3, $4)`,
-      [experienceId, userId, logRegionId, JSON.stringify({ locationId, point: point.name, item, label: point.label, cleared })],
-    );
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'component_item_taken_back', regionId: logRegionId,
+      details: { locationId, point: point.name, item, label: point.label, cleared },
+    });
     await client.query('COMMIT');
     return { result: { locationId, item, cleared } };
   } catch (error) {

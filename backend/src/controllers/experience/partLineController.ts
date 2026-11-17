@@ -47,6 +47,7 @@ import type { z } from 'zod/v4';
 import type { PartLineMoved } from '../../api/responses/parts.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockPlaces, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationActs } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import type { idParamSchema } from '../../types/index.js';
@@ -291,24 +292,23 @@ async function replaceWithin(
 
   const { keptOut, refusalId } = await settleWords(client, places, leaving, reaching, undone, caller.id);
 
-  const details = JSON.stringify({
+  const details = {
     wholeId: whole.id, fromId: from.id, toId: to.id,
     wholeName: leaving.whole_name, fromName: leaving.part_name, toName: reaching.part_name,
     reference: line.reference, lineName: line.name, recordId: line.id, refusalId,
     points: movedPoints.length, pointIds: movedPoints, keptOut,
     fromCurator: leaving.curator, toCurator: reaching.curator, undoes: body.undoes ?? null,
     note: body.note ?? null,
-  });
-  const logged = await client.query<{ id: number; experience_id: number }>(
-    `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-     SELECT place, $2, 'part_replaced', region, $3::jsonb FROM unnest($1::int[], $4::int[]) AS t(place, region)
-     RETURNING id, experience_id`,
-    [[whole.id, from.id, to.id], caller.id, details, [regions.get(whole.id), regions.get(from.id), regions.get(to.id)]],
-  );
+  };
+  // The one act on each of the three places' histories, about a record in a
+  // whole, which has no kind (ADR-0198).
+  const logged = await logCurationActs(client, [whole.id, from.id, to.id].map(place => ({
+    experienceId: place, curatorId: caller.id, action: 'part_replaced' as const, regionId: regions.get(place), details,
+  })));
   return {
     result: {
       wholeId: whole.id, fromId: from.id, toId: to.id, reference: line.reference, keptOut, points: movedPoints.length,
-      logId: logged.rows.find(row => row.experience_id === whole.id)!.id,
+      logId: logged.find(row => row.experience_id === whole.id)!.id,
     },
   };
 }

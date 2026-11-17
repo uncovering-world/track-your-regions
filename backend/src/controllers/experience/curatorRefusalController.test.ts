@@ -86,8 +86,8 @@ function makeClient(
   return client;
 }
 
-const ARRIVAL = { membership_id: 40, admission: 'admitted', curation_state: 'pending', curated_fields: [] };
-const VISIBLE = { membership_id: 40, admission: 'admitted', curation_state: 'auto' };
+const ARRIVAL = { membership_id: 40, kind_id: 4, admission: 'admitted', curation_state: 'pending', curated_fields: [] };
+const VISIBLE = { membership_id: 40, kind_id: 4, admission: 'admitted', curation_state: 'auto' };
 
 beforeEach(() => {
   mockedQuery.mockReset();
@@ -130,11 +130,11 @@ describe('refuseArrival', () => {
     expect(place?.params).toEqual([5, 7, 'a parish church']);
 
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(log?.sql).toContain("'arrival_refused'");
-    expect(log?.params?.[2]).toBe(12);
-    // The membership kept out rides in the details, which the kept-out card reads (#1264).
-    expect(JSON.parse(log?.params?.[3] as string))
-      .toEqual({ membershipId: 40, reason: CURATOR_REFUSAL_REASON, note: 'a parish church' });
+    expect(log?.params[2]).toBe('arrival_refused');
+    expect(log?.params?.[3]).toBe(12);
+    // The membership kept out and its kind ride in the details, which the kept-out card reads (#1264, #863).
+    expect(JSON.parse(log?.params?.[4] as string))
+      .toEqual({ membershipId: 40, kindId: 4, reason: CURATOR_REFUSAL_REASON, note: 'a parish church' });
 
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'refused', reason: CURATOR_REFUSAL_REASON });
@@ -190,9 +190,9 @@ describe('refuseContents', () => {
     expect(links?.sql).toContain("SET refused_at = NOW(), curation_state = 'pending'");
 
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(log?.sql).toContain("'contents_refused'");
-    expect(JSON.parse(log?.params?.[3] as string)).toEqual({
-      locations: 1, treasureLinks: 1, note: null,
+    expect(log?.params[2]).toBe('contents_refused');
+    expect(JSON.parse(log?.params?.[4] as string)).toEqual({
+      locations: 1, treasureLinks: 1, note: null, membershipId: 40, kindId: 4,
     });
     expect(res.json).toHaveBeenCalledWith({
       experienceId: 5, locationsRefused: 1, treasureLinksRefused: 1,
@@ -258,7 +258,7 @@ describe('refuseContents', () => {
     expect(links?.sql).toContain('ANY($2::int[])');
     expect(links?.params).toEqual([5, [88, 89], 40]);
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(JSON.parse(log?.params?.[3] as string)).toMatchObject({ treasureIds: [88, 89], locations: 0 });
+    expect(JSON.parse(log?.params?.[4] as string)).toMatchObject({ treasureIds: [88, 89], locations: 0 });
   });
 
   it('asks the database for the precondition rather than restating it', async () => {

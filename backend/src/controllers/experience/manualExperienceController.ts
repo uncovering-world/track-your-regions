@@ -18,6 +18,8 @@ import {
 import { insertCuratedExperience } from '../../db/experienceWriter.js';
 import { insertCuratedPoint } from './experienceLocationWriter.js';
 import { insertManualMembership } from './membershipWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
+import type { CurationReasonCode } from '@tyr/shared/curationLog';
 import { refusalFor } from './curatedUrlRefusal.js';
 
 interface CreateManualBody {
@@ -34,6 +36,7 @@ interface CreateManualBody {
   kindId?: unknown;
   websiteUrl?: unknown;
   wikipediaUrl?: unknown;
+  reasonCode?: CurationReasonCode;
 }
 
 function validateCreateManualInput(body: CreateManualBody): string | null {
@@ -108,7 +111,8 @@ async function insertManualExperience(
   // moment it is created, and visible
   // from the moment it exists: see the function comment above. A person's
   // judgement does not depend on the source's gate, so nothing here reads it.
-  await insertManualMembership(client, created, sourceId, typeof body.type === 'string' && body.type !== '' ? body.type : null);
+  const membership = await insertManualMembership(
+    client, created, sourceId, typeof body.type === 'string' && body.type !== '' ? body.type : null);
 
   const locationId = await insertCuratedPoint(client, created, body.name, body.longitude, body.latitude);
 
@@ -122,15 +126,12 @@ async function insertManualExperience(
     VALUES ($1, $2, 'manual')
   `, [locationId, body.regionId]);
 
-  await client.query(`
-    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-    VALUES ($1, $2, 'created', $3, $4)
-  `, [experienceId, userId, body.regionId, JSON.stringify({
-    name: body.name,
-    type: body.type,
-    kindId: body.kindId,
-    sourceId,
-  })]);
+  // The kind the place was created in is its membership's, which the writer names.
+  await logCurationAct(client, {
+    experienceId, curatorId: userId, action: 'created', regionId: body.regionId as number,
+    membership, reasonCode: body.reasonCode,
+    details: { name: body.name, type: body.type, sourceId },
+  });
 
   return { experienceId, externalId };
 }

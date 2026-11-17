@@ -52,6 +52,7 @@ import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience, type UnderLock } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
+import { logCurationAct, membershipRead } from '../../db/curationLogWriter.js';
 import {
   clearAnsweredHeldPointers, publishFactsOnMembership, publishMembership, publishTypeOnMembership,
 } from './membershipWriter.js';
@@ -175,6 +176,19 @@ function selectionOf({ heldFields, heldParts }: PublishRequest): HeldSelection |
 function scopeOf({ contentsOnly, fieldsOnly }: { contentsOnly: boolean; fieldsOnly?: true }): string {
   if (fieldsOnly) return 'fields';
   return contentsOnly ? 'contents' : 'object';
+}
+
+/**
+ * The mark of a publish one click made over many places (#863), with the run
+ * it released: the proposal it answered, or the run that brought the arrival.
+ * Unread contents alone name no run, and a considered publish carries no mark.
+ */
+function bulkMark(
+  bulk: boolean, heldFrom: number | null, membership: { curation_state: string; first_seen_sync_log_id: number | null },
+): { bulk?: { syncLogId: number | null } } {
+  if (!bulk) return {};
+  const arrivalRun = membership.curation_state === 'pending' ? membership.first_seen_sync_log_id : null;
+  return { bulk: { syncLogId: heldFrom ?? arrivalRun } };
 }
 
 interface PublishRefusal {
@@ -470,7 +484,9 @@ async function planHeldAnswer(
  * batch once after its loop. `alsoUnderLock` is a caller's own writes in the
  * same transaction, before it commits: a crowding pin the publish answers
  * (ADR-0180). `arrivalOnly` refuses, under the lock, a membership that is no
- * longer an arrival.
+ * longer an arrival. `bulk` marks a publish one click made over many places
+ * (a source's whole backlog, a selection of the review feed), so its log entry
+ * is told from a considered one (#863).
  */
 export async function publishUnderLock(
   experienceId: number,
@@ -478,7 +494,7 @@ export async function publishUnderLock(
   logRegionId: number | null,
   body: PublishRequest,
   alsoUnderLock?: UnderLock,
-  { arrivalOnly = false }: { arrivalOnly?: boolean } = {},
+  { arrivalOnly = false, bulk = false }: { arrivalOnly?: boolean; bulk?: boolean } = {},
 ): Promise<{ result?: PublishResult; refusal?: PublishRefusal }> {
   const { locationIds, treasureIds, contentsOnly: bareContentsOnly, expectedSyncLogId } = body;
   const selection = selectionOf(body);
@@ -545,7 +561,8 @@ export async function publishUnderLock(
       // named (#1264), or the one `membershipToAnswerSql` picks where it named
       // none.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url, ${shownByPartsSql('e')} AS shown_by_parts,
-              m.id AS membership_id, m.curation_state, m.admission, m.facts AS membership_facts,
+              m.id AS membership_id, m.kind_id, m.first_seen_sync_log_id,
+              m.curation_state, m.admission, m.facts AS membership_facts,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
@@ -669,32 +686,34 @@ export async function publishUnderLock(
     const contents = await contentsOf(client, locked.lock, { ...release, applied, membershipId, decidedBy: userId });
     const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } = contents;
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'published', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      scope: scopeOf({ contentsOnly, fieldsOnly }),
-      fields: applied,
-      claimedFieldsSkipped,
-      // The parts written to, each with what it applied and what it left
-      // claimed, and the ones the proposal named that no row answered to: the
-      // record a person reconstructs a decision from, months later.
-      parts: appliedParts,
-      partsNotFound,
-      fromSyncLogId: heldFrom,
-      // How much of the card this answer did not reach. A trail that recorded
-      // only what landed would read the same for "published the whole proposal"
-      // and "published one row of six", which is the difference a person
-      // reconstructing the decision months later is looking for.
-      heldLeftOpen,
-      locations: locationsPublished,
-      treasureLinks: treasureLinksPublished,
-      treasures: treasuresPublished,
-      // A reader asking why a pin moved has this row and nothing else: the run
-      // that proposed the move is a different row in a different table, and says
-      // nothing about when it took effect.
-      withdrawalsReleased,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'published', regionId: logRegionId,
+      membership: membershipRead(before),
+      ...bulkMark(bulk, heldFrom, before),
+      details: {
+        scope: scopeOf({ contentsOnly, fieldsOnly }),
+        fields: applied,
+        claimedFieldsSkipped,
+        // The parts written to, each with what it applied and what it left
+        // claimed, and the ones the proposal named that no row answered to: the
+        // record a person reconstructs a decision from, months later.
+        parts: appliedParts,
+        partsNotFound,
+        fromSyncLogId: heldFrom,
+        // How much of the card this answer did not reach. A trail that recorded
+        // only what landed would read the same for "published the whole proposal"
+        // and "published one row of six", which is the difference a person
+        // reconstructing the decision months later is looking for.
+        heldLeftOpen,
+        locations: locationsPublished,
+        treasureLinks: treasureLinksPublished,
+        treasures: treasuresPublished,
+        // A reader asking why a pin moved has this row and nothing else: the run
+        // that proposed the move is a different row in a different table, and says
+        // nothing about when it took effect.
+        withdrawalsReleased,
+      },
+    });
     await alsoUnderLock?.(client, locked.lock);
 
     await client.query('COMMIT');

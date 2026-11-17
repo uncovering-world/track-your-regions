@@ -42,6 +42,7 @@ import { addKindWithin, INSCRIBED_KIND_ID, kindSourceSql } from './kindAddContro
 import type { AnswerRefusal } from './lifecycleController.js';
 import { refuseOnMembership } from './membershipWriter.js';
 import { publishUnderLock } from './publishController.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 
 type ArrivalKindBody = z.output<typeof arrivalKindBodySchema>;
 
@@ -101,7 +102,7 @@ export async function moveArrivalUnderLock(
   userId: number,
   logRegionId: number | null,
   targetSourceId: number,
-  { membershipId: namedMembershipId, kindId, type, stays, note }: ArrivalKindBody,
+  { membershipId: namedMembershipId, kindId, type, stays, note, reasonCode }: ArrivalKindBody,
 ): Promise<{ result?: Moved; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -143,21 +144,24 @@ export async function moveArrivalUnderLock(
       const curated = [...new Set([...((arrival.curated_fields as string[]) ?? []), 'admission'])];
       await refuseOnMembership(client, locked.lock, arrivalMembershipId, CURATOR_REFUSAL_REASON, curated);
       await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
-      await client.query(`
-        INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-        VALUES ($1, $2, 'arrival_refused', $3, $4)
-      `, [experienceId, userId, logRegionId, JSON.stringify({
-        membershipId: arrivalMembershipId, reason: CURATOR_REFUSAL_REASON, note: note ?? null,
-        movedTo: { membershipId: added.membershipId, kindId, kind: added.kind, type: type ?? null },
-      })]);
+      // Answered with another kind, the arrival's why is that it is not of its own.
+      await logCurationAct(client, {
+        experienceId, curatorId: userId, action: 'arrival_refused', regionId: logRegionId,
+        membership: { id: arrivalMembershipId, kindId: arrival.kind_id as number }, reasonCode: 'not-this-kind',
+        details: {
+          reason: CURATOR_REFUSAL_REASON, note: note ?? null,
+          movedTo: { membershipId: added.membershipId, kindId, kind: added.kind, type: type ?? null },
+        },
+      });
     }
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'kind_added', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      membershipId: added.membershipId, kindId, kind: added.kind, type: type ?? null, note: note ?? null,
-      fromArrival: { membershipId: arrivalMembershipId, kindId: arrival.kind_id as number, kind: fromKind, stays },
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'kind_added', regionId: logRegionId,
+      membership: { id: added.membershipId, kindId }, reasonCode,
+      details: {
+        kind: added.kind, type: type ?? null, note: note ?? null,
+        fromArrival: { membershipId: arrivalMembershipId, kindId: arrival.kind_id as number, kind: fromKind, stays },
+      },
+    });
 
     await client.query('COMMIT');
     return {

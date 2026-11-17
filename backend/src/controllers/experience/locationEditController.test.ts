@@ -285,8 +285,8 @@ describe('editLocation', () => {
     const log = only(queries, 'experience_curation_log');
     // The action is written into the statement rather than bound, the way the
     // publication and admission trails write theirs — so it is asserted there.
-    expect(log.sql).toContain("'location_edited'");
-    const details = JSON.parse(String(log.params[3]));
+    expect(log.params[2]).toBe('location_edited');
+    const details = JSON.parse(String(log.params[4]));
     expect(details).toMatchObject({
       locationId: 31,
       name: { old: 'Wing B', new: 'East wing' },

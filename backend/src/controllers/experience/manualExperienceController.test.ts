@@ -25,6 +25,7 @@ const SOURCE_ID = 3;
 const REGION_ID = 20;
 const EXPERIENCE_ID = 555;
 const LOCATION_ID = 777;
+const MEMBERSHIP_ID = 888;
 
 const BODY = {
   name: 'Hand-placed Overlook',
@@ -43,9 +44,10 @@ function makeRes() {
  * Queues what `pool.query` answers. The admin role short-circuits
  * `checkCuratorScope` before it asks the database anything, so the only
  * `pool.query` call `createManualExperience` makes is the kind's source lookup.
- * `client.query` then answers the two RETURNING-id inserts the rest of the
- * write depends on, and `{ rows: [] }` for everything else (BEGIN, the two
- * link inserts, the audit log insert, COMMIT).
+ * `client.query` then answers the three RETURNING inserts the rest of the
+ * write depends on — the place, its membership and its point — and
+ * `{ rows: [] }` for everything else (BEGIN, the two link inserts, the audit
+ * log insert, COMMIT).
  */
 function queueQueries() {
   mockPoolQuery.mockReset();
@@ -58,6 +60,9 @@ function queueQueries() {
     }
     if (typeof sql === 'string' && sql.includes('INSERT INTO experience_locations')) {
       return { rows: [{ id: LOCATION_ID }] };
+    }
+    if (typeof sql === 'string' && sql.includes('INSERT INTO source_records')) {
+      return { rows: [{ id: MEMBERSHIP_ID, kind_id: KIND_ID }] };
     }
     return { rows: [] };
   });

@@ -89,7 +89,7 @@ function makeClient(
 }
 
 const ARRIVAL = { membership_id: 40, admission: 'admitted', curation_state: 'pending' };
-const VISIBLE = { membership_id: 40, admission: 'admitted', curation_state: 'auto' };
+const VISIBLE = { membership_id: 40, kind_id: 4, admission: 'admitted', curation_state: 'auto' };
 
 beforeEach(() => {
   mockedQuery.mockReset();
@@ -184,13 +184,13 @@ describe('unrefuseContents', () => {
       { params: { id: '5' }, user: CURATOR, body: { note: 'mis-click' } } as never, makeRes() as never);
 
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(log?.sql).toContain("'contents_unrefused'");
-    expect(log?.params?.slice(0, 3)).toEqual([5, 7, 12]);
+    expect(log?.params?.slice(0, 4)).toEqual([5, 7, 'contents_unrefused', 12]);
     // The ids always, where the refusal recorded them only when its caller named
     // them: the statement returns exactly the rows it touched, and this row is
     // the only place a part that has come and gone can be followed.
-    expect(JSON.parse(log?.params?.[3] as string)).toEqual({
+    expect(JSON.parse(log?.params?.[4] as string)).toEqual({
       locations: 2, treasureLinks: 1, locationIds: [31, 32], treasureIds: [88], note: 'mis-click',
+      membershipId: 40, kindId: 4,
     });
   });
 

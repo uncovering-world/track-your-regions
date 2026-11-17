@@ -61,6 +61,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import { logCurationActs } from '../../db/curationLogWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { offeredLocationSql, placeOrPartOfferedSql, publishedContentSql } from '../../db/readerPredicates.js';
@@ -356,25 +357,27 @@ function wikidataPartsSql(scope: string): string {
  */
 async function answerFromWikidata(client: PoolClient, among: readonly number[] | null): Promise<number> {
   const scope = among === null ? 'true' : '(p.place_a = ANY($1::int[]) OR p.place_b = ANY($1::int[]))';
-  const result = await client.query(
-    `WITH answered AS (
-       UPDATE experience_merge_proposals p
-          SET answer = 'part_of', part_id = d.part_id, answered_by = NULL, answered_at = NOW(),
-              answered_by_catalogue = true, answer_statement = d.statement
-         FROM (${wikidataPartsSql(scope)}) d
-        WHERE p.id = d.id AND p.answer IS NULL
-          AND pg_try_advisory_xact_lock(hashtext('merge_proposal:' || p.id))
-        RETURNING p.id, p.place_a, p.place_b, p.part_id, p.answer_statement
-     )
-     INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-     SELECT a.place_a, NULL, 'merge_proposal_answered', NULL,
-            jsonb_build_object('proposalId', a.id, 'otherId', a.place_b, 'otherName', b.name, 'answer', 'part_of',
-                               'partId', a.part_id, 'catalogue', 'wikidata', 'statement', a.answer_statement)
-       FROM answered a
-       JOIN experiences b ON b.id = a.place_b`,
+  const answered = await client.query<{
+    id: number; place_a: number; place_b: number; other_name: string; part_id: number; answer_statement: unknown;
+  }>(
+    `UPDATE experience_merge_proposals p
+        SET answer = 'part_of', part_id = d.part_id, answered_by = NULL, answered_at = NOW(),
+            answered_by_catalogue = true, answer_statement = d.statement
+       FROM (${wikidataPartsSql(scope)}) d
+      WHERE p.id = d.id AND p.answer IS NULL
+        AND pg_try_advisory_xact_lock(hashtext('merge_proposal:' || p.id))
+      RETURNING p.id, p.place_a, p.place_b, (SELECT b.name FROM experiences b WHERE b.id = p.place_b) AS other_name,
+                p.part_id, p.answer_statement`,
     among === null ? [] : [among],
   );
-  return result.rowCount ?? 0;
+  await logCurationActs(client, answered.rows.map(pair => ({
+    experienceId: pair.place_a, curatorId: null, action: 'merge_proposal_answered' as const,
+    details: {
+      proposalId: pair.id, otherId: pair.place_b, otherName: pair.other_name, answer: 'part_of',
+      partId: pair.part_id, catalogue: 'wikidata', statement: pair.answer_statement,
+    },
+  })));
+  return answered.rows.length;
 }
 
 /**

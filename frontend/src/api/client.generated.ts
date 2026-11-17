@@ -3255,6 +3255,17 @@ export interface SiteFindsResponse {
   total: number;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type CreateManualExperienceBodyReasonCode = typeof CreateManualExperienceBodyReasonCode[keyof typeof CreateManualExperienceBodyReasonCode];
+
+
+export const CreateManualExperienceBodyReasonCode = {
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
+
 export interface CreateManualExperienceBody {
   name: string;
   /** @maxLength 10000 */
@@ -3296,6 +3307,8 @@ export interface CreateManualExperienceBody {
   kindId: number;
   websiteUrl?: string;
   wikipediaUrl?: string;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: CreateManualExperienceBodyReasonCode;
 }
 
 /**
@@ -3312,6 +3325,24 @@ export interface ManualExperienceCreated {
   externalId: string;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type RejectExperienceBodyReasonCode = typeof RejectExperienceBodyReasonCode[keyof typeof RejectExperienceBodyReasonCode];
+
+
+export const RejectExperienceBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  'wrong-place': 'wrong-place',
+  duplicate: 'duplicate',
+  gone: 'gone',
+  'source-text': 'source-text',
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
+
 export interface RejectExperienceBody {
   /**
      * @maximum 2147483647
@@ -3320,6 +3351,8 @@ export interface RejectExperienceBody {
   regionId: number;
   /** @maxLength 1000 */
   reason?: string;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: RejectExperienceBodyReasonCode;
 }
 
 /**
@@ -3339,13 +3372,51 @@ export interface RegionMembershipResult {
   regionId: number;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type UnrejectExperienceBodyReasonCode = typeof UnrejectExperienceBodyReasonCode[keyof typeof UnrejectExperienceBodyReasonCode];
+
+
+export const UnrejectExperienceBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  'wrong-place': 'wrong-place',
+  duplicate: 'duplicate',
+  gone: 'gone',
+  'source-text': 'source-text',
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
+
 export interface UnrejectExperienceBody {
   /**
      * @maximum 2147483647
      * @exclusiveMinimum 0
      */
   regionId: number;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: UnrejectExperienceBodyReasonCode;
 }
+
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type AssignExperienceBodyReasonCode = typeof AssignExperienceBodyReasonCode[keyof typeof AssignExperienceBodyReasonCode];
+
+
+export const AssignExperienceBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  'wrong-place': 'wrong-place',
+  duplicate: 'duplicate',
+  gone: 'gone',
+  'source-text': 'source-text',
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
 
 export interface AssignExperienceBody {
   /**
@@ -3353,6 +3424,8 @@ export interface AssignExperienceBody {
      * @exclusiveMinimum 0
      */
   regionId: number;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: AssignExperienceBodyReasonCode;
 }
 
 export type EditExperienceBodyCommemoratesItem = {
@@ -6367,6 +6440,23 @@ export const ExperienceAdmissionBodyDecision = {
   override: 'override',
 } as const;
 
+/**
+ * Why the curator acted, kept in the log entry the act writes. A confirmation takes a refusal's reason, a put-back an addition's.
+ */
+export type ExperienceAdmissionBodyReasonCode = typeof ExperienceAdmissionBodyReasonCode[keyof typeof ExperienceAdmissionBodyReasonCode];
+
+
+export const ExperienceAdmissionBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  gone: 'gone',
+  duplicate: 'duplicate',
+  'wrong-place': 'wrong-place',
+  other: 'other',
+  'missing-from-rule': 'missing-from-rule',
+} as const;
+
 export interface ExperienceAdmissionBody {
   decision: ExperienceAdmissionBodyDecision;
   /** @maxLength 1000 */
@@ -6377,6 +6467,8 @@ export interface ExperienceAdmissionBody {
      */
   membershipId?: number;
   remember?: boolean;
+  /** Why the curator acted, kept in the log entry the act writes. A confirmation takes a refusal's reason, a put-back an addition's. */
+  reasonCode?: ExperienceAdmissionBodyReasonCode;
 }
 
 /**
@@ -6798,6 +6890,17 @@ export interface PlaceKindStandings {
   addable: AddableKind[];
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type AddToKindBodyReasonCode = typeof AddToKindBodyReasonCode[keyof typeof AddToKindBodyReasonCode];
+
+
+export const AddToKindBodyReasonCode = {
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
+
 export interface AddToKindBody {
   /**
      * @maximum 2147483647
@@ -6811,6 +6914,8 @@ export interface AddToKindBody {
   type?: string;
   /** @maxLength 1000 */
   note?: string;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: AddToKindBodyReasonCode;
 }
 
 /**
@@ -6835,6 +6940,22 @@ export interface KindAddedToPlace {
   kindId: number;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type KeepOutOfKindBodyReasonCode = typeof KeepOutOfKindBodyReasonCode[keyof typeof KeepOutOfKindBodyReasonCode];
+
+
+export const KeepOutOfKindBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  gone: 'gone',
+  duplicate: 'duplicate',
+  'wrong-place': 'wrong-place',
+  other: 'other',
+} as const;
+
 export interface KeepOutOfKindBody {
   /**
      * @maximum 2147483647
@@ -6843,6 +6964,8 @@ export interface KeepOutOfKindBody {
   membershipId: number;
   /** @maxLength 1000 */
   note?: string;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: KeepOutOfKindBodyReasonCode;
 }
 
 /**
@@ -6969,6 +7092,18 @@ export interface AcceptSourceResult {
   fromSyncLogId: number;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type DeclineSourceBodyReasonCode = typeof DeclineSourceBodyReasonCode[keyof typeof DeclineSourceBodyReasonCode];
+
+
+export const DeclineSourceBodyReasonCode = {
+  'source-text': 'source-text',
+  'wrong-place': 'wrong-place',
+  other: 'other',
+} as const;
+
 export interface DeclineSourceBody {
   /**
      * @minItems 1
@@ -6981,6 +7116,8 @@ export interface DeclineSourceBody {
      * @exclusiveMinimum 0
      */
   expectedSyncLogId: number;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: DeclineSourceBodyReasonCode;
 }
 
 /**
@@ -7337,6 +7474,22 @@ export interface PointNamesakesAnswer {
   asked: boolean;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type RefuseArrivalBodyReasonCode = typeof RefuseArrivalBodyReasonCode[keyof typeof RefuseArrivalBodyReasonCode];
+
+
+export const RefuseArrivalBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  gone: 'gone',
+  duplicate: 'duplicate',
+  'wrong-place': 'wrong-place',
+  other: 'other',
+} as const;
+
 export interface RefuseArrivalBody {
   /** @maxLength 1000 */
   note?: string;
@@ -7345,6 +7498,8 @@ export interface RefuseArrivalBody {
      * @exclusiveMinimum 0
      */
   membershipId?: number;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: RefuseArrivalBodyReasonCode;
 }
 
 /**
@@ -7361,6 +7516,17 @@ export interface RefuseArrivalResult {
   reason: string;
 }
 
+/**
+ * Why the curator acted, kept in the log entry the act writes.
+ */
+export type ArrivalKindBodyReasonCode = typeof ArrivalKindBodyReasonCode[keyof typeof ArrivalKindBodyReasonCode];
+
+
+export const ArrivalKindBodyReasonCode = {
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
+
 export interface ArrivalKindBody {
   /**
      * @maximum 2147483647
@@ -7374,6 +7540,8 @@ export interface ArrivalKindBody {
   type?: string;
   /** @maxLength 1000 */
   note?: string;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: ArrivalKindBodyReasonCode;
   /**
      * @maximum 2147483647
      * @exclusiveMinimum 0
@@ -9398,6 +9566,46 @@ export type GetExperiencesByIdFindLinksCandidatesParams = {
    */
   q: string;
 };
+
+export type DeleteExperiencesByIdAssignByRegionIdParams = {
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: DeleteExperiencesByIdAssignByRegionIdReasonCode;
+};
+
+export type DeleteExperiencesByIdAssignByRegionIdReasonCode = typeof DeleteExperiencesByIdAssignByRegionIdReasonCode[keyof typeof DeleteExperiencesByIdAssignByRegionIdReasonCode];
+
+
+export const DeleteExperiencesByIdAssignByRegionIdReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  'wrong-place': 'wrong-place',
+  duplicate: 'duplicate',
+  gone: 'gone',
+  'source-text': 'source-text',
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
+
+export type DeleteExperiencesByIdRemoveFromRegionByRegionIdParams = {
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: DeleteExperiencesByIdRemoveFromRegionByRegionIdReasonCode;
+};
+
+export type DeleteExperiencesByIdRemoveFromRegionByRegionIdReasonCode = typeof DeleteExperiencesByIdRemoveFromRegionByRegionIdReasonCode[keyof typeof DeleteExperiencesByIdRemoveFromRegionByRegionIdReasonCode];
+
+
+export const DeleteExperiencesByIdRemoveFromRegionByRegionIdReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  'wrong-place': 'wrong-place',
+  duplicate: 'duplicate',
+  gone: 'gone',
+  'source-text': 'source-text',
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+} as const;
 
 export type GetExperiencesByIdPartCandidatesParams = {
   role: GetExperiencesByIdPartCandidatesRole;
@@ -14871,12 +15079,20 @@ return apiFetch<PublishResult>(getPostExperiencesByIdPublishUrl(id),
 
 
 export const getDeleteExperiencesByIdAssignByRegionIdUrl = (id: number,
-    regionId: number,) => {
+    regionId: number,
+    params?: DeleteExperiencesByIdAssignByRegionIdParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/experiences/${encodeURIComponent(String(id))}/assign/${encodeURIComponent(String(regionId))}`
+  return stringifiedParams.length > 0 ? `/api/experiences/${encodeURIComponent(String(id))}/assign/${encodeURIComponent(String(regionId))}?${stringifiedParams}` : `/api/experiences/${encodeURIComponent(String(id))}/assign/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -14884,9 +15100,10 @@ export const getDeleteExperiencesByIdAssignByRegionIdUrl = (id: number,
  * @summary Undo a hand-made assignment of an experience to a region
  */
 export const deleteExperiencesByIdAssignByRegionId = async (id: number,
-    regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<RegionMembershipResult> => {
+    regionId: number,
+    params?: DeleteExperiencesByIdAssignByRegionIdParams, options?: Parameters<typeof apiFetch>[1]): Promise<RegionMembershipResult> => {
 
-  return apiFetch<RegionMembershipResult>(getDeleteExperiencesByIdAssignByRegionIdUrl(id,regionId),
+  return apiFetch<RegionMembershipResult>(getDeleteExperiencesByIdAssignByRegionIdUrl(id,regionId,params),
   {
     ...options,
     method: 'DELETE'
@@ -14898,12 +15115,20 @@ export const deleteExperiencesByIdAssignByRegionId = async (id: number,
 
 
 export const getDeleteExperiencesByIdRemoveFromRegionByRegionIdUrl = (id: number,
-    regionId: number,) => {
+    regionId: number,
+    params?: DeleteExperiencesByIdRemoveFromRegionByRegionIdParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/experiences/${encodeURIComponent(String(id))}/remove-from-region/${encodeURIComponent(String(regionId))}`
+  return stringifiedParams.length > 0 ? `/api/experiences/${encodeURIComponent(String(id))}/remove-from-region/${encodeURIComponent(String(regionId))}?${stringifiedParams}` : `/api/experiences/${encodeURIComponent(String(id))}/remove-from-region/${encodeURIComponent(String(regionId))}`
 }
 
 /**
@@ -14911,9 +15136,10 @@ export const getDeleteExperiencesByIdRemoveFromRegionByRegionIdUrl = (id: number
  * @summary Remove an experience from a region however it was placed, keeping any rejection
  */
 export const deleteExperiencesByIdRemoveFromRegionByRegionId = async (id: number,
-    regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<RegionMembershipResult> => {
+    regionId: number,
+    params?: DeleteExperiencesByIdRemoveFromRegionByRegionIdParams, options?: Parameters<typeof apiFetch>[1]): Promise<RegionMembershipResult> => {
 
-  return apiFetch<RegionMembershipResult>(getDeleteExperiencesByIdRemoveFromRegionByRegionIdUrl(id,regionId),
+  return apiFetch<RegionMembershipResult>(getDeleteExperiencesByIdRemoveFromRegionByRegionIdUrl(id,regionId,params),
   {
     ...options,
     method: 'DELETE'

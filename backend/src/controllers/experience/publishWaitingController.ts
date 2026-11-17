@@ -120,7 +120,8 @@ export async function publishWaiting(
       // whichever of the place's the single-card picker would choose.
       const membershipId = row.membership_id as number;
       const body = row.kind === 'arrival' ? { membershipId } : { contentsOnly: true as const, membershipId };
-      outcome = await publishUnderLock(experienceId, userId, logRegionId, body);
+      // One click over a whole source's backlog: each entry is marked bulk (#863).
+      outcome = await publishUnderLock(experienceId, userId, logRegionId, body, undefined, { bulk: true });
     } catch (error) {
       // Logged here because nothing else will: on the single-object path the throw
       // propagates to `errorHandler`, which logs it, and swallowing it to keep the

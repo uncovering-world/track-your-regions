@@ -18,6 +18,7 @@ import {
 } from '../../types/urlSafety.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 import { followTheirPoints } from '../../db/partFieldsWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS, shownMembershipSql } from '../../db/membership.js';
 import { setTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { refusalFor } from './curatedUrlRefusal.js';
@@ -406,11 +407,14 @@ export async function editExperience(
     const typeEdit = payload.updates.find(u => u.column === 'type');
     const placePayload = { ...payload, updates: payload.updates.filter(u => u.column !== 'type') };
     const shownSource = typeSource ?? await shownMembershipSource(client, experienceId);
+    // A type edit is about the membership it writes; the place's own fields are about no one kind.
+    let typeMembership: { id: number; kindId: number } | undefined;
     if (typeEdit && shownSource !== undefined) {
       const typeWrite = await setTypeOnSourceMembership(
         client, locked.lock, shownSource, clearedToNull(typeEdit.value), 'add',
       );
       before.type = typeWrite?.old ?? null;
+      typeMembership = typeWrite?.membership;
     }
     const built = buildUpdateQuery(placePayload, (before.curated_fields as string[]) || []);
     newCurated = built.newCurated;
@@ -430,10 +434,9 @@ export async function editExperience(
       client, locked.lock, userId, editedFields(payload), typeEdit ? shownSource : undefined,
     );
     const details = { ...buildEditAuditDetails(payload, before), ...heldSettledDetails(heldSettled) };
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'edited', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify(details)]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'edited', regionId: logRegionId, membership: typeMembership, details,
+    });
     await client.query('COMMIT');
   } catch (error) {
     // A client whose ROLLBACK also failed must be destroyed, not pooled: it

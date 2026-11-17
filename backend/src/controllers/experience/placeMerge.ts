@@ -25,6 +25,7 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockPartsAndRegionKeys, lockTwoExperiences, markFolded, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationActs } from '../../db/curationLogWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { moveConflictDecisions } from './conflictDecisions.js';
@@ -331,11 +332,14 @@ async function logOnBoth(
   const details = {
     mergeId, survivorId, foldedId, survivorName, foldedName, kinds, ...(reason ? { reason } : {}), ...(detail ?? {}),
   };
-  await client.query(
-    `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-     VALUES ($1, $3, $4, $6, $5), ($2, $3, $4, $6, $5)`,
-    [survivorId, foldedId, userId, action, JSON.stringify(details), regionId],
-  );
+  // A merge may be the catalogue's own and name no curator (ADR-0086); its undo is always a curator's.
+  const places = [survivorId, foldedId];
+  if (action === 'merged') {
+    await logCurationActs(client, places.map(place => ({ experienceId: place, curatorId: userId, action, regionId, details })));
+    return;
+  }
+  if (userId === null) throw new Error('A merge is undone by a curator, who is named');
+  await logCurationActs(client, places.map(place => ({ experienceId: place, curatorId: userId, action, regionId, details })));
 }
 
 /**

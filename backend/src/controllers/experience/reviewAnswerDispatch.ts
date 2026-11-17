@@ -96,7 +96,19 @@ type Answerer = {
   scopedSourceIds?: readonly number[];
   /** The membership the row named (#1264), or null for the one each writer picks. */
   membershipId: number | null;
+  /**
+   * Whether the answer is one of a selection of many (#863). Every arm that
+   * publishes, turns away, puts back or answers a source's value marks its log
+   * entry bulk then, with the row's run, so a considered act is told from a
+   * batch's in one query.
+   */
+  bulk?: boolean;
 };
+
+/** The bulk mark an arm's writer takes: the row's run, on an answer over a selection of many. */
+function bulkOf(who: Answerer): { syncLogId: number | null } | undefined {
+  return who.bulk ? { syncLogId: who.runId } : undefined;
+}
 
 /** Answer one row; the caller has resolved the scope and catches what throws. */
 export async function answerRow(
@@ -189,10 +201,10 @@ function publishBodyFor(subs: WaitingSubs, runId: number | null) {
 }
 
 async function acceptWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome> {
-  const { experienceId, userId, logRegionId, runId, membershipId } = who;
+  const { experienceId, userId, logRegionId, runId, membershipId, bulk } = who;
   const outcome = await publishUnderLock(experienceId, userId, logRegionId, {
     ...publishBodyFor(subs, runId), ...named(membershipId),
-  });
+  }, undefined, { bulk });
   if (outcome.refusal) return refusedBy(outcome.refusal);
   const r = outcome.result!;
   // `fields` only where the row held a proposal: the report tells an arrival,
@@ -213,13 +225,17 @@ async function acceptWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome>
 async function rejectWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome> {
   const { experienceId, userId, logRegionId, runId, membershipId } = who;
   if (subs.arrival) {
-    const outcome = await refuseArrivalUnderLock(experienceId, userId, logRegionId, named(membershipId));
+    const outcome = await refuseArrivalUnderLock(experienceId, userId, logRegionId, {
+      ...named(membershipId), bulk: bulkOf(who),
+    });
     return outcome.refusal ? refusedBy(outcome.refusal) : { did: { published: 0 } };
   }
   const did: Did = {};
   let placement: Placement | undefined;
   if (subs.held) {
-    const outcome = await refuseUnderLock(experienceId, userId, logRegionId, null, runId as number, membershipId);
+    const outcome = await refuseUnderLock(
+      experienceId, userId, logRegionId, null, runId as number, membershipId, bulkOf(who),
+    );
     if (outcome.refusal) return refusedBy(outcome.refusal);
     // Every held row refused, the object's own fields and the parts' alike —
     // one count, as the accept side counts what it applied. The point that is
@@ -231,7 +247,9 @@ async function rejectWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome>
     placement = placementOf(outcome.result!);
   }
   if (subs.contents) {
-    const outcome = await refuseContentsUnderLock(experienceId, userId, logRegionId, named(membershipId));
+    const outcome = await refuseContentsUnderLock(experienceId, userId, logRegionId, {
+      ...named(membershipId), bulk: bulkOf(who),
+    });
     // A held refusal that landed is an answer even where the contents moved
     // in between; only a row with nothing else to answer reports the miss.
     if (outcome.refusal && !subs.held) return refusedBy(outcome.refusal);
@@ -246,7 +264,7 @@ async function answerConflict(who: Answerer, answer: Answer): Promise<Outcome> {
   const { experienceId, userId, logRegionId, runId } = who;
   if (runId === null) return refused(409, RELOAD_RUN);
   if (answer === 'accept') {
-    const outcome = await acceptSourceUnderLock(experienceId, userId, logRegionId, 'all', runId);
+    const outcome = await acceptSourceUnderLock(experienceId, userId, logRegionId, 'all', runId, bulkOf(who));
     if (outcome.refusal) return refusedBy(outcome.refusal);
     const r = outcome.result!;
     return {
@@ -254,7 +272,7 @@ async function answerConflict(who: Answerer, answer: Answer): Promise<Outcome> {
       placement: placementOf(r),
     };
   }
-  const outcome = await declineSourceUnderLock(experienceId, userId, logRegionId, 'all', runId);
+  const outcome = await declineSourceUnderLock(experienceId, userId, logRegionId, 'all', runId, undefined, bulkOf(who));
   if (outcome.refusal) return refusedBy(outcome.refusal);
   return { did: { fields: outcome.result!.declined.length } };
 }
@@ -374,6 +392,7 @@ async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
     decision: answer === 'accept' ? 'confirm' : 'override',
     pin: false,
     ...named(membershipId),
+    bulk: bulkOf(who),
   });
   if (outcome.refusal) return refusedBy(outcome.refusal);
   const r = outcome.result!;

@@ -391,7 +391,7 @@ describe('acceptSourceValue', () => {
     // A place that moved is a region fact.
     expect(mockedPlace).toHaveBeenCalledWith(5, expect.stringContaining('accepted the source coordinate'));
     const log = queries.find(q => q.sql.includes('experience_curation_log'));
-    expect(String(log?.params[3])).toContain('"releasedPoints":[41]');
+    expect(String(log?.params[4])).toContain('"releasedPoints":[41]');
   });
 
   it('puts a released pin back on the coordinate that run offered for it', async () => {

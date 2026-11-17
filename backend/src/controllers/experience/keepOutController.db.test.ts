@@ -113,7 +113,10 @@ describe('taking a published place out of one kind', () => {
       "SELECT details FROM experience_curation_log WHERE experience_id = $1 AND action = 'kept_out'", [CONCORD],
     );
     expect(log.rows.map(r => r.details)).toEqual([{
-      membershipId: archaeology, kind: 'Archaeology', reason: CURATOR_REFUSAL_REASON, note: 'Not a must: only the podium is left',
+      membershipId: archaeology, kindId: (await pool.query<{ kind_id: number }>(
+        'SELECT kind_id FROM source_records WHERE id = $1', [archaeology],
+      )).rows[0].kind_id,
+      kind: 'Archaeology', reason: CURATOR_REFUSAL_REASON, note: 'Not a must: only the podium is left',
     }]);
 
     expect(await kinds()).toEqual(expect.arrayContaining([

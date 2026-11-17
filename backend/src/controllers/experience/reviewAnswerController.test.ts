@@ -141,7 +141,8 @@ describe('the dispatch table', () => {
     const res = makeRes();
     await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'accept'), res as never);
 
-    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, {});
+    // A selection of one is the card's own answer, not a bulk publish (#863).
+    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, {}, undefined, { bulk: false });
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       answer: 'accept',
       answered: [expect.objectContaining({
@@ -155,13 +156,21 @@ describe('the dispatch table', () => {
   it('accepts a held object against the run the curator saw', async () => {
     poolAnswers({ subs: { arrival: false, held: true, contents: true } });
     await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'accept'), makeRes() as never);
-    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, { expectedSyncLogId: 105 });
+    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, { expectedSyncLogId: 105 }, undefined, { bulk: false });
+  });
+
+  it('marks a publish bulk when one answer covers a selection of many (#863)', async () => {
+    poolAnswers({ names: [{ id: 5, name: 'Chartres Cathedral', source_id: 4 }, { id: 6, name: 'Reims Cathedral', source_id: 4 }] });
+    await answerRoute(postReviewAnswer,
+      req([{ kind: 'waiting', id: 5, runId: 105 }, { kind: 'waiting', id: 6, runId: 105 }], 'accept'), makeRes() as never);
+    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, {}, undefined, { bulk: true });
+    expect(mockedPublish).toHaveBeenCalledWith(6, 7, 12, {}, undefined, { bulk: true });
   });
 
   it('accepts unread contents alone with a contents publish', async () => {
     poolAnswers({ subs: { arrival: false, held: false, contents: true } });
     await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5 }], 'accept'), makeRes() as never);
-    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, { contentsOnly: true });
+    expect(mockedPublish).toHaveBeenCalledWith(5, 7, 12, { contentsOnly: true }, undefined, { bulk: false });
   });
 
   it('refuses a held row that names no run rather than guessing one', async () => {
@@ -184,7 +193,7 @@ describe('the dispatch table', () => {
     await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'reject'), res as never);
 
     // The membership the row named, null where it named none (#1264).
-    expect(mockedRefuseHeld).toHaveBeenCalledWith(5, 7, 12, null, 105, null);
+    expect(mockedRefuseHeld.mock.calls[0]).toEqual([5, 7, 12, null, 105, null, undefined]);
     expect(mockedRefuseContents).toHaveBeenCalledWith(5, 7, 12, {});
     // Two object fields and the one part's field, counted together.
     expect(res.json.mock.calls[0][0].answered[0].did).toEqual({
@@ -221,12 +230,21 @@ describe('the dispatch table', () => {
     expect(res.json.mock.calls[0][0].refused[0].error).toContain('not waiting');
   });
 
+  // A selection of one is the card's own answer, so neither writer gets a bulk mark.
   it.each([
-    ['accept', mockedAcceptSource],
-    ['reject', mockedDeclineSource],
-  ])('%ss every open field of a conflict against the run the curator saw', async (answer, writer) => {
+    ['accept', mockedAcceptSource, [5, 7, 12, 'all', 98, undefined]],
+    ['reject', mockedDeclineSource, [5, 7, 12, 'all', 98, undefined, undefined]],
+  ] as const)('%ss every open field of a conflict against the run the curator saw', async (answer, writer, args) => {
     await answerRoute(postReviewAnswer, req([{ kind: 'conflict', id: 5, runId: 98 }], answer), makeRes() as never);
-    expect(writer).toHaveBeenCalledWith(5, 7, 12, 'all', 98);
+    expect(writer.mock.calls[0]).toEqual(args);
+  });
+
+  it('marks every answer of a selection of many bulk, with the row its run', async () => {
+    poolAnswers({ names: [{ id: 5, name: 'Chartres Cathedral', source_id: 4 }, { id: 6, name: 'Reims Cathedral', source_id: 4 }] });
+    await answerRoute(postReviewAnswer, req(
+      [{ kind: 'conflict', id: 5, runId: 98 }, { kind: 'conflict', id: 6, runId: 99 }], 'reject',
+    ), makeRes() as never);
+    expect(mockedDeclineSource.mock.calls.map(call => call[6])).toEqual([{ syncLogId: 98 }, { syncLogId: 99 }]);
   });
 
   // A refusal card proposes the refusal: accepting it keeps the row out, and

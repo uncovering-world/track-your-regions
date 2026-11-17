@@ -26,6 +26,7 @@ import type { z } from 'zod/v4';
 import type { MergeProposalsAnswered } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockTwoExperiences } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { answerMergeProposalsBodySchema, idParamSchema } from '../../types/index.js';
@@ -96,14 +97,13 @@ async function recordAnswer(
       unusable = await rollbackQuietly(client);
       return { proposalId: pair.id, error: `This pair was answered already${RELOAD}` };
     }
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'merge_proposal_answered', $3, $4)`,
-      [pair.place_a, userId, logRegionId, JSON.stringify({
+    await logCurationAct(client, {
+      experienceId: pair.place_a, curatorId: userId, action: 'merge_proposal_answered', regionId: logRegionId,
+      details: {
         proposalId: pair.id, otherId: pair.place_b, otherName: pair.other_name, answer: answer.answer,
         ...(partId === null ? {} : { partId }), ...(mergeId === null ? {} : { mergeId }),
-      })],
-    );
+      },
+    });
     await client.query('COMMIT');
     return null;
   } catch (error) {

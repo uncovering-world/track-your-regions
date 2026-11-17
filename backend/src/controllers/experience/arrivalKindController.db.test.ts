@@ -91,7 +91,8 @@ describe('an arrival answered with the kind it belongs in', () => {
       {
         action: 'arrival_refused',
         details: {
-          membershipId: arrival, reason: 'kept out by a curator', note: 'a monument to a person',
+          membershipId: arrival, kindId: publicArt.kind_id, reasonCode: 'not-this-kind',
+          reason: 'kept out by a curator', note: 'a monument to a person',
           movedTo: { membershipId: result!.membershipId, kindId: monuments.kind_id, kind: 'Monuments & memorials', type: 'monument' },
         },
       },

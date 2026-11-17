@@ -27,6 +27,11 @@ import { DUMP_KEYS } from '../services/dumps/catalog.js';
 export * from './worldViewImportSchemas.js';
 // The names the review queue map's short list asks for (#2501), beside the map's own query below.
 export * from './reviewQueueMapNamesSchema.js';
+// Why a curator acted, and the region acts (#863).
+export * from './curatorActSchemas.js';
+import {
+  additionReasonSchema, admissionReasonFits, admissionReasonSchema, refusalReasonSchema, sourceAnswerReasonSchema,
+} from './curatorActSchemas.js';
 
 // =============================================================================
 // API query params
@@ -341,19 +346,7 @@ export const regionLocationsQuerySchema = z.object({
   includeLost: booleanStringSchema,
 });
 
-// Curation schemas
-export const rejectExperienceBodySchema = z.object({
-  regionId: bodyRowIdSchema,
-  reason: z.string().max(1000).optional(),
-});
-
-export const unrejectExperienceBodySchema = z.object({
-  regionId: bodyRowIdSchema,
-});
-
-export const assignExperienceBodySchema = z.object({
-  regionId: bodyRowIdSchema,
-});
+// Curation schemas: the region acts and the reasons are `curatorActSchemas.ts`'s.
 
 /** `GET /api/experiences/commemorates/search`: the name a curator typed, for the items Wikidata finds by it (#2144). */
 export const commemorationSearchQuerySchema = z.object({
@@ -403,6 +396,7 @@ export const createManualExperienceBodySchema = z.object({
   kindId: bodyRowIdSchema,
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
+  reasonCode: additionReasonSchema,
 });
 
 export const idAndRegionIdParamSchema = z.object({
@@ -767,6 +761,9 @@ export const experienceAdmissionBodySchema = z.object({
    * `override` — a confirmation always pins.
    */
   remember: z.boolean().optional(),
+  reasonCode: admissionReasonSchema,
+}).refine(admissionReasonFits, {
+  message: 'A put-back offers the reasons of an addition, a confirmation those of a refusal', path: ['reasonCode'],
 });
 
 /** The admission pins a curator may read (#1369): every one in scope, or one place's. */
@@ -818,21 +815,13 @@ export const visitQuestionAnswerBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
-/**
- * A curator takes a published place out of one of its kinds from the place's
- * card (#2022), with no question asked: the membership named, and why.
- */
-export const keepOutOfKindBodySchema = z.object({
-  membershipId: bodyRowIdSchema,
-  note: z.string().max(1000).optional(),
-});
-
 /** A place put into a kind no run offers it in, from its card (#2035): the kind, its type, the curator's words. */
 export const addToKindBodySchema = z.object({
   kindId: bodyRowIdSchema,
   type: z.string().max(COLUMN_WIDTHS.source_records.type).optional()
     .describe('The type within the kind, from its vocabulary; absent for a kind that has none.'),
   note: z.string().max(1000).optional(),
+  reasonCode: additionReasonSchema,
 });
 
 /**
@@ -924,6 +913,7 @@ export const plannedKindAnswerBodySchema = z.object({
 export const refuseArrivalBodySchema = z.object({
   note: z.string().max(1000).optional(),
   membershipId: answeredMembershipSchema,
+  reasonCode: refusalReasonSchema,
 });
 
 /**
@@ -971,6 +961,7 @@ export const acceptSourceBodySchema = z.object({
 export const declineSourceBodySchema = z.object({
   fields: z.array(z.string().min(1)).min(1).max(20),
   expectedSyncLogId: bodyRowIdSchema,
+  reasonCode: sourceAnswerReasonSchema,
 });
 
 

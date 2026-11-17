@@ -52,6 +52,7 @@ import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql, contentsMembershipToAnswerSql } from './waitingCounts.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { restoreRefusedPoints } from './experienceLocationWriter.js';
 import { restoreRefusedLinks } from './workWriter.js';
 
@@ -120,7 +121,7 @@ export async function unrefuseContentsUnderLock(
     // JavaScript, so the list that draws the button and this cannot drift; the
     // columns beside it are for the sentence, not the verdict.
     const read = await client.query(
-      `SELECT m.id AS membership_id, m.admission, m.curation_state,
+      `SELECT m.id AS membership_id, m.kind_id, m.admission, m.curation_state,
               (${contentsAnswerableSql()}) AS answerable
          FROM experiences e
          -- Through the membership the body names, else the first holding
@@ -164,21 +165,22 @@ export async function unrefuseContentsUnderLock(
       });
     }
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'contents_unrefused', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      locations: restoredPoints.length,
-      treasureLinks: restoredLinks.length,
-      // Always the ids, where the refusal recorded them only when its caller
-      // named them. The difference is that a take-back knows: the statement
-      // returns exactly the rows it touched, and a trail saying which three
-      // paintings came back is worth more than one saying three did — this row
-      // is the only place a part that has come and gone can be followed.
-      locationIds: restoredPoints,
-      treasureIds: restoredLinks,
-      note: note ?? null,
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'contents_unrefused', regionId: logRegionId,
+      membership: { id: answering, kindId: before.kind_id as number },
+      details: {
+        locations: restoredPoints.length,
+        treasureLinks: restoredLinks.length,
+        // Always the ids, where the refusal recorded them only when its caller
+        // named them. The difference is that a take-back knows: the statement
+        // returns exactly the rows it touched, and a trail saying which three
+        // paintings came back is worth more than one saying three did — this row
+        // is the only place a part that has come and gone can be followed.
+        locationIds: restoredPoints,
+        treasureIds: restoredLinks,
+        note: note ?? null,
+      },
+    });
 
     await client.query('COMMIT');
   } catch (error) {

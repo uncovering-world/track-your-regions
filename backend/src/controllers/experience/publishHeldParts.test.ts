@@ -100,7 +100,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{ kind: 'locations', name: 'Château de Montésgur', fields: ['name'], claimedFieldsSkipped: [] }],
     }));
-    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[3])))
+    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[4])))
       .toMatchObject({ parts: [{ kind: 'locations', name: 'Château de Montésgur', fields: ['name'] }] });
   });
 

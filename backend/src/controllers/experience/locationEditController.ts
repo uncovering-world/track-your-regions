@@ -29,6 +29,7 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience, anchorToItsPoint, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { correctPoint } from './experienceLocationWriter.js';
 import { userAgent } from '../../config/userAgent.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
@@ -287,16 +288,11 @@ export async function editLocation(
       anchorMoved = await anchorToItsPoint(client, object.lock, longitude, latitude, locationId);
     }
 
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'location_edited', $3, $4)`,
-      // Only the keys this edit actually changed (`editDetails`).
-      [experienceId, userId, logRegionId, JSON.stringify({
-        locationId,
-        ...editDetails(before, pointEdit),
-        anchorMoved,
-      })],
-    );
+    // Only the keys this edit actually changed (`editDetails`).
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'location_edited', regionId: logRegionId,
+      details: { locationId, ...editDetails(before, pointEdit), anchorMoved },
+    });
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);

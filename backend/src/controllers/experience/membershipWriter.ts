@@ -657,8 +657,8 @@ export async function typeClaimedBy(
  * The type within the kind, written on the membership `sourceId` brought, with
  * what becomes of a curator's claim on it: `add` for a curator's own edit,
  * `release` for taking the source's value, `keep` otherwise. Answers the type it
- * replaced, for the audit row, and `undefined` where the place has no such
- * membership.
+ * replaced and the membership it wrote, with its kind, for the audit row, and
+ * `undefined` where the place has no such membership.
  */
 export async function setTypeOnSourceMembership(
   client: PoolClient,
@@ -666,7 +666,7 @@ export async function setTypeOnSourceMembership(
   sourceId: number,
   type: unknown,
   claim: 'add' | 'release' | 'keep',
-): Promise<{ old: unknown } | undefined> {
+): Promise<{ old: unknown; membership: { id: number; kindId: number } } | undefined> {
   const claims = {
     add: `CASE WHEN m.curated_fields ? 'type' THEN m.curated_fields ELSE m.curated_fields || '["type"]'::jsonb END`,
     release: `m.curated_fields - 'type'`,
@@ -680,10 +680,11 @@ export async function setTypeOnSourceMembership(
         SET type = $3, curated_fields = ${claims}, updated_at = NOW()
        FROM old
       WHERE m.id = old.id
-     RETURNING old.type AS old_type`,
+     RETURNING old.type AS old_type, m.id, m.kind_id`,
     [lock.id, sourceId, type],
   );
-  return result.rows.length === 0 ? undefined : { old: result.rows[0].old_type };
+  const [row] = result.rows;
+  return row === undefined ? undefined : { old: row.old_type, membership: { id: row.id, kindId: row.kind_id } };
 }
 
 /**
@@ -745,21 +746,24 @@ export async function publishFactsOnMembership(
  * hands back (`insertCuratedExperience`). Its id within the source is the
  * place's own `curator-<id>-<ts>` key, which no source listing can ever name,
  * and it carries the type within the kind the curator gave (ADR-0084).
+ * Answers the membership and its kind, which the create's log entry names.
  */
 export async function insertManualMembership(
   client: PoolClient,
   lock: LockedExperience,
   sourceId: number,
   type: string | null,
-): Promise<void> {
-  await client.query(`
+): Promise<{ id: number; kindId: number }> {
+  const inserted = await client.query<{ id: number; kind_id: number }>(`
     INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
     VALUES (
       $1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2,
       (SELECT external_id FROM experiences WHERE id = $1),
       $3, 'verified', NOW()
     )
+    RETURNING id, kind_id
   `, [lock.id, sourceId, type]);
+  return { id: inserted.rows[0].id, kindId: inserted.rows[0].kind_id };
 }
 
 /**

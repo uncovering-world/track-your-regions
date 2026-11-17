@@ -44,6 +44,7 @@ import type { z } from 'zod/v4';
 import type { PartWordAnswered } from '../../api/responses/parts.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockTwoExperiences, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationActs } from '../../db/curationLogWriter.js';
 import { PART_WORDS_LOCK } from '../../db/locks.js';
 import { CURATOR_SOURCE_ID, MEMBERSHIPS, kindRecordSql } from '../../db/membership.js';
 import { badRequest, createError, notFound, Refusal } from '../../middleware/errorHandler.js';
@@ -335,10 +336,11 @@ async function logOnBoth(
   { userId, wholeRegionId, partRegionId }: Authority,
   detail: Record<string, unknown>,
 ): Promise<void> {
-  const details = JSON.stringify({ wholeId: whole.id, partId: part.id, ...detail });
-  await client.query(
-    `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-     VALUES ($1, $3, $4, $5, $7), ($2, $3, $4, $6, $7)`,
-    [whole.id, part.id, userId, action, wholeRegionId, partRegionId, details],
-  );
+  // About the part-of relation, a record in a whole, which has no kind (ADR-0198):
+  // the record is named by its id in the details.
+  const details = { wholeId: whole.id, partId: part.id, ...detail };
+  await logCurationActs(client, [
+    { experienceId: whole.id, curatorId: userId, action, regionId: wholeRegionId, details },
+    { experienceId: part.id, curatorId: userId, action, regionId: partRegionId, details },
+  ]);
 }

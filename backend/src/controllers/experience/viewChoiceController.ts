@@ -19,6 +19,7 @@ import type { z } from 'zod/v4';
 import type { ViewsChosen } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import {
   openViewFieldsSql, placeViewSourcesSql, placeViewsSql, placeViewValueSql, viewValueSql, type ViewField,
@@ -213,11 +214,9 @@ export async function chooseViewsUnderLock(
       details.push(applied.detail);
     }
     await recordViewChoices(client, lock, userId, choices);
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'views_chosen', $3, $4)`,
-      [experienceId, userId, logRegionId, JSON.stringify({ choices: details })],
-    );
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'views_chosen', regionId: logRegionId, details: { choices: details },
+    });
     await client.query('COMMIT');
     return { result: { fields: choices.map(choice => choice.field), changed } };
   } catch (error) {

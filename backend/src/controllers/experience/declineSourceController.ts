@@ -20,10 +20,12 @@ import type { declineSourceBodySchema, idParamSchema } from '../../types/index.j
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
 import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
-import { withTypeClaim } from '../../db/membership.js';
+import { MEMBERSHIPS, withTypeClaim } from '../../db/membership.js';
 import { typeClaimedBy } from './membershipWriter.js';
 import { recordConflictRefusals } from './conflictDecisions.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { logCurationAct, membershipRead } from '../../db/curationLogWriter.js';
+import type { CurationReasonCode } from '@tyr/shared/curationLog';
 
 /**
  * Refuse the value a sync proposed for a field the curator had claimed.
@@ -40,7 +42,7 @@ import { lockExperience } from '../../db/experienceWriter.js';
  * a field the endpoint cannot answer for.
  */
 export async function declineSourceValue(
-  { params: { id: experienceId }, body: { fields, expectedSyncLogId }, caller }: {
+  { params: { id: experienceId }, body: { fields, expectedSyncLogId, reasonCode }, caller }: {
     params: z.output<typeof idParamSchema>; body: z.output<typeof declineSourceBodySchema>; caller: Express.User;
   },
 ): Promise<DeclineSourceResult> {
@@ -64,7 +66,7 @@ export async function declineSourceValue(
   }
 
   const outcome = await declineSourceUnderLock(
-    experienceId, userId, logRegionId, fields, expectedSyncLogId,
+    experienceId, userId, logRegionId, fields, expectedSyncLogId, reasonCode,
   );
   if (outcome.refusal) throw new Refusal(409, outcome.refusal);
   return outcome.result!;
@@ -82,11 +84,14 @@ export async function declineSourceUnderLock(
   logRegionId: number | null,
   fields: string[] | 'all',
   expectedSyncLogId: number,
+  reasonCode?: CurationReasonCode,
+  /** Set when one answer declined the values of a selection of many (#863). */
+  bulk?: { syncLogId: number | null },
 ): Promise<{
   result?: DeclineSourceResult;
   refusal?: { error: string; fromSyncLogId?: number };
 }> {
-  const outcome = await recordRefusals(experienceId, userId, logRegionId, fields, expectedSyncLogId);
+  const outcome = await recordRefusals(experienceId, userId, logRegionId, fields, expectedSyncLogId, reasonCode, bulk);
   if (outcome.refusal) return { refusal: outcome.refusal };
   return { result: { experienceId, declined: outcome.declined, fromSyncLogId: outcome.fromSyncLogId } };
 }
@@ -110,6 +115,8 @@ async function recordRefusals(
   logRegionId: number | null,
   fields: string[] | 'all',
   expectedSyncLogId: number,
+  reasonCode: CurationReasonCode | undefined,
+  bulk: { syncLogId: number | null } | undefined,
 ): Promise<{
   declined: string[];
   fromSyncLogId: number;
@@ -126,11 +133,13 @@ async function recordRefusals(
 
     // The same proposal the queue would show, withdrawal check included — a conflict a
     // later run stopped proposing is not one a curator can answer here either.
+    // The proposing source's membership in its kind is what the answer is about.
     const proposal = await client.query(`
-      SELECT ch.sync_log_id, l.source_id, ch.changed_fields
+      SELECT ch.sync_log_id, l.source_id, ch.changed_fields, m.id AS membership_id, m.kind_id
       FROM experience_sync_changes ch
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
+      LEFT JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = l.source_id AND m.kind_id IS NOT NULL
       WHERE ch.experience_id = $1
         AND ${conflictChangeOpenSql('e', 'ch', 'l')}
       ORDER BY ch.id DESC
@@ -174,12 +183,11 @@ async function recordRefusals(
     await recordConflictRefusals(client, locked.lock, userId,
       open.map(p => ({ field: p.field, proposed: p.new })));
 
-    await client.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'declined_source', $3, $4)
-    `, [experienceId, userId, logRegionId, JSON.stringify({
-      fields: open.map(p => ({ field: p.field, declined: p.new })),
-    })]);
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'declined_source', regionId: logRegionId,
+      membership: membershipRead(proposal.rows[0]), reasonCode, bulk,
+      details: { fields: open.map(p => ({ field: p.field, declined: p.new })) },
+    });
     await client.query('COMMIT');
     return { declined: open.map(p => p.field), fromSyncLogId };
   } catch (error) {

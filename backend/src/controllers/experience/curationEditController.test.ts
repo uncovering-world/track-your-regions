@@ -90,7 +90,7 @@ function loggedRegionId(): unknown {
     ([sql]) => typeof sql === 'string' && sql.includes('experience_curation_log'),
   ) as [string, unknown[]] | undefined;
   expect(insert, 'expected an experience_curation_log insert').toBeDefined();
-  return insert![1][2];
+  return insert![1][3];
 }
 
 describe('editExperience scope', () => {
@@ -421,7 +421,7 @@ function audited(): Record<string, { old: unknown; new: unknown }> {
     ([sql]) => typeof sql === 'string' && sql.includes('experience_curation_log'),
   ) as [string, unknown[]] | undefined;
   expect(insert, 'expected an experience_curation_log insert').toBeDefined();
-  return JSON.parse(String(insert![1][3])) as Record<string, { old: unknown; new: unknown }>;
+  return JSON.parse(String(insert![1][4])) as Record<string, { old: unknown; new: unknown }>;
 }
 
 describe('editExperience and an emptied field', () => {

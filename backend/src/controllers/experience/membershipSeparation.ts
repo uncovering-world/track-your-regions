@@ -46,6 +46,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { logCurationActs } from '../../db/curationLogWriter.js';
 import {
   insertSeparatedExperience, lockExperience, lockPartsAndRegionKeys, returnSeparatedUnescoText, type LockedExperience,
 } from '../../db/experienceWriter.js';
@@ -89,6 +90,7 @@ interface Separable {
   merged_into_id: number | null;
   source_id: number;
   external_id: string;
+  kind_id: number;
   kind_name: string;
   memberships: number;
   /** A component of a serial site: a place by its site's list, whatever kinds it holds. */
@@ -264,7 +266,7 @@ export async function separateMembership(
       return await refuse({ status: 409, error: 'This place has been merged into another; separate it there' });
     }
     const found = (await client.query<Separable>(
-      `SELECT m.experience_id, e.merged_into_id, m.source_id, m.external_id, k.name AS kind_name,
+      `SELECT m.experience_id, e.merged_into_id, m.source_id, m.external_id, m.kind_id, k.name AS kind_name,
               -- Its kinds: a record in a whole, the site's record of its own
               -- list line among them (ADR-0200), is no kind to separate from.
               (SELECT count(*)::int FROM ${MEMBERSHIPS} other
@@ -330,14 +332,13 @@ export async function separateMembership(
     const nameOf = (id: number) => names.find(row => row.id === id)?.name ?? null;
     const details = {
       separationId, originalId: original.id, originalName: nameOf(original.id), separatedId,
-      separatedName: nameOf(separatedId), kind: found.kind_name, membershipId,
+      separatedName: nameOf(separatedId), kind: found.kind_name,
       identifier: identifier ? `${identifier.scheme}:${identifier.value}` : null, verdictWritten,
     };
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $3, 'separated', $5, $4), ($2, $3, 'separated', $5, $4)`,
-      [original.id, separatedId, separatedBy, JSON.stringify(details), regionId],
-    );
+    const membership = { id: membershipId, kindId: found.kind_id };
+    await logCurationActs(client, [original.id, separatedId].map(place => ({
+      experienceId: place, curatorId: separatedBy, action: 'separated' as const, regionId, membership, details,
+    })));
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);

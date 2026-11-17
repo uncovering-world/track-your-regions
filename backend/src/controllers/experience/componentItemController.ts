@@ -24,6 +24,7 @@ import type { ComponentItemsAnswered } from '../../api/responses/curation.js';
 import { userAgent } from '../../config/userAgent.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { logCurationAct } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { itemHeldSql, pointItemClaimedSql, pointItemSql, pointsShownSql, shownBySql } from '../../db/placePoints.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
@@ -235,14 +236,13 @@ export async function answerComponentItemsUnderLock(
     await answerProposals(client, lock, userId, confirmed.map(c => c.id), 'accepted');
     await answerProposals(client, lock, userId, turnedDown.map(c => c.id), 'refused');
     await clearMootProposals(client, lock, confirmed.map(c => c.location_id), confirmed.map(c => c.wikidata_item));
-    await client.query(
-      `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-       VALUES ($1, $2, 'component_items_answered', $3, $4)`,
-      [experienceId, userId, logRegionId, JSON.stringify({
+    await logCurationAct(client, {
+      experienceId, curatorId: userId, action: 'component_items_answered', regionId: logRegionId,
+      details: {
         accepted, refused: turnedDown.map(c => logged(c)),
         ...(userId === null ? { catalogue: CATALOGUE_RULE } : {}),
-      })],
-    );
+      },
+    });
     await client.query('COMMIT');
     toJoin = confirmedItems;
     answered = { result: { experienceId, accepted: confirmed.length, refused: turnedDown.length, pictured } };
