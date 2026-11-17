@@ -1,7 +1,7 @@
 # ADR-0131: A kind is drawn by what a place was made for, and a place no kind holds waits for its own
 
 **Date:** 2026-10-21
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0220](0220-city-gates-and-walls-takes-no-gate-or-wall-from-archaeology.md): City gates & walls takes no gate or wall from Archaeology, and the Porta Nigra is offered there
 
 ---
 
