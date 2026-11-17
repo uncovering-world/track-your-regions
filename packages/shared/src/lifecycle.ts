@@ -18,6 +18,14 @@
 
 /** `source_records.admission`: whether a kind's rule accepts the place. */
 export const ADMISSIONS = ['admitted', 'refused'] as const;
+
+/**
+ * The reason a curator's refusal of a membership carries, in the words the
+ * kept-out list shows: the server writes it, and an arrival's card tells it
+ * from a rule's reason by it (#2185). The schema's derivation of a part's
+ * record gate writes the same words (`refresh_part_record_gates()`).
+ */
+export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
 export type Admission = (typeof ADMISSIONS)[number];
 
 /** `existence` on a place and on a point: whether it still stands. */

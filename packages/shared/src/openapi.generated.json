@@ -17459,6 +17459,56 @@
         }
       }
     },
+    "/api/experiences/review/kind-neighbours/{membershipId}": {
+      "get": {
+        "operationId": "getExperiencesReviewKindNeighboursByMembershipId",
+        "summary": "One place of an arrival's kind and type a curator kept, and one a curator turned away",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membershipId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KindNeighbours"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/geocode/search": {
       "get": {
         "operationId": "getGeocodeSearch",
@@ -30409,6 +30459,113 @@
         ],
         "additionalProperties": false,
         "description": "A place put into a kind no run offers it in, by a curator from its card (#2035)."
+      },
+      "KindNeighbours": {
+        "type": "object",
+        "properties": {
+          "kept": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "placeId": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "imageUrl": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "imageCredit": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ImageCredit"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "placeId",
+                  "name",
+                  "imageUrl",
+                  "imageCredit"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The place of the same kind and type a curator kept most recently, readers offered it; null where none is."
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "placeId": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "imageUrl": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "imageCredit": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ImageCredit"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "description": "Why the place is out of the kind, as the membership records it: a curator's \"kept out by a curator\", or the rule's own reason a curator upheld, which may be about the place's fame or state rather than its kind.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "placeId",
+                  "name",
+                  "imageUrl",
+                  "imageCredit",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The place of the same kind and type a curator turned away from the kind most recently, one the caller may be shown; null where none is."
+          }
+        },
+        "required": [
+          "kept",
+          "refused"
+        ],
+        "additionalProperties": false,
+        "description": "An arrival's answered neighbours in its kind and type, one kept and one refused (#2185)."
       },
       "KindSuggestion": {
         "type": "object",
