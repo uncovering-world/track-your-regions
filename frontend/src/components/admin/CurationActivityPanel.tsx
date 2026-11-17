@@ -20,6 +20,7 @@ import { queryKeys } from '../../api/queryKeys';
 import { displayNameOf } from '../../utils/displayName';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { ACTION_LABELS } from '../shared/curationLog';
+import { ActivityCounts } from './ActivityCounts';
 import { CurationActivityTable } from './CurationActivityTable';
 import { RegionSearchPicker } from './RegionSearchPicker';
 
@@ -47,6 +48,7 @@ export function CurationActivityPanel() {
   const [region, setRegion] = useState<RegionSearchResult | null>(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
 
@@ -59,7 +61,9 @@ export function CurationActivityPanel() {
     // The days an admin picks are their own: from the start of the first to the end of the last.
     since: midnightOf(from),
     before: midnightOf(to, 1),
-  }), [action, curatorId, region, from, to, page, pageSize]);
+    // What happened to one place (#956): two letters at least, as every search here.
+    q: search.trim().length >= 2 ? search.trim() : undefined,
+  }), [action, curatorId, region, from, to, search, page, pageSize]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: queryKeys.admin.curationActivity(filters),
@@ -116,6 +120,10 @@ export function CurationActivityPanel() {
           onChange={(e) => narrow(setTo)(e.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
         />
+        <TextField
+          label="Find a place" size="small" value={search}
+          onChange={(e) => narrow(setSearch)(e.target.value)}
+        />
         <Box sx={{
           display: 'flex', gap: 1, flex: '1 1 100%',
           '& > .MuiFormControl-root': { flex: '0 0 170px' },
@@ -125,6 +133,7 @@ export function CurationActivityPanel() {
         </Box>
       </Paper>
 
+      {data && <ActivityCounts counts={data.counts} />}
       {isLoading && <LoadingSpinner size={24} padding="12px 0" />}
       {isError && <Typography color="error">The activity could not be read.</Typography>}
       {data && !data.activity.length && (

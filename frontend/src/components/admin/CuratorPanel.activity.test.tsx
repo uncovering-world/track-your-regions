@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CuratorPanel } from './CuratorPanel';
 import { listCurators, getCuratorActivity, revokeCuratorAssignment } from '../../api/admin';
@@ -52,6 +52,7 @@ beforeEach(() => {
     total: 1,
     limit: 50,
     offset: 0,
+    counts: { againstTheRule: 1, arrivalsTurnedAway: 0, keptOutAsTheRuleSaid: 0, editedByHand: 0, published: 0 },
     activity: [{
       id: 41,
       action: 'admission_overridden',
@@ -89,7 +90,33 @@ describe('a curator’s activity, as an admin reads it', () => {
     expect(screen.getByText(/No scopes assigned yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /view activity/i }));
     expect(await screen.findByText('Villa Farnesina')).toBeInTheDocument();
-    expect(mockedActivity).toHaveBeenCalledWith(1);
+    // The trail opens on the last 30 days, searching no place, at its first page (#956).
+    expect(mockedActivity).toHaveBeenCalledWith(1, { since: expect.any(String), q: undefined, limit: 50, offset: 0 });
+    const since = new Date(mockedActivity.mock.calls[0][1]!.since!);
+    expect(Math.round((Date.now() - since.getTime()) / 86_400_000)).toBeGreaterThanOrEqual(30);
+    const counts = await screen.findByRole('table', { name: 'Acts in this period' });
+    expect(within(counts).getByText('against the rule')).toBeInTheDocument();
+    // Whose trail it is, and every row the counts announce reachable by its pages.
+    expect(screen.getByRole('heading', { name: /^Activity of / })).toBeInTheDocument();
+    expect(screen.getByText(/1–1 of 1/)).toBeInTheDocument();
+
+    // A period chosen on one trail is not where the next trail opens.
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    await waitFor(() => expect(mockedActivity).toHaveBeenLastCalledWith(1, expect.objectContaining({ since: undefined })));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: /view activity/i }));
+    await waitFor(() => expect(mockedActivity).toHaveBeenLastCalledWith(1, expect.objectContaining({ since: expect.any(String), offset: 0 })));
+  });
+
+  it('keeps the pager on a page past the end while the period still holds entries, and says nothing is empty', async () => {
+    mockedActivity.mockResolvedValue({
+      total: 60, limit: 50, offset: 150, activity: [],
+      counts: { againstTheRule: 3, arrivalsTurnedAway: 0, keptOutAsTheRuleSaid: 0, editedByHand: 0, published: 57 },
+    });
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: /view activity/i }));
+    expect(await screen.findByRole('button', { name: /previous page/i })).toBeInTheDocument();
+    expect(screen.queryByText('No curation activity in this period.')).toBeNull();
   });
 
   it.each(['admin', 'curator'])('keeps real assignments revocable for a %s', async (role) => {

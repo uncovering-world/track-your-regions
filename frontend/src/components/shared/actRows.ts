@@ -10,7 +10,7 @@
  */
 
 import { CURATOR_REFUSAL_REASON } from '@tyr/shared/lifecycle';
-import type { CurationLogAction } from '@tyr/shared/curationLog';
+import { AGAINST_THE_RULE_ACTIONS, type CurationLogAction } from '@tyr/shared/curationLog';
 import { fieldLabel as fieldWord } from '../curation/fieldMeaning';
 import { refusalSummary } from '../curation/refusalReason';
 import { typeLabelFor } from '../../utils/experienceTypes';
@@ -37,8 +37,8 @@ export interface ActRow {
   note?: string;
 }
 
-/** The acts a curator takes against what the rule decided: an auditor's first question. */
-const AGAINST_THE_RULE = new Set<CurationLogAction>(['admission_overridden', 'arrival_refused', 'kept_out']);
+/** The acts a curator takes against what the rule decided: the list the trail's count reads too. */
+const AGAINST_THE_RULE = new Set<CurationLogAction>(AGAINST_THE_RULE_ACTIONS);
 
 export function againstTheRule(act: Pick<Act, 'action'>): boolean {
   return AGAINST_THE_RULE.has(act.action);

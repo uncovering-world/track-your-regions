@@ -49,10 +49,10 @@ describe("a curator's trail as an audit table (#956)", () => {
     expect(within(rowOf('Lena Bridge')).getByText('In, by the rule')).toBeInTheDocument();
   });
 
-  it('marks the calls against the rule, and no other', () => {
+  it('marks the calls against the rule, and no other: an arrival turned away is the routine review', () => {
     renderTable([LENA, RYBINSK, NEUE_WACHE]);
-    expect(within(rowOf('Lena Bridge')).getByText('against the rule')).toBeInTheDocument();
     expect(within(rowOf('Roman Catholic church in Rybinsk, Russia')).getByText('against the rule')).toBeInTheDocument();
+    expect(within(rowOf('Lena Bridge')).queryByText('against the rule')).toBeNull();
     expect(within(rowOf('Neue Wache')).queryByText('against the rule')).toBeNull();
   });
 
@@ -80,6 +80,18 @@ describe("a curator's trail as an audit table (#956)", () => {
       details: { kind: 'Monuments & memorials', kindId: 6, type: 'monument', fromArrival: { kind: 'Public art', stays: false } } }]);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(screen.getByText(/from its arrival in Public art/i)).toBeInTheDocument();
+  });
+
+  it('reads a batch publish as one row of its places, named on demand', () => {
+    renderTable([{
+      ...NEUE_WACHE, id: 6, action: 'published', details: { fields: [] }, place: undefined,
+      batch: { count: 198, names: ['Falkirk Wheel', 'Strépy-Thieu boat lift', 'Soo Locks'] },
+    }]);
+    const row = rowOf('198 places');
+    expect(within(row).getByText('Waiting')).toBeInTheDocument();
+    expect(within(row).getByText('Shown to readers')).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Show places' }));
+    expect(screen.getByText('Falkirk Wheel, Strépy-Thieu boat lift, Soo Locks and 195 more')).toBeInTheDocument();
   });
 
   it('names who acted in a History, with no place column', () => {

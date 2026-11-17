@@ -34,6 +34,18 @@ export interface ActEntry extends Act {
   place?: { id: number; name: string; imageUrl: string | null; credit: ImageCredit | null };
   /** In a History, the entry a merge folded into this place that the act was about. */
   about?: string;
+  /**
+   * A batch publish this entry stands for in the trail (#956): one row for one
+   * curator's run of publications, as `readCurationActivity` folds it, with the
+   * first names under *Show places*.
+   */
+  batch?: { count: number; names: string[] } | null;
+}
+
+/** A batch's places as *More* lists them: the first names, and how many more. */
+function batchNames({ count, names }: { count: number; names: string[] }): string {
+  const rest = count - names.length;
+  return rest > 0 ? `${names.join(', ')} and ${rest} more` : names.join(', ');
 }
 
 /** The day an act happened, "16 November", with its year where it is not this one. */
@@ -143,14 +155,18 @@ function ActRows({ entry, trail, showCurator, columns, open, onToggle, actions }
   onToggle: () => void;
   actions?: ReactNode;
 }) {
-  const rows: ActRow[] = actRows(entry);
+  // A batch publish is one row: its places went from waiting to shown, named under *Show places*.
+  const batch = entry.batch ?? null;
+  const rows: ActRow[] = batch ? [{ fact: null, before: 'Waiting', after: 'Shown to readers' }] : actRows(entry);
   const named = actionLabel(entry.action);
   const against = againstTheRule(entry);
-  const why = actWhy(entry);
-  const note = actNote(entry);
-  const record = actRecord(entry);
+  const why = batch ? null : actWhy(entry);
+  const note = batch ? null : actNote(entry);
+  const record = batch ? batchNames(batch) : actRecord(entry);
   const more = Boolean(why || note || record);
-  const opens = why ? 'Why' : 'More';
+  let opens = 'More';
+  if (batch) opens = 'Show places';
+  else if (why) opens = 'Why';
   const span = rows.length;
   const mark = against ? { borderLeft: '3px solid', borderLeftColor: 'warning.main' } : {};
   return (
@@ -178,7 +194,8 @@ function ActRows({ entry, trail, showCurator, columns, open, onToggle, actions }
               </TableCell>
               {trail && (
                 <TableCell rowSpan={span}>
-                  {entry.place && (
+                  {batch && <Typography variant="body2" sx={{ fontWeight: 500 }}>{batch.count} places</Typography>}
+                  {!batch && entry.place && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <DenseThumbnail
                         imageUrl={entry.place.imageUrl}

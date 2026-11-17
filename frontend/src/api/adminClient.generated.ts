@@ -2098,6 +2098,40 @@ export interface CuratorAssignmentRevoked {
   roleReverted: boolean;
 }
 
+/**
+ * The filters' acts, counted by what an auditor reads them for (#956).
+ */
+export type CuratorActivityCounts = {
+  /**
+     * Acts against what the rule decided: a place the rule kept out put back, a place it holds taken out of a kind.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  againstTheRule: number;
+  /**
+     * Arrivals a curator answered no on the review page: the gate's routine review, not a dispute with the rule.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  arrivalsTurnedAway: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  keptOutAsTheRuleSaid: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  editedByHand: number;
+  /**
+     * Places published, every place of a batch counted.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  published: number;
+};
+
 export type CuratorActivityEntryAction = typeof CuratorActivityEntryAction[keyof typeof CuratorActivityEntryAction];
 
 
@@ -2184,6 +2218,20 @@ export interface ImageCredit {
 export type CuratorActivityEntryDetails = {[key: string]: unknown} | null;
 
 /**
+ * A batch publish this entry stands for (#956): one curator's run of publications, each under a minute after the one before, five or more; null for a single act.
+ */
+export type CuratorActivityEntryBatch = {
+  /**
+     * How many places the batch published.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  count: number;
+  /** The names of the first of them, newest first. */
+  names: string[];
+} | null;
+
+/**
  * One act of the curation log, on one experience.
  */
 export interface CuratorActivityEntry {
@@ -2214,6 +2262,8 @@ export interface CuratorActivityEntry {
      * @nullable
      */
   kind_name: string | null;
+  /** A batch publish this entry stands for (#956): one curator's run of publications, each under a minute after the one before, five or more; null for a single act. */
+  batch: CuratorActivityEntryBatch;
   region_id: number | null;
   /** @nullable */
   region_name: string | null;
@@ -2227,13 +2277,16 @@ export interface CuratorActivityEntry {
  * A page of the curation log: what one curator did, or what every curator did.
  */
 export interface CuratorActivity {
-  /** Newest first. */
+  /** Newest first, a batch publish as one entry. */
   activity: CuratorActivityEntry[];
   /**
+     * How many entries the filters keep, a batch counting once.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
   total: number;
+  /** The filters' acts, counted by what an auditor reads them for (#956). */
+  counts: CuratorActivityCounts;
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2245,6 +2298,40 @@ export interface CuratorActivity {
      */
   offset: number;
 }
+
+/**
+ * The filters' acts, counted by what an auditor reads them for (#956).
+ */
+export type CurationActivityCounts = {
+  /**
+     * Acts against what the rule decided: a place the rule kept out put back, a place it holds taken out of a kind.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  againstTheRule: number;
+  /**
+     * Arrivals a curator answered no on the review page: the gate's routine review, not a dispute with the rule.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  arrivalsTurnedAway: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  keptOutAsTheRuleSaid: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  editedByHand: number;
+  /**
+     * Places published, every place of a batch counted.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  published: number;
+};
 
 /**
  * Someone the curation log names as having acted.
@@ -2263,13 +2350,16 @@ export interface CurationActivityActor {
  * A page of what every curator did, and who can be narrowed to.
  */
 export interface CurationActivity {
-  /** Newest first. */
+  /** Newest first, a batch publish as one entry. */
   activity: CuratorActivityEntry[];
   /**
+     * How many entries the filters keep, a batch counting once.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
   total: number;
+  /** The filters' acts, counted by what an auditor reads them for (#956). */
+  counts: CurationActivityCounts;
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -6137,6 +6227,12 @@ export type GetAdminCuratorsByUserIdActivityParams = {
   regionId?: number;
   since?: string;
   before?: string;
+  /**
+   * @minLength 2
+   * @maxLength 100
+   * @pattern ^[^\u0000]*$
+   */
+  q?: string;
 };
 
 export type GetAdminCuratorsByUserIdActivityAction = typeof GetAdminCuratorsByUserIdActivityAction[keyof typeof GetAdminCuratorsByUserIdActivityAction];
@@ -6210,6 +6306,12 @@ export type GetAdminCurationActivityParams = {
   regionId?: number;
   since?: string;
   before?: string;
+  /**
+   * @minLength 2
+   * @maxLength 100
+   * @pattern ^[^\u0000]*$
+   */
+  q?: string;
   /**
    * @maximum 2147483647
    * @exclusiveMinimum 0
