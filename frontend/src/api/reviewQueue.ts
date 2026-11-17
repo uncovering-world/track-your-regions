@@ -14,7 +14,7 @@ import type {
 import {
   deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, getExperiencesReviewQueueMap,
   getExperiencesReviewQueueMapNames, getExperiencesReviewRegionsSearch, postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
-  type GetExperiencesReviewQueueMapParams, type ReviewAnswerBodyRowsItem,
+  type GetExperiencesReviewQueueMapParams, type ReviewAnswerBodyReasonCode, type ReviewAnswerBodyRowsItem,
 } from './client.generated';
 import type { ReviewAddress } from '../utils/appUrl';
 
@@ -137,12 +137,24 @@ export type ReviewAnswerRow = ReviewAnswerBodyRowsItem;
 export const REVIEW_ANSWER_ROWS_MAX = 100;
 
 /**
+ * Why a rejection turns arrivals away (#863): one reason for every arrival in
+ * the batch, and the curator's words where the reason is "other".
+ */
+export interface BatchReason {
+  reasonCode: ReviewAnswerBodyReasonCode;
+  note?: string;
+}
+
+/**
  * Answer a page of review rows with one answer (#852). Each object is its own act
  * on the server, so the report names what refused rather than failing the batch.
+ * A rejection that reaches an arrival carries the reason it is turned away for;
+ * the server refuses such an arrival without one.
  */
 export async function answerReviewRows(
   rows: ReviewAnswerRow[],
   answer: ReviewAnswer,
+  reason?: BatchReason,
 ): Promise<ReviewAnswerResult> {
-  return postExperiencesReviewAnswer({ rows, answer });
+  return postExperiencesReviewAnswer({ rows, answer, ...reason });
 }

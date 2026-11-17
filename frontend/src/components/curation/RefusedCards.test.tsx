@@ -72,9 +72,36 @@ describe('a place two kinds\' rules refused', () => {
     renderCard(ITEMS);
 
     fireEvent.click(within(sectionOf('Places of worship’s rule turned it down'))
-      .getByRole('button', { name: 'The rule was right — keep it out' }));
+      .getByRole('button', { name: 'Keep out' }));
 
     await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(6214, { decision: 'confirm', membershipId: 22 }));
+  });
+
+  it('puts one back with the reason picked, remembered by default (#863)', async () => {
+    renderCard(ITEMS);
+
+    fireEvent.click(within(sectionOf('Archaeology’s rule turned it down')).getByRole('button', { name: 'Put back' }));
+    const lines = within(screen.getByRole('menu')).getAllByRole('menuitem').map(line => line.textContent);
+    expect(lines).toEqual(['The rule missed it', 'Other…']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
+
+    await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(6214, {
+      decision: 'override', reasonCode: 'missing-from-rule', membershipId: 21, remember: true,
+    }));
+  });
+
+  it('puts one back for another reason with the words typed under Other', async () => {
+    renderCard(ITEMS);
+
+    fireEvent.click(within(sectionOf('Archaeology’s rule turned it down')).getByRole('button', { name: 'Put back' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Other…' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('A few words'), { target: { value: 'the forum lies under it' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Put back' }));
+
+    await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(6214, {
+      decision: 'override', reasonCode: 'other', note: 'the forum lies under it', membershipId: 21, remember: true,
+    }));
   });
 
   it('draws a refusal of the whole place as before, with no heading and no other kind', () => {
@@ -97,6 +124,22 @@ describe('a refusal a curator kept out', () => {
 
     expect(screen.getByText('Readers still see this place under Art Museums; this keeps it out of Archaeology alone.'))
       .toBeInTheDocument();
+  });
+
+  it('is put back with the reason picked (#863)', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <KeptOutCard item={refusal({ membership_id: 21, admission_reason: 'kept out by a curator' })} onDone={() => {}} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Put back' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
+
+    await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(6214, {
+      decision: 'override', reasonCode: 'missing-from-rule', membershipId: 21,
+    }));
   });
 
   it("says what the system recorded about the answer apart from the curator's words (#2195)", () => {

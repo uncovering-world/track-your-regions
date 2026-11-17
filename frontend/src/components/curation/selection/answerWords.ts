@@ -7,12 +7,15 @@
  * cards keep the verbs they had, because each names the *consequence* ("The
  * rule was wrong — put it back"), and a batch offering two bare words over
  * every kind would be asking a curator to translate. So the bar and the
- * summary quote these, per kind. The single-row cards mostly say the same —
- * a refusal's put-back adds "until the next run", since the card's answer is
- * kept by every later run and a batch's is not (ADR-0067) — except the gated
- * card, which since #524 answers each held fact and each arrived row on its own
- * and keeps one "Publish everything on this card": a batch has no rows to
- * answer one by one, so its held and contents words stay the card-wide ones.
+ * summary quote these, per kind. The single-row cards mostly say the same,
+ * with two exceptions. The refusal card answers "Keep out" and "Put back",
+ * its put-back asking why (#863): a batch, whose put-back gives no reason,
+ * says instead which way it judges the rule, and adds "until the next run",
+ * since the card's answer is kept by every later run and a batch's is not
+ * (ADR-0067). The gated card since #524 answers each held fact and each
+ * arrived row on its own and keeps one "Publish everything on this card": a
+ * batch has no rows to answer one by one, so its held and contents words stay
+ * the card-wide ones.
  *
  * The keys are the row's own kind, with `waiting` split by the sub-kind the
  * row carries, since an arrival, a held change and unread contents are three

@@ -5463,6 +5463,22 @@ export const ReviewAnswerBodyAnswer = {
   lost: 'lost',
 } as const;
 
+/**
+ * Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused.
+ */
+export type ReviewAnswerBodyReasonCode = typeof ReviewAnswerBodyReasonCode[keyof typeof ReviewAnswerBodyReasonCode];
+
+
+export const ReviewAnswerBodyReasonCode = {
+  'not-this-kind': 'not-this-kind',
+  'not-worth-a-visit': 'not-worth-a-visit',
+  'not-one-place': 'not-one-place',
+  gone: 'gone',
+  duplicate: 'duplicate',
+  'wrong-place': 'wrong-place',
+  other: 'other',
+} as const;
+
 export interface ReviewAnswerBody {
   /**
      * @minItems 1
@@ -5470,6 +5486,13 @@ export interface ReviewAnswerBody {
      */
   rows: ReviewAnswerBodyRowsItem[];
   answer: ReviewAnswerBodyAnswer;
+  /** Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused. */
+  reasonCode?: ReviewAnswerBodyReasonCode;
+  /**
+     * The curator's words beside the reason, kept with each arrival turned away.
+     * @maxLength 1000
+     */
+  note?: string;
 }
 
 /**
@@ -6432,33 +6455,19 @@ export interface FindSiteLinkAnswerResult {
   answer: FindSiteLinkAnswerResultAnswer;
 }
 
-export type ExperienceAdmissionBodyDecision = typeof ExperienceAdmissionBodyDecision[keyof typeof ExperienceAdmissionBodyDecision];
-
-
-export const ExperienceAdmissionBodyDecision = {
-  confirm: 'confirm',
-  override: 'override',
-} as const;
-
-/**
- * Why the curator acted, kept in the log entry the act writes. A confirmation takes a refusal's reason, a put-back an addition's.
- */
-export type ExperienceAdmissionBodyReasonCode = typeof ExperienceAdmissionBodyReasonCode[keyof typeof ExperienceAdmissionBodyReasonCode];
-
-
-export const ExperienceAdmissionBodyReasonCode = {
-  'not-this-kind': 'not-this-kind',
-  'not-worth-a-visit': 'not-worth-a-visit',
-  'not-one-place': 'not-one-place',
-  gone: 'gone',
-  duplicate: 'duplicate',
-  'wrong-place': 'wrong-place',
-  other: 'other',
-  'missing-from-rule': 'missing-from-rule',
-} as const;
-
-export interface ExperienceAdmissionBody {
-  decision: ExperienceAdmissionBodyDecision;
+export type ExperienceAdmissionBody = {
+  decision: 'confirm';
+  /** @maxLength 1000 */
+  note?: string;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
+  /** Why the curator acted, kept in the log entry the act writes. */
+  reasonCode?: 'not-this-kind' | 'not-worth-a-visit' | 'not-one-place' | 'gone' | 'duplicate' | 'wrong-place' | 'other';
+} | {
+  decision: 'override';
   /** @maxLength 1000 */
   note?: string;
   /**
@@ -6467,9 +6476,9 @@ export interface ExperienceAdmissionBody {
      */
   membershipId?: number;
   remember?: boolean;
-  /** Why the curator acted, kept in the log entry the act writes. A confirmation takes a refusal's reason, a put-back an addition's. */
-  reasonCode?: ExperienceAdmissionBodyReasonCode;
-}
+  /** Why the curator acted, kept in the log entry the act writes. A put-back always says why. */
+  reasonCode: 'missing-from-rule' | 'other';
+};
 
 /**
  * The verdict now standing: `admitted` after an override, `refused` after a confirm.
@@ -7475,7 +7484,7 @@ export interface PointNamesakesAnswer {
 }
 
 /**
- * Why the curator acted, kept in the log entry the act writes.
+ * Why the curator acted, kept in the log entry the act writes. Turning an arrival away always says why.
  */
 export type RefuseArrivalBodyReasonCode = typeof RefuseArrivalBodyReasonCode[keyof typeof RefuseArrivalBodyReasonCode];
 
@@ -7498,8 +7507,8 @@ export interface RefuseArrivalBody {
      * @exclusiveMinimum 0
      */
   membershipId?: number;
-  /** Why the curator acted, kept in the log entry the act writes. */
-  reasonCode?: RefuseArrivalBodyReasonCode;
+  /** Why the curator acted, kept in the log entry the act writes. Turning an arrival away always says why. */
+  reasonCode: RefuseArrivalBodyReasonCode;
 }
 
 /**

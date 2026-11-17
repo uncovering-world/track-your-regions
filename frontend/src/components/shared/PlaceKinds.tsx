@@ -31,6 +31,8 @@ import { displayNameOf } from '../../utils/displayName';
 import { typeLabelFor } from '../../utils/experienceTypes';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { PlaceKindAdd } from './PlaceKindAdd';
+import { ReasonMenu } from './ReasonMenu';
+import { ADDITION_REASON_CODES } from '@tyr/shared/curationLog';
 import { aroundLabel } from '../curation/crowding/crowdingWords';
 import { crowdedPlaceUrl } from '../../utils/appUrl';
 
@@ -89,8 +91,12 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
     mutationFn: () => keepOutOfKind(experienceId, { membershipId: kind.membershipId, note: note.trim() || undefined }),
     onSuccess: () => { setAsking(false); setNote(''); settled(); },
   });
+  // A put-back goes against the kind's rule, so it says why, as on the review page (#863).
   const putBack = useMutation({
-    mutationFn: () => setExperienceAdmission(experienceId, { decision: 'override', membershipId: kind.membershipId }),
+    mutationFn: ({ reasonCode, note: words }: { reasonCode: (typeof ADDITION_REASON_CODES)[number]; note?: string }) =>
+      setExperienceAdmission(experienceId, {
+        decision: 'override', membershipId: kind.membershipId, reasonCode, note: words,
+      }),
     onSuccess: settled,
   });
   const failed = takeOut.error ?? putBack.error;
@@ -150,9 +156,14 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
           <Button size="small" variant="outlined" color="error" onClick={() => setAsking(true)}>Take out…</Button>
         )}
         {kind.canAnswer && keptOut && (
-          <Button size="small" variant="outlined" disabled={putBack.isPending} onClick={() => putBack.mutate()}>
-            Put it back
-          </Button>
+          <ReasonMenu
+            label="Put back"
+            reasons={ADDITION_REASON_CODES}
+            size="small"
+            color="primary"
+            disabled={putBack.isPending}
+            onChoose={(reasonCode, words) => putBack.mutate({ reasonCode, note: words })}
+          />
         )}
       </Stack>
 

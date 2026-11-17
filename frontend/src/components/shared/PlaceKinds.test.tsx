@@ -116,7 +116,7 @@ describe("a place's kinds on its curation dialog", () => {
     expect(screen.getByText(/Archaeology is the only kind that offers it/)).toBeTruthy();
   });
 
-  it('says who kept a kind out and why, and puts it back with the override', async () => {
+  it('says who kept a kind out and why, and puts it back with the override and the reason picked', async () => {
     mockedKinds.mockResolvedValue({ kinds: [WORSHIP, {
       ...ARCHAEOLOGY, state: 'kept-out', reason: 'kept out by a curator', answeredAt: '2026-10-25T12:00:00Z',
       note: 'Not a must: only the podium is left', curatorName: 'Ada',
@@ -126,8 +126,11 @@ describe("a place's kinds on its curation dialog", () => {
 
     expect(await screen.findByText(/kept out by Ada ·/)).toBeTruthy();
     expect(screen.getByText('“Not a must: only the podium is left”')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Put it back' }));
-    await waitFor(() => expect(mockedPutBack).toHaveBeenCalledWith(13761, { decision: 'override', membershipId: 5039 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Put back' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
+    await waitFor(() => expect(mockedPutBack).toHaveBeenCalledWith(13761, {
+      decision: 'override', membershipId: 5039, reasonCode: 'missing-from-rule',
+    }));
   });
 
   it('offers nothing on a kind outside the caller\'s scope, an arrival or a rule\'s refusal', async () => {
@@ -141,7 +144,7 @@ describe("a place's kinds on its curation dialog", () => {
     expect(await screen.findByText('waiting for a curator, on the review page')).toBeTruthy();
     expect(screen.getByText('kept out by its rule: no public art class')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Take out…' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Put it back' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Put back' })).toBeNull();
   });
 
   describe('adding the place to a kind no run offers it in', () => {

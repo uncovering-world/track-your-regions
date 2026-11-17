@@ -26,7 +26,7 @@
 
 import {
   answerReviewRows, fetchReviewQueue, REVIEW_ANSWER_ROWS_MAX,
-  type ReviewAnswer, type ReviewAnswerResult, type ReviewAnswerRow,
+  type BatchReason, type ReviewAnswer, type ReviewAnswerResult, type ReviewAnswerRow,
 } from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import { namedMembership } from '../../../utils/namedMembership';
@@ -134,13 +134,14 @@ export async function answerRows(
   rows: QueueRow[],
   answer: ReviewAnswer,
   onProgress: (p: AnswerProgress) => void,
+  reason?: BatchReason,
 ): Promise<ReviewAnswerResult> {
   let report = empty(answer);
   const questions = answerRowsFor(rows);
   for (const chunk of chunks(questions, REVIEW_ANSWER_ROWS_MAX)) {
     let page: ReviewAnswerResult;
     try {
-      page = await answerReviewRows(chunk, answer);
+      page = await answerReviewRows(chunk, answer, reason);
     } catch (error) {
       throw stopped(error, report, chunk.length);
     }
@@ -162,6 +163,7 @@ export async function answerAllMatching(
   total: number,
   answer: ReviewAnswer,
   onProgress: (p: AnswerProgress) => void,
+  reason?: BatchReason,
 ): Promise<ReviewAnswerResult> {
   let report = empty(answer);
   const tried = new Set<string>();
@@ -192,7 +194,7 @@ export async function answerAllMatching(
     for (const chunk of chunks(answerRowsFor(rows), REVIEW_ANSWER_ROWS_MAX)) {
       let result: ReviewAnswerResult;
       try {
-        result = await answerReviewRows(chunk, answer);
+        result = await answerReviewRows(chunk, answer, reason);
       } catch (error) {
         throw stopped(error, report, chunk.length);
       }

@@ -47,6 +47,16 @@ import { shaped, renderQueue, MISSING, REFUSED, KEPT_OUT } from './reviewQueueFi
 import { mockedAdmission, mockedInvalidate, resetCardMocks } from './reviewQueueCardMocks';
 import type { AdmissionResult } from '../../api/curation';
 
+/** The refusal card's two answers: "Keep out" agrees with the rule, "Put back" asks why (#863). */
+const KEEP_OUT = /^keep out$/i;
+const PUT_BACK = /^put back$/i;
+
+/** Put the row back because the rule missed it, the first reason the list offers. */
+async function putBack() {
+  fireEvent.click(await screen.findByRole('button', { name: PUT_BACK }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'The rule missed it' }));
+}
+
 describe('ReviewQueue', () => {
   beforeEach(() => {
     resetCardMocks(mockedFetch);
@@ -70,35 +80,36 @@ describe('ReviewQueue', () => {
     it('offers the two answers a refusal has, and none of the three a disappearance has', async () => {
       renderQueue();
 
-      expect(await screen.findByRole('button', { name: /the rule was right/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /the rule was wrong/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: KEEP_OUT })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: PUT_BACK })).toBeInTheDocument();
       // An open museum that was never a legitimate member is none of these.
       expect(screen.queryByRole('button', { name: /former/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /lost/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /false alarm/i })).not.toBeInTheDocument();
     });
 
-    it('sends confirm when the curator agrees with the rule', async () => {
+    it('sends confirm when the curator agrees with the rule, with no reason asked', async () => {
       renderQueue();
-      fireEvent.click(await screen.findByRole('button', { name: /the rule was right/i }));
+      fireEvent.click(await screen.findByRole('button', { name: KEEP_OUT }));
 
       await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
         99, expect.objectContaining({ decision: 'confirm' })));
+      expect(mockedAdmission.mock.calls[0][1]).not.toHaveProperty('reasonCode');
     });
 
-    it('sends override when the curator does not, remembered on later runs by default', async () => {
+    it('sends override with the reason picked when the curator does not, remembered on later runs by default', async () => {
       renderQueue();
-      fireEvent.click(await screen.findByRole('button', { name: /the rule was wrong/i }));
+      await putBack();
 
       await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
-        99, expect.objectContaining({ decision: 'override', remember: true })));
+        99, expect.objectContaining({ decision: 'override', reasonCode: 'missing-from-rule', remember: true })));
     });
 
     it('puts it back for now when the curator unticks remembering (#1368)', async () => {
       renderQueue();
       fireEvent.click(await screen.findByRole('checkbox', { name: /remember a put-back on later runs/i }));
       expect(screen.getByText(/the next run applies the rule again/)).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: /the rule was wrong/i }));
+      await putBack();
 
       await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
         99, expect.objectContaining({ decision: 'override', remember: false })));
@@ -106,7 +117,7 @@ describe('ReviewQueue', () => {
 
     it('sends no remembering with a confirmation, which always pins', async () => {
       renderQueue();
-      fireEvent.click(await screen.findByRole('button', { name: /the rule was right/i }));
+      fireEvent.click(await screen.findByRole('button', { name: KEEP_OUT }));
 
       await waitFor(() => expect(mockedAdmission).toHaveBeenCalled());
       expect(mockedAdmission.mock.calls[0][1]).not.toHaveProperty('remember');
@@ -155,7 +166,7 @@ describe('ReviewQueue', () => {
 
       // These are answered. A curator opening the page is here for what is not.
       await screen.findByRole('button', { name: /former/i });
-      expect(screen.queryByRole('button', { name: /put it back/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: PUT_BACK })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: /show what you have kept out/i })).toBeInTheDocument();
     });
 
@@ -163,7 +174,7 @@ describe('ReviewQueue', () => {
       renderQueue();
       fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
 
-      expect(await screen.findByRole('button', { name: /put it back/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: PUT_BACK })).toBeInTheDocument();
       // The rule's objection is still what a curator needs to judge by.
       expect(screen.getByText(/not an art museum/i)).toBeInTheDocument();
     });
@@ -172,19 +183,19 @@ describe('ReviewQueue', () => {
       renderQueue();
       fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
 
-      await screen.findByRole('button', { name: /put it back/i });
-      // Answered means answered: offering "the rule was right" again invites a
-      // second answer to a question that has one.
-      expect(screen.queryByRole('button', { name: /the rule was right/i })).not.toBeInTheDocument();
+      await screen.findByRole('button', { name: PUT_BACK });
+      // Answered means answered: offering "Keep out" again invites a second
+      // answer to a question that has one.
+      expect(screen.queryByRole('button', { name: KEEP_OUT })).not.toBeInTheDocument();
     });
 
-    it('sends override when the curator takes it back', async () => {
+    it('sends override with the reason picked when the curator takes it back', async () => {
       renderQueue();
       fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
-      fireEvent.click(await screen.findByRole('button', { name: /put it back/i }));
+      await putBack();
 
       await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
-        99, expect.objectContaining({ decision: 'override' })));
+        99, expect.objectContaining({ decision: 'override', reasonCode: 'missing-from-rule' })));
     });
 
     it('shows nothing at all when nothing has been kept out', async () => {
@@ -210,7 +221,7 @@ describe('ReviewQueue', () => {
       .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /the rule was wrong/i }));
+    await putBack();
 
     // Un-refusing a row nobody had passed publishes it in the same transaction,
     // and everything that arrived under it — the same sentence shape the

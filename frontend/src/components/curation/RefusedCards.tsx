@@ -21,8 +21,12 @@ import { publishOutcomeFor } from './publishOutcome';
 import { formatDateTime } from '../../utils/dateFormat';
 import { ItemHeader, messageFor } from './queueCard';
 import { RefusalLine } from './RefusalLine';
+import { ReasonMenu } from '../shared/ReasonMenu';
+import { ADDITION_REASON_CODES } from '@tyr/shared/curationLog';
 
 type OnDone = (message?: string, experienceId?: number) => void;
+/** Why a place goes back against its kind's rule: the rule missed it, or another reason. */
+type PutBackReason = (typeof ADDITION_REASON_CODES)[number];
 
 /**
  * Where readers still see a place a kind's rule kept out, said beside the refusal. Only
@@ -81,13 +85,18 @@ function RefusalSection({ item, heading, onDone }: { item: ReviewQueueItem; head
   // A put-back is remembered unless the curator says otherwise (#1368): they
   // read this one row, which is what a pin stands for.
   const [remember, setRemember] = useState(true);
+  // A keep-out agrees with the rule and gives no reason; a put-back goes
+  // against it and always gives one (#863). Words typed under "Other…" are the
+  // note; else the note field's.
   const decide = useMutation({
-    mutationFn: (decision: 'confirm' | 'override') =>
-      setExperienceAdmission(item.id, {
-        decision, note: note || undefined, ...namedMembership(item.membership_id),
-        ...(decision === 'override' ? { remember } : {}),
-      }),
-    // "Put it back" on a row nobody had passed publishes it as well, and a
+    mutationFn: (answer: { decision: 'confirm' } | { decision: 'override'; reasonCode: PutBackReason; note?: string }) =>
+      setExperienceAdmission(item.id, answer.decision === 'confirm'
+        ? { decision: 'confirm', note: note || undefined, ...namedMembership(item.membership_id) }
+        : {
+          decision: 'override', reasonCode: answer.reasonCode, note: answer.note ?? (note || undefined),
+          ...namedMembership(item.membership_id), remember,
+        }),
+    // "Put back" on a row nobody had passed publishes it as well, and a
     // curator watching an object stay invisible after un-refusing it would go
     // looking for a second button that does not exist.
     onSettled: (data, error) => onDone(
@@ -133,18 +142,17 @@ function RefusalSection({ item, heading, onDone }: { item: ReviewQueueItem; head
         <Button
           variant="outlined"
           disabled={decide.isPending}
-          onClick={() => decide.mutate('confirm')}
+          onClick={() => decide.mutate({ decision: 'confirm' })}
         >
-          The rule was right — keep it out
+          Keep out
         </Button>
-        <Button
-          variant="outlined"
+        <ReasonMenu
+          label="Put back"
+          reasons={ADDITION_REASON_CODES}
           color="warning"
           disabled={decide.isPending}
-          onClick={() => decide.mutate('override')}
-        >
-          The rule was wrong — put it back
-        </Button>
+          onChoose={(reasonCode, words) => decide.mutate({ decision: 'override', reasonCode, note: words })}
+        />
       </Stack>
     </Stack>
   );
@@ -160,8 +168,8 @@ function RefusalSection({ item, heading, onDone }: { item: ReviewQueueItem; head
  */
 export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: OnDone }) {
   const putBack = useMutation({
-    mutationFn: () => setExperienceAdmission(item.id, {
-      decision: 'override', ...namedMembership(item.membership_id),
+    mutationFn: ({ reasonCode, note }: { reasonCode: PutBackReason; note?: string }) => setExperienceAdmission(item.id, {
+      decision: 'override', reasonCode, note, ...namedMembership(item.membership_id),
     }),
     onSettled: (data, error) => onDone(
       error ? messageFor(item, error) : admissionOutcomeFor(item, data), item.id),
@@ -188,15 +196,14 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: O
               in the curator's quotes (#2195), as on the pin card. */}
           {item.state_system_note ? ` — recorded by the system: ${item.state_system_note}` : ''}
         </Typography>
-        <Button
+        <ReasonMenu
+          label="Put back"
+          reasons={ADDITION_REASON_CODES}
           size="small"
-          variant="outlined"
           color="warning"
           disabled={putBack.isPending}
-          onClick={() => putBack.mutate()}
-        >
-          Put it back
-        </Button>
+          onChoose={(reasonCode, note) => putBack.mutate({ reasonCode, note })}
+        />
       </CardContent>
     </Card>
   );
@@ -207,11 +214,11 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: O
  * everything that came with it.
  *
  * An override on a row nobody had passed publishes it in the same transaction
- * (ADR-0025 § 4.5) — otherwise the button says "Put it back" and puts nothing
+ * (ADR-0025 § 4.5) — otherwise the button says "Put back" and puts nothing
  * anywhere. It publishes the arrival's contents too, not only the object —
- * "Put it back" does considerably more than it says, and a curator who clicks
+ * "Put back" does considerably more than it says, and a curator who clicks
  * it deserves to be told what happened, in the same sentence shape the publish
- * card already uses (`publishOutcomeFor`): a curator who clicks "Put it back"
+ * card already uses (`publishOutcomeFor`): a curator who clicks "Put back"
  * and quietly gets twelve paintings published as a side effect deserves the
  * same sentence a curator who clicks "Publish" gets, not a vaguer one because
  * the button had a different label. Never a held field or a run id — an

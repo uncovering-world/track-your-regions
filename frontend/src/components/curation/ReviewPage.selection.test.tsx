@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 vi.mock('../../utils/queryInvalidation', () => ({
   invalidateExperiences: vi.fn(),
@@ -93,8 +93,9 @@ describe('answering a selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Accept the proposed changes' }));
 
     await waitFor(() => expect(mockedAnswer).toHaveBeenCalledTimes(1));
+    // An acceptance gives no reason: only a turn-away says why.
     expect(mockedAnswer).toHaveBeenCalledWith(
-      [{ kind: 'waiting', id: 55, runId: 98 }, { kind: 'waiting', id: 56, runId: 98 }], 'accept');
+      [{ kind: 'waiting', id: 55, runId: 98 }, { kind: 'waiting', id: 56, runId: 98 }], 'accept', undefined);
     expect(await screen.findByText('2 objects published. 1 point now visible.')).toBeInTheDocument();
     expect(invalidateAfterBatchPublication).toHaveBeenCalled();
     // The ticks are gone with the batch, and the bar with them.
@@ -105,9 +106,43 @@ describe('answering a selection', () => {
     renderQueue();
     await screen.findByRole('checkbox', { name: 'Select Serengeti National Park' });
     tick('Serengeti National Park');
+    // A disagreement kept as it stands turns nothing away, so it asks no reason.
     fireEvent.click(screen.getByRole('button', { name: 'Reject the proposed changes' }));
     await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(
-      [{ kind: 'conflict', id: 88, runId: 98 }], 'reject'));
+      [{ kind: 'conflict', id: 88, runId: 98 }], 'reject', undefined));
+  });
+
+  it('turns a selection of arrivals away with one reason for every one of them (#863)', async () => {
+    renderQueue();
+    await screen.findByRole('checkbox', { name: 'Select Museo Soumaya' });
+    tick('Museo Soumaya');
+    tick('Museo Jumex');
+
+    expect(screen.queryByRole('button', { name: 'Reject the proposed changes' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn away 2' }));
+    const lines = within(screen.getByRole('menu')).getAllByRole('menuitem').map(line => line.textContent);
+    expect(lines).toEqual([
+      'Not this kind of place', 'Nothing to see', 'Not one place', 'Gone or not built', 'Same as another', 'Wrong place', 'Other…',
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Same as another' }));
+
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(
+      [{ kind: 'waiting', id: 55, runId: 98 }, { kind: 'waiting', id: 56, runId: 98 }], 'reject',
+      { reasonCode: 'duplicate', note: undefined }));
+  });
+
+  it('sends the words typed under Other with a batch turned away', async () => {
+    renderQueue();
+    await screen.findByRole('checkbox', { name: 'Select Museo Soumaya' });
+    tick('Museo Soumaya');
+    fireEvent.click(screen.getByRole('button', { name: 'Turn away 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Other…' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('A few words'), { target: { value: 'a private collection' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn away 1' }));
+
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(
+      [{ kind: 'waiting', id: 55, runId: 98 }], 'reject', { reasonCode: 'other', note: 'a private collection' }));
   });
 
   it('offers Lost to a selection wholly of one verdict kind', async () => {
@@ -193,11 +228,15 @@ describe('answering a selection', () => {
     expect(screen.getByText('1,070 arrivals')).toBeInTheDocument();
     expect(screen.getByText('1,078 from Places of worship')).toBeInTheDocument();
     expect(screen.getByText('1,078 asked by run 105')).toBeInTheDocument();
+    // The rejection turns the arrivals among them away, so it asks why first,
+    // and says the reason is the arrivals' (#863).
     fireEvent.click(screen.getByRole('button', { name: 'Reject the proposed changes' }));
+    expect(within(screen.getByRole('menu')).getByText('Why the arrivals are turned away')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Nothing to see' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).toContain('Reject all 1,078 matching these filters?');
-    expect(dialog.textContent).toContain('1,070 arrivals: Keep it out');
+    expect(dialog.textContent).toContain('1,070 arrivals: Keep it out (Nothing to see)');
     // Rejecting a refusal is the take-back: the card proposes the refusal (#906).
     expect(dialog.textContent).toContain('5 refusals: The rule was wrong — put it back until the next run');
     expect(dialog.textContent).toContain('3 disagreements: Keep all current');
