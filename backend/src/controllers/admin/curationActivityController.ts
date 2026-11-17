@@ -13,12 +13,16 @@ import type {
 import type {
   curationActivityQuerySchema, curatorActivityQuerySchema, userIdParamSchema,
 } from '../../types/index.js';
+import { actKindNameSql } from '../../db/actKind.js';
 
 /** One act of the log as the activity read selects it. */
 type ActivityRow = Pick<ExperienceCurationLogRow, 'id' | 'details' | 'created_at' | 'region_id' | 'curator_id'> & {
   action: CuratorActivityEntry['action'];
   experience_id: ExperiencesRow['id'];
   experience_name: ExperiencesRow['name'];
+  experience_image_url: ExperiencesRow['image_url'];
+  experience_image_credit: unknown;
+  kind_name: string | null;
   region_name: RegionsRow['name'] | null;
   curator_name: UsersRow['display_name'];
 };
@@ -32,6 +36,9 @@ function activityEntryOf(row: ActivityRow): CuratorActivityEntry {
     details: row.details as CuratorActivityEntry['details'],
     experience_id: row.experience_id,
     experience_name: row.experience_name,
+    experience_image_url: row.experience_image_url ?? null,
+    experience_image_credit: (row.experience_image_credit ?? null) as CuratorActivityEntry['experience_image_credit'],
+    kind_name: row.kind_name ?? null,
     region_id: row.region_id,
     region_name: row.region_name,
     curator_id: row.curator_id,
@@ -83,6 +90,9 @@ async function readCurationActivity(
       u.display_name AS curator_name,
       e.id AS experience_id,
       e.name AS experience_name,
+      e.image_url AS experience_image_url,
+      e.metadata->'imageCredit' AS experience_image_credit,
+      ${actKindNameSql('cl')} AS kind_name,
       r.id AS region_id,
       r.name AS region_name
     FROM experience_curation_log cl

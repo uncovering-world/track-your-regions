@@ -6,6 +6,7 @@
 
 import type { z } from 'zod/v4';
 import type { CurationLog, CurationLogEntry } from '../../api/responses/curation.js';
+import { actKindNameSql } from '../../db/actKind.js';
 import { pool } from '../../db/index.js';
 import type { ExperienceCurationLogRow, ExperiencesRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
@@ -114,7 +115,8 @@ export async function getCurationLog(
       cl.created_at,
       u.display_name as curator_name,
       p.folded_id,
-      f.name as folded_name
+      f.name as folded_name,
+      ${actKindNameSql('cl')} AS kind_name
     FROM log_places p
     JOIN experience_curation_log cl ON cl.experience_id = p.id
     LEFT JOIN experiences f ON f.id = p.folded_id
@@ -144,6 +146,7 @@ export async function getCurationLog(
     curator_name: row.curator_name,
     folded_id: row.folded_id,
     folded_name: row.folded_name,
+    kind_name: row.kind_name,
   }));
 }
 
@@ -153,4 +156,5 @@ type CurationLogRow = Pick<ExperienceCurationLogRow, 'id' | 'action' | 'region_i
   curator_name: UsersRow['display_name'];
   folded_id: ExperiencesRow['id'] | null;
   folded_name: ExperiencesRow['name'] | null;
+  kind_name: string | null;
 };
