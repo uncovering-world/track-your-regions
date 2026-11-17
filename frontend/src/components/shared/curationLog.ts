@@ -232,7 +232,7 @@ function isImageCredit(value: unknown): value is ImageCredit {
  * would print both sides of it identically — the failure the withdrawal card documents at
  * 1.2 cm (#543).
  */
-function truncate40(value: unknown): string {
+export function logValue(value: unknown, max = 40): string {
   const pair = value as { lat?: unknown; lon?: unknown } | null;
   if (pair && typeof pair === 'object'
     && typeof pair.lat === 'number' && typeof pair.lon === 'number') {
@@ -267,7 +267,7 @@ function truncate40(value: unknown): string {
   // says. Only a value that is genuinely missing is called empty; an empty string is,
   // since a field cleared and a field never set look the same to a reader.
   const str = value === null || value === undefined || value === '' ? '(empty)' : String(value);
-  return str.length > 40 ? str.slice(0, 40) + '...' : str;
+  return str.length > max ? str.slice(0, max) + '...' : str;
 }
 
 function formatEditedChanges(d: Record<string, unknown>): string | null {
@@ -275,7 +275,7 @@ function formatEditedChanges(d: Record<string, unknown>): string | null {
   for (const [field, val] of Object.entries(d)) {
     const change = val as { old?: unknown; new?: unknown } | undefined;
     if (change?.old === undefined || change?.new === undefined) continue;
-    changes.push(`${field}: "${truncate40(change.old)}" → "${truncate40(change.new)}"`);
+    changes.push(`${field}: "${logValue(change.old)}" → "${logValue(change.new)}"`);
   }
   return changes.length > 0 ? changes.join('\n') : null;
 }
@@ -336,7 +336,7 @@ function fieldEntries(value: unknown): Array<Record<string, unknown>> {
  * stops being shown at this moment, and the run that proposed the replacement says
  * nothing about when it took effect.
  */
-function releasedContents(d: Record<string, unknown>): string[] {
+export function releasedContents(d: Record<string, unknown>): string[] {
   const lines: string[] = [];
   const released: string[] = [];
   const points = countOf(d.locations);
@@ -394,7 +394,7 @@ function formatPublished(d: Record<string, unknown>): string | null {
 function formatAcceptedSource(d: Record<string, unknown>): string | null {
   const lines = fieldEntries(d.fields).map(entry => (entry.appliesAtNextSync
     ? `${fieldLabel(entry.field as string)}: at the next sync`
-    : `${fieldLabel(entry.field as string)}: "${truncate40(entry.applied)}"`));
+    : `${fieldLabel(entry.field as string)}: "${logValue(entry.applied)}"`));
   // Either array, not only the second, and moved first: the server derives one from the
   // other today, and a line that goes silent about a pin that moved is what this exists
   // to prevent — not something to make conditional on that relationship holding.
@@ -415,7 +415,7 @@ function formatAcceptedSource(d: Record<string, unknown>): string | null {
  */
 function formatDeclinedSource(d: Record<string, unknown>): string | null {
   const lines = fieldEntries(d.fields).map(entry =>
-    `${fieldLabel(entry.field as string)}: source proposed "${truncate40(entry.declined)}"`);
+    `${fieldLabel(entry.field as string)}: source proposed "${logValue(entry.declined)}"`);
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
@@ -432,12 +432,12 @@ function formatDeclinedSource(d: Record<string, unknown>): string | null {
  */
 function formatDeclinedHeld(d: Record<string, unknown>): string | null {
   const lines = fieldEntries(d.fields).map(entry =>
-    `${fieldLabel(entry.field as string)}: run proposed "${truncate40(entry.declined)}"`);
+    `${fieldLabel(entry.field as string)}: run proposed "${logValue(entry.declined)}"`);
   for (const part of Array.isArray(d.parts) ? d.parts : []) {
     const named = part as { name?: unknown; field?: unknown; declined?: unknown };
     if (named.field === undefined) continue;
     lines.push(`${String(named.name ?? 'a part')} — ${fieldLabel(String(named.field))}: `
-      + `run proposed "${truncate40(named.declined)}"`);
+      + `run proposed "${logValue(named.declined)}"`);
   }
   // The moved point that was the same move as a refused coordinate (ADR-0083):
   // turned down with it, the stored pin kept. Absent from entries written before.

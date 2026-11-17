@@ -2151,6 +2151,34 @@ export const CuratorActivityEntryAction = {
 } as const;
 
 /**
+ * Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043, ADR-0182).
+ */
+export interface ImageCredit {
+  /**
+     * The photographer or uploader, as plain text.
+     * @nullable
+     */
+  author: string | null;
+  /**
+     * The licence in the words its own name uses: "CC BY-SA 3.0", "Public domain".
+     * @nullable
+     */
+  license: string | null;
+  /** @nullable */
+  licenseUrl: string | null;
+  /**
+     * The file page or the site's own page for the object: where the full terms are.
+     * @nullable
+     */
+  detailsUrl: string | null;
+  /**
+     * Whether the licence asks for the author to be named (Commons' `AttributionRequired`): false for public domain and CC0, which show no credit. Absent on a credit stored before it was read, and null where Commons did not say; the licence's name decides then.
+     * @nullable
+     */
+  attributionRequired?: boolean | null;
+}
+
+/**
  * What the act changed, in the shape its action writes.
  */
 export type CuratorActivityEntryDetails = {[key: string]: unknown} | null;
@@ -2174,6 +2202,18 @@ export interface CuratorActivityEntry {
      */
   experience_id: number;
   experience_name: string;
+  /**
+     * The place's picture, for the row's thumbnail.
+     * @nullable
+     */
+  experience_image_url: string | null;
+  /** The picture's credit, shown with it (ADR-0043). */
+  experience_image_credit: ImageCredit | null;
+  /**
+     * The kind the act was about, by the membership its details name; null where it names none.
+     * @nullable
+     */
+  kind_name: string | null;
   region_id: number | null;
   /** @nullable */
   region_name: string | null;
@@ -4336,34 +4376,6 @@ export interface WvImportMapCreditsBody {
      * @items.maxLength 2000
      */
   urls: string[];
-}
-
-/**
- * Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043, ADR-0182).
- */
-export interface ImageCredit {
-  /**
-     * The photographer or uploader, as plain text.
-     * @nullable
-     */
-  author: string | null;
-  /**
-     * The licence in the words its own name uses: "CC BY-SA 3.0", "Public domain".
-     * @nullable
-     */
-  license: string | null;
-  /** @nullable */
-  licenseUrl: string | null;
-  /**
-     * The file page or the site's own page for the object: where the full terms are.
-     * @nullable
-     */
-  detailsUrl: string | null;
-  /**
-     * Whether the licence asks for the author to be named (Commons' `AttributionRequired`): false for public domain and CC0, which show no credit. Absent on a credit stored before it was read, and null where Commons did not say; the licence's name decides then.
-     * @nullable
-     */
-  attributionRequired?: boolean | null;
 }
 
 export type MapImageCreditsCreditsItem = {

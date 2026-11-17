@@ -3621,6 +3621,11 @@ export interface CurationLogEntry {
      * @nullable
      */
   folded_name: string | null;
+  /**
+     * The kind the act was about, by the membership its details name; null where it names none.
+     * @nullable
+     */
+  kind_name: string | null;
 }
 
 /**
