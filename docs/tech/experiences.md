@@ -183,8 +183,9 @@ other write of it, so the trigger is its one writer. Nelson's Pillar in Dublin (
 1966) reads false; a place with no period, or with only a use that ended, stands. No reader reads
 the column yet: `existence` still hides a lost place.
 
-Both tables are serving tables (ADR-0124). No curator screen writes them yet; the runs write them
-as § How a run writes a place's periods says.
+Both tables are serving tables (ADR-0124). The runs write them as § How a run writes a place's
+periods says, and a curator's answer to a held list writes the place's (§ A held list on the review
+card). No screen lets a curator enter a period.
 
 **How a source's view is read from Wikidata** (`services/sync/places/lifetime.ts`). `lifetimeOf`
 derives a record's periods from the statements the gone rules already read (`fetchStandingFacts`,
@@ -287,8 +288,9 @@ another (`used`):
   told the same way where the place says how it ended, and leaves the place standing or not as it
   was. The cathedral held as "1883 → open" and reported as "1883 → 1931, 2000 → open" is one;
 - any other difference on a place a reader sees, under a gated source, is held back: not written,
-  its record keeps the view it reports, and the run's log names nothing for a curator yet. A view
-  that drops a held date, moves 1883 to 1881 or tells an end another way is one;
+  its record keeps the view it reports, and the run files the list as a held field for a curator
+  (§ A held list on the review card). A view that drops a held date, moves 1883 to 1881 or tells an
+  end another way is one;
 - the end of the place's last standing period is never a fill, since it takes the place off
   today's lists: under a gated source it is held back on a place a reader sees, and written with
   the arrival on a place no reader sees yet, as Nelson's Pillar arrives with its end of 1966. A
@@ -300,7 +302,10 @@ another (`used`):
   visited all that time; Bethlehem Chapel in Prague, pulled down in 1786 and rebuilt by 1952, was
   not there. The length is counted from the last day the one period may have ended to the first
   day the next may have begun, a gap the place already holds is not asked again, and a gap with
-  an end not known has no length. Of the 40 gaps the reader derives on the development subset
+  an end not known has no length. What such a list says beside the gap does not wait for the
+  answer: the same list with each long gap closed (`overLongGaps`) is written where it only fills,
+  so the Odeon holds "161 → open" while its gap is asked, and keeps it when a curator refuses the
+  gap. A list that also ends the place fills nothing in. Of the 40 gaps the reader derives on the development subset
   four are that long, and the 36 others are of 86 years or less;
 - a curator's admission pin on the run's membership keeps the place standing: the run reads its
   last standing period as open, whatever end its source reports;
@@ -312,6 +317,40 @@ another (`used`):
 A list written onto the place is filed on the run's change set beside its other fields, the list
 the place held and the list written, so an object whose only write is a period reads as updated;
 a preview files the same without writing.
+
+**A held list on the review card.** A list the gate holds back is filed among the change set's held
+fields (`withLifetimeChanges`), named by what it says (`stood`, `used`): the list the place holds
+once the run has written as `old`, the list its source reports as `new`. It weighs as major where
+it says a standing place is gone or a gone one stands again. From there it is a held field like a
+held name (§ Review Queue): the upsert points the membership at the run, the queue's held card shows
+the row, and the card's two answers decide it. A run whose own membership refuses the place
+proposes no list, as it proposes no field (`proposedBy`).
+
+- **The card** (`lifetimeMeaning.ts`, through `fieldMeaning.tsx`) shows the two lists side by side,
+  a line a period, in the words of `periodLines` (`utils/placePeriodsLabel.ts`): "Built 1391, stood
+  until 1786", "Rebuilt 1952, stands today", "Built 1809, destroyed 8 Mar 1966", "In use until
+  c. 7,000 BC". A date reads as `placeDateLabel` writes it (`utils/placeDateLabel.ts`): a day with
+  its year, a decade as "1880s", a century or a millennium as "c." and the year rounded to it.
+  Under the proposed list one sentence says what taking it does: that the place is gone, that it
+  stands again, or that it was not there for the years of the longest gap the current list lacks,
+  with the advice to keep the current list where a ruin stood.
+- **Use proposed** (`publishUnderLock`, `heldPlacePeriods.ts`) writes the list whole through
+  `writePlacePeriods`, under the place's lock, as the list of the source whose run proposed it, with
+  no curator named on it: the next run finds the place holding what it reports and asks nothing.
+  A held removal takes the list off. A value that is no list a place can hold (`proposedPeriods`,
+  which asks `periodsFault`) refuses the call, as any unwritable held field does.
+- **Keep current** (`refuseUnderLock`) writes nothing and records the answer by value in
+  `experience_held_decisions`, as for every held field. A later run that reports the same list
+  files it again and the card stays closed. A list that differs in a date, an ending or the
+  statement a date was read from is asked anew.
+
+`stood` is marked shown in `@tyr/shared/placeFields` although no surface draws a period yet, since
+its end says the place is gone: the card's summary never says of it that nothing readers see
+changes. `used` stays unseen. The run's report in the admin panel (`SyncChangeList.tsx`) prints
+both lists of a filed row in the same words.
+
+No reader reads `stands_today` yet, so a published end is held by the place and takes it off no
+list until the read as of a date is built (ADR-0217 decisions 5 to 7).
 
 ### Location model
 
