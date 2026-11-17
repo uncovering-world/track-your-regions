@@ -1,7 +1,7 @@
 # ADR-0212: The OpenStreetMap layer keeps whole the objects of a bridge's item, and its line places it
 
 **Date:** 2026-11-15
-**Status:** Accepted
+**Status:** Accepted — decision 4 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): it holds for every place that holds a line of its own, and a line that is not the place's own places nothing
 **Issue:** [#2122](https://github.com/uncovering-world/track-your-regions/issues/2122), Epic #2115
 **Narrows:** [ADR-0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md)
 decision 1 (a full geometry only where a kind's keep rule draws it)

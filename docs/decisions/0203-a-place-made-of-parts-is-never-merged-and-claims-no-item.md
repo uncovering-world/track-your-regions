@@ -1,7 +1,7 @@
 # ADR-0203: A place made of parts is never merged, and claims no Wikidata item
 
 **Date:** 2026-11-13
-**Status:** Accepted
+**Status:** Accepted — decisions 1, 3, 5 and 6 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): "claims no item", "never merged" and what the join leaves out hold for a record with parts and no shape of its own, a curator's answer "the same group" is the one way a kind's record comes onto one, and the check `merge-onto-a-whole` leaves such a merge out
 **Issue:** [#2119](https://github.com/uncovering-world/track-your-regions/issues/2119), Epic #2115
 **Narrows:** [ADR-0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) decision 2,
 [ADR-0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) decision 2,

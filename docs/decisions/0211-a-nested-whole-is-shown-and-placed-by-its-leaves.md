@@ -1,7 +1,7 @@
 # ADR-0211: A nested whole is shown and placed by its leaves
 
 **Date:** 2026-11-15
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): "whole" is read as a record with parts
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0207: A place's regions come from its own geometry, and a point no region holds takes its nearest
 
 **Date:** 2026-11-15
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): on a record that holds no coordinate an outline is tested against its reference point, and a line places a record only when it is the record's own
 **Issue:** [#2122](https://github.com/uncovering-world/track-your-regions/issues/2122), Epic #2115
 **Narrows:** [ADR-0197](0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md)
 decisions 2 and 3

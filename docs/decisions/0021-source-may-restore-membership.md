@@ -1,7 +1,7 @@
 # ADR-0021: A sync may restore `source_membership`, in one direction only
 
 **Date:** 2026-08-03
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0217](0217-time-in-the-catalogue-is-held-as-periods-and-the-catalogue-is-read-as-of-a-date.md): a trigger derives `source_membership` from the listing periods, and no run writes it
 
 ---
 

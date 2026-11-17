@@ -1,10 +1,10 @@
 # ADR-0218: A record states its shape, and its pin is derived from what it holds
 
 **Date:** 2026-11-16
-**Status:** Draft
+**Status:** Accepted
 **Issue:** [#2577](https://github.com/uncovering-world/track-your-regions/issues/2577), Epic #2115
 **Built by:** #2577, #505, #2248, #1948, #1676, #2582, #2583, #2579, #2580, #2125, #1969, #2623
-**Narrows (once accepted):** [ADR-0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md)
+**Narrows:** [ADR-0210](0210-a-dispersed-whole-holds-no-point-and-every-line-of-a-serial-site-is-a-part.md)
 decisions 1, 2 and 5 (a whole's two shapes, the row constraint, and "every reader asks the
 column");
 [ADR-0207](0207-a-places-regions-come-from-its-own-geometry-and-a-point-no-region-holds-takes-its-nearest.md)
@@ -27,7 +27,11 @@ decision 2 (in a "same group" answer the serial object stays, whichever id is lo
 decision 14);
 [ADR-0150](0150-wikidatas-part-of-answers-a-near-pair.md)
 decision 1 (a statement answers a near pair without a curator only toward a record that already
-has parts, decision 14)
+has parts, decision 14);
+[ADR-0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md)
+decisions 1 and 3 ("whole" is read as a record with parts, and one with a shape of its own has a
+pin and is framed by its extent, decisions 5 and 11);
+[ADR-0211](0211-a-nested-whole-is-shown-and-placed-by-its-leaves.md) ("whole" is read as a record with parts)
 
 ---
 
@@ -878,6 +882,13 @@ to the lines of #2619 the session closed the same day.** Each change names its l
 The three questions the note above left to the maintainer are answered: the check of decision 7
 for an area no source proposes for (line 1.15), how far the ruling on a shared item reaches
 (line 1.16), and the lock stations of a part that is itself an extended object (line 1.17).
+
+**Accepted on 2026-11-17** (#2619 line 4.9), after the maintainer's rulings of 2026-11-16 and
+2026-11-17 recorded on #2578, #2577 and #2579 and in #2619. No decision changes with the
+acceptance; the header adds ADR-0205 and ADR-0211, which decisions 5 and 11 already narrowed
+without naming them. What is still to design is the session's and is named where it stands: what the map
+shows of what a visitor finds at a part is #2059's, decided when it is built (decision 2), and a
+rule marked as the session's stays so marked until the maintainer confirms it (decision 11).
 
 ## Alternatives Considered
 
