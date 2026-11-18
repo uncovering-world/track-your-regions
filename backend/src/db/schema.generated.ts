@@ -41,6 +41,7 @@ export interface AdministrativeDivisionsRow {
   geom_overview_3857: string | null;
   geom_simplified_coarse_3857: string | null;
   geom_simplified_medium_3857: string | null;
+  gadm_country: string | null;
 }
 
 /** The table `ai_learned_rules`. */
@@ -328,6 +329,13 @@ export interface ExperienceCurationLogRow {
   region_id: number | null;
   details: unknown | null;
   created_at: Date | null;
+  batch_id: string | null;
+  kind_id: number | null;
+  reason_code: string | null;
+  reason_text: string | null;
+  record_id: number | null;
+  sync_log_id: number | null;
+  undoes_log_id: number | null;
 }
 
 /** The table `experience_hand_overs`. */
@@ -339,6 +347,9 @@ export interface ExperienceHandOversRow {
   held_in: string[];
   sync_log_id: number | null;
   recorded_at: Date;
+  container_id: number | null;
+  decided_at: Date | null;
+  decided_by: number | null;
 }
 
 /** The table `experience_held_decisions`. */
@@ -355,6 +366,7 @@ export interface ExperienceHeldDecisionsRow {
   decided_at: Date;
   source_id: number | null;
   record_id: number | null;
+  treasure_id: number | null;
 }
 
 /** The table `experience_kind_suggestions`. */
@@ -382,6 +394,18 @@ export interface ExperienceKindsRow {
   crowding_limit: number | null;
   crowding_radius_km: number | null;
   crowding_exempt_types: string[];
+  form: string;
+  list_kept_outside: boolean;
+  tick_paints: string;
+  tick_verb: string | null;
+  tracks_distance: boolean;
+}
+
+/** The table `experience_lies_within`. */
+export interface ExperienceLiesWithinRow {
+  inner_id: number;
+  outer_id: number;
+  basis: string;
 }
 
 /** The table `experience_location_placements`. */
@@ -425,6 +449,15 @@ export interface ExperienceLocationsRow {
   approximate: string | null;
 }
 
+/** The table `experience_makers`. */
+export interface ExperienceMakersRow {
+  experience_id: number;
+  ordinal: number;
+  maker_item: string | null;
+  maker_label: string;
+  role: string;
+}
+
 /** The table `experience_merge_proposals`. */
 export interface ExperienceMergeProposalsRow {
   id: number;
@@ -445,6 +478,8 @@ export interface ExperienceMergeProposalsRow {
   answer_statement: unknown | null;
   taken_back_at: Date | null;
   matched_words: string[] | null;
+  shared_item: string | null;
+  with_part_id: number | null;
 }
 
 /** The table `experience_merge_suggestions`. */
@@ -494,6 +529,8 @@ export interface ExperiencePartsRow {
   part_id: number;
   reason: string;
   created_at: Date;
+  ordinal: number | null;
+  role: string;
 }
 
 /** The table `experience_planned_kind_answers`. */
@@ -554,6 +591,8 @@ export interface ExperienceRegionsRow {
   assigned_by: number | null;
   created_at: Date | null;
   listing: string;
+  former_region_name: string | null;
+  offered_region_ids: number[] | null;
 }
 
 /** The table `experience_rejections`. */
@@ -564,6 +603,54 @@ export interface ExperienceRejectionsRow {
   rejected_by: number;
   reason: string | null;
   created_at: Date | null;
+  rejected_at: Date;
+}
+
+/** The table `experience_relation_periods`. */
+export interface ExperienceRelationPeriodsRow {
+  relation_id: number;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+}
+
+/** The table `experience_relations`. */
+export interface ExperienceRelationsRow {
+  id: number;
+  from_id: number;
+  to_id: number | null;
+  to_region_id: number | null;
+  relation: string;
+  strength: string | null;
+  state: string;
+  source_id: number;
+  statement_property: string | null;
+  statement_id: string | null;
+  sync_log_id: number | null;
+  proposed_at: Date;
+  decided_at: Date | null;
+  decided_by: number | null;
+  refused_at: Date | null;
+  refused_by: number | null;
+  created_at: Date;
+  updated_at: Date;
+  from_m: number | null;
+  to_m: number | null;
 }
 
 /** The table `experience_separations`. */
@@ -581,6 +668,19 @@ export interface ExperienceSeparationsRow {
   undone_at: Date | null;
   undone_by: number | null;
   merge_id: number | null;
+}
+
+/** The table `experience_series_proposals`. */
+export interface ExperienceSeriesProposalsRow {
+  id: number;
+  experience_id: number;
+  found_by: string;
+  signal_m: number | null;
+  proposed_at: Date;
+  answer: string | null;
+  answered_at: Date | null;
+  answered_by: number | null;
+  taken_back_at: Date | null;
 }
 
 /** The table `experience_shape_regions`. */
@@ -608,6 +708,50 @@ export interface ExperienceSourcesRow {
   id_scheme: string;
   new_badge_days: number;
   requires_curation: boolean;
+  licence: string | null;
+  work_enter_editions: number | null;
+  work_stay_editions: number | null;
+}
+
+/** The table `experience_subject_lines`. */
+export interface ExperienceSubjectLinesRow {
+  experience_id: number;
+  line: string;
+  via: string;
+  read_at: Date;
+}
+
+/** The table `experience_subjects`. */
+export interface ExperienceSubjectsRow {
+  experience_id: number;
+  line: string;
+  ordinal: number;
+  item: string | null;
+  words: string | null;
+  label: string;
+  article_url: string | null;
+  role: string | null;
+  life_event: string | null;
+  source_id: number;
+  read_from: string;
+  statement: string | null;
+  decided_at: Date | null;
+  decided_by: number | null;
+  refused_at: Date | null;
+  refused_by: number | null;
+  created_at: Date;
+}
+
+/** The table `experience_sync_bars`. */
+export interface ExperienceSyncBarsRow {
+  sync_log_id: number;
+  kind_id: number;
+  tier: string;
+  signal: string;
+  statistic: string;
+  value: number;
+  readers_year: number | null;
+  kept_from_sync_log_id: number | null;
 }
 
 /** The table `experience_sync_changes`. */
@@ -626,6 +770,7 @@ export interface ExperienceSyncChangesRow {
   first_asked: unknown | null;
   held_first_sync_log_id: number | null;
   conflict_first_sync_log_id: number | null;
+  record_id: number | null;
 }
 
 /** The table `experience_sync_logs`. */
@@ -662,6 +807,114 @@ export interface ExperienceSyncLogsRow {
   progress_at: Date | null;
   unplaced_experience_ids: number[] | null;
   pass_log_id: number | null;
+  code_version: string | null;
+  quota_remaining: number | null;
+  reused_from_sync_log_id: number | null;
+  subset_dumped_at: Date | null;
+  total_pins_agreeing: number;
+  total_pins_asked: number;
+}
+
+/** The table `experience_time_proposals`. */
+export interface ExperienceTimeProposalsRow {
+  id: number;
+  experience_id: number;
+  record_id: number | null;
+  what: string;
+  pass: string;
+  source_id: number | null;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  season_says: string | null;
+  season_from_month: number | null;
+  season_from_day: number | null;
+  season_until_month: number | null;
+  season_until_day: number | null;
+  location: string | null;
+  statement: string | null;
+  osm_ref: string | null;
+  osm_tag: string | null;
+  page_title: string | null;
+  page_revision: number | null;
+  quote_start: number | null;
+  quote_end: number | null;
+  fingerprint: string;
+  read_at: Date;
+  decided_by: number | null;
+  decided_at: Date | null;
+  refused_by: number | null;
+  refused_at: Date | null;
+  created_at: Date;
+}
+
+/** The table `experience_treasure_period_views`. */
+export interface ExperienceTreasurePeriodViewsRow {
+  link_id: number;
+  source_id: number;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  ending: string | null;
+  sync_log_id: number | null;
+}
+
+/** The table `experience_treasure_periods`. */
+export interface ExperienceTreasurePeriodsRow {
+  link_id: number;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  ending: string | null;
+  says: string;
+  source_id: number;
+  decided_at: Date | null;
+  decided_by: number | null;
+  created_at: Date;
 }
 
 /** The table `experience_treasure_placements`. */
@@ -669,6 +922,8 @@ export interface ExperienceTreasurePlacementsRow {
   link_id: number;
   membership_id: number;
   created_at: Date;
+  evidence: string;
+  handed_by_source_id: number | null;
 }
 
 /** The table `experience_treasures`. */
@@ -680,6 +935,12 @@ export interface ExperienceTreasuresRow {
   curation_state: string;
   refused_at: Date | null;
   missing_since: Date | null;
+  copy_item: string | null;
+  decided_at: Date | null;
+  decided_by: number | null;
+  first_seen_sync_log_id: number | null;
+  here_today: boolean;
+  refused_by: number | null;
 }
 
 /** The table `experience_view_choices`. */
@@ -735,6 +996,14 @@ export interface ExperienceVisitSuggestionsRow {
   asked_at: Date;
 }
 
+/** The table `experience_websites`. */
+export interface ExperienceWebsitesRow {
+  experience_id: number;
+  url: string;
+  language: string | null;
+  ordinal: number;
+}
+
 /** The table `experiences`. */
 export interface ExperiencesRow {
   id: number;
@@ -773,6 +1042,41 @@ export interface ExperiencesRow {
   stands_today: boolean;
   merged_into_id: number | null;
   shape: string;
+  access: string;
+  access_decided_at: Date | null;
+  access_decided_by: number | null;
+  access_from_circa: boolean;
+  access_from_day: number | null;
+  access_from_month: number | null;
+  access_from_span: string | null;
+  access_from_year: number | null;
+  access_read_at: Date | null;
+  access_reason: string | null;
+  access_ref: string | null;
+  access_tag: string | null;
+  address: string | null;
+  address_read_at: Date | null;
+  address_ref: string | null;
+  address_source: string | null;
+  address_tag: string | null;
+  boundary_simple: string | null;
+  boundary_view_id: number | null;
+  class_item: string | null;
+  description_source: string | null;
+  extent: number[] | null;
+  length_m: number | null;
+  location_ref: string | null;
+  location_ref_read_at: Date | null;
+  location_ref_tag: string | null;
+  path_simple: string | null;
+  path_view_id: number | null;
+  pin: string | null;
+  shape_min_zoom: number | null;
+  shape_pinned_at: Date | null;
+  shape_pinned_by: number | null;
+  sitelinks_count: number | null;
+  unesco_url: string | null;
+  wikipedia_url: string | null;
 }
 
 /** The table `find_site_links`. */
@@ -858,6 +1162,7 @@ export interface MembershipFameRow {
   measured_at: Date;
   readers_read_at: Date | null;
   guides_read_at: Date | null;
+  atlas_obscura: boolean | null;
 }
 
 /** The table `osm_layer_builds`. */
@@ -887,6 +1192,28 @@ export interface OsmObjectsRow {
   street_item: string | null;
 }
 
+/** The table `place_arrival_points`. */
+export interface PlaceArrivalPointsRow {
+  id: number;
+  experience_id: number;
+  role: string;
+  name: string | null;
+  location: string;
+  position_m: number | null;
+  source_id: number;
+  object_ref: string;
+  tag_read: string | null;
+  read_at: Date;
+  missing_since: Date | null;
+  is_main: boolean;
+  decided_at: Date | null;
+  decided_by: number | null;
+  refused_at: Date | null;
+  refused_by: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 /** The table `place_identifier_verdicts`. */
 export interface PlaceIdentifierVerdictsRow {
   experience_id: number;
@@ -907,6 +1234,42 @@ export interface PlaceIdentifiersRow {
   claims_identity: boolean;
   basis: string[];
   recorded_at: Date;
+}
+
+/** The table `place_past_position_regions`. */
+export interface PlacePastPositionRegionsRow {
+  position_id: number;
+  region_id: number;
+}
+
+/** The table `place_past_positions`. */
+export interface PlacePastPositionsRow {
+  id: number;
+  experience_id: number;
+  location: string;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  location_statement: string | null;
+  source_id: number;
+  decided_by: number | null;
+  decided_at: Date;
+  created_at: Date;
+  updated_at: Date;
 }
 
 /** The table `place_periods`. */
@@ -935,6 +1298,41 @@ export interface PlacePeriodsRow {
   until_last: number | null;
   source_id: number;
   decided_by: number | null;
+  updated_at: Date;
+  created_at: Date;
+  decided_at: Date | null;
+  id: number;
+  kind_id: number | null;
+  use_item: string | null;
+}
+
+/** The table `place_seasons`. */
+export interface PlaceSeasonsRow {
+  id: number;
+  experience_id: number;
+  at_experience_id: number | null;
+  says: string;
+  rule_kind: string;
+  from_month: number | null;
+  from_day: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  shifts: boolean;
+  easter_calendar: string | null;
+  easter_offset_days: number | null;
+  rule_month: number | null;
+  rule_weekday: number | null;
+  rule_week: number | null;
+  lunar_calendar: string | null;
+  lunar_month: number | null;
+  lunar_day: number | null;
+  duration_days: number | null;
+  rule_words: string | null;
+  source_id: number;
+  rule_statement: string | null;
+  decided_by: number | null;
+  decided_at: Date;
+  created_at: Date;
   updated_at: Date;
 }
 
@@ -982,6 +1380,90 @@ export interface ReadershipStagingRow {
   daily: number[] | null;
 }
 
+/** The table `record_danger_periods`. */
+export interface RecordDangerPeriodsRow {
+  record_id: number;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  source_id: number;
+  decided_by: number | null;
+  decided_at: Date | null;
+  created_at: Date;
+}
+
+/** The table `record_geometries`. */
+export interface RecordGeometriesRow {
+  id: number;
+  record_id: number;
+  experience_id: number;
+  role: string;
+  geom: string;
+  origin: string;
+  object_refs: string[];
+  tag_read: string | null;
+  door: string;
+  read_at: Date;
+  missing_since: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/** The table `record_heritage_inscriptions`. */
+export interface RecordHeritageInscriptionsRow {
+  record_id: number;
+  criteria: string[] | null;
+  area_ha: string | null;
+  buffer_zone_ha: string | null;
+  transboundary: boolean;
+  unesco_region: string | null;
+  components_listed: number | null;
+}
+
+/** The table `record_listings`. */
+export interface RecordListingsRow {
+  record_id: number;
+  ordinal: number;
+  from_year: number | null;
+  from_month: number | null;
+  from_day: number | null;
+  from_span: string | null;
+  from_circa: boolean;
+  from_property: string | null;
+  from_statement: string | null;
+  ended: boolean;
+  until_year: number | null;
+  until_month: number | null;
+  until_day: number | null;
+  until_span: string | null;
+  until_circa: boolean;
+  until_property: string | null;
+  until_statement: string | null;
+  from_first: number | null;
+  until_last: number | null;
+  ending: string | null;
+  source_id: number;
+  decided_by: number | null;
+  decided_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 /** The table `record_periods`. */
 export interface RecordPeriodsRow {
   record_id: number;
@@ -1006,6 +1488,23 @@ export interface RecordPeriodsRow {
   what: string | null;
   from_first: number | null;
   until_last: number | null;
+  of_membership: boolean;
+  read_at: Date;
+  refused_at: Date | null;
+  refused_by: number | null;
+  use_item: string | null;
+}
+
+/** The table `record_rule_reads`. */
+export interface RecordRuleReadsRow {
+  record_id: number;
+  wikidata_classes: string[];
+  wikipedia_categories: string[];
+  archaeology_nature: string | null;
+  artwork_count: number | null;
+  total_artwork_sitelinks: number | null;
+  answered_artwork: boolean | null;
+  read_at: Date;
 }
 
 /** The table `refresh_tokens`. */
@@ -1017,6 +1516,19 @@ export interface RefreshTokensRow {
   expires_at: Date;
   created_at: Date | null;
   revoked_at: Date | null;
+}
+
+/** The table `region_changes`. */
+export interface RegionChangesRow {
+  id: number;
+  world_view_id: number;
+  region_id: number | null;
+  region_name: string;
+  kind: string;
+  act: string;
+  successor_region_id: number | null;
+  decided_by: number | null;
+  decided_at: Date;
 }
 
 /** The table `region_geom_pieces`. */
@@ -1158,6 +1670,24 @@ export interface RegionsRow {
   geom_overview: string | null;
   geom_simplified_low_real: string | null;
   geom_simplified_medium_real: string | null;
+  counts: boolean;
+  ended: boolean;
+  from_circa: boolean;
+  from_day: number | null;
+  from_first: number | null;
+  from_month: number | null;
+  from_property: string | null;
+  from_span: string | null;
+  from_statement: string | null;
+  from_year: number | null;
+  until_circa: boolean;
+  until_day: number | null;
+  until_last: number | null;
+  until_month: number | null;
+  until_property: string | null;
+  until_span: string | null;
+  until_statement: string | null;
+  until_year: number | null;
 }
 
 /** The table `schema_migrations`. */
@@ -1177,6 +1707,23 @@ export interface SeparatedVisitQuestionsRow {
   asked_at: Date;
   answer: string | null;
   answered_at: Date | null;
+}
+
+/** The table `settlement_names`. */
+export interface SettlementNamesRow {
+  settlement_id: number;
+  name: string;
+}
+
+/** The table `settlements`. */
+export interface SettlementsRow {
+  id: number;
+  name: string;
+  country_code: string;
+  location: string;
+  population: number;
+  radius_m: number;
+  loaded_at: Date;
 }
 
 /** The table `source_records`. */
@@ -1222,6 +1769,27 @@ export interface SourceRecordsRow {
   reported_location_rough: string | null;
   listing_ordinal: number | null;
   crowding_pin: string | null;
+  admission_decided_at: Date | null;
+  admission_decided_by: number | null;
+  admission_evidence: unknown | null;
+  admission_pin_evidence: unknown | null;
+  admitted_for_item: string | null;
+  admitted_for_label: string | null;
+  part_role: string | null;
+  refused_at: Date | null;
+  refused_by: number | null;
+  reported_length_m: number | null;
+  reported_makers: unknown | null;
+  reported_region_codes: string[] | null;
+  reported_region_items: string[] | null;
+  reported_region_labels: string[] | null;
+  stands_today: boolean;
+  tier: string | null;
+  visitor_finds: string;
+  visitor_finds_decided_at: Date | null;
+  visitor_finds_decided_by: number | null;
+  visitor_finds_signal: string | null;
+  visitor_finds_source_id: number | null;
 }
 
 /** The table `treasures`. */
@@ -1242,6 +1810,25 @@ export interface TreasuresRow {
   curated_fields: unknown;
   wikipedia_url: string | null;
   wikipedia_read_at: Date | null;
+  candidate_venue_items: string[];
+  found_at_item: string | null;
+  found_at_label: string | null;
+  iconic_by: string | null;
+  is_wikidata_item: boolean | null;
+  kind_answer_slug: string | null;
+  kind_answered_at: Date | null;
+  kind_answered_by: number | null;
+  made_circa: boolean;
+  made_day: number | null;
+  made_month: number | null;
+  made_span: string | null;
+  made_year: number | null;
+  readers_12m: number | null;
+  readers_through_month: Date | null;
+  same_object_id: number | null;
+  shown_nowhere_at: Date | null;
+  shown_nowhere_by: number | null;
+  version_of_item: string | null;
 }
 
 /** The table `user_auth_providers`. */
@@ -1280,6 +1867,10 @@ export interface UserVisitTripsRow {
   month: number | null;
   day: number | null;
   created_at: Date;
+  at_link_id: number | null;
+  first_day: number | null;
+  last_day: number | null;
+  updated_at: Date;
 }
 
 /** The table `user_visited_experiences`. */
@@ -1317,6 +1908,7 @@ export interface UsersRow {
   reading_languages: string[] | null;
   created_at: Date | null;
   last_seen_at: Date | null;
+  deletion_requested_at: Date | null;
 }
 
 /** The table `whole_leaves`. */
@@ -1498,6 +2090,12 @@ export interface WorldViewsRow {
   created_at: Date | null;
   updated_at: Date | null;
   is_public: boolean;
+  finalized_at: Date | null;
+  ground_missing_count: number;
+  ground_missing_since: Date | null;
+  is_canon: boolean;
+  source_credit: string | null;
+  source_licence: string | null;
 }
 
 /**
@@ -1538,9 +2136,11 @@ export const RELATION_SCHEMAS = {
   experience_held_decisions: "public",
   experience_kind_suggestions: "public",
   experience_kinds: "public",
+  experience_lies_within: "public",
   experience_location_placements: "public",
   experience_location_regions: "public",
   experience_locations: "public",
+  experience_makers: "public",
   experience_merge_proposals: "public",
   experience_merge_suggestions: "public",
   experience_merges: "public",
@@ -1553,17 +2153,27 @@ export const RELATION_SCHEMAS = {
   experience_point_name_asks: "public",
   experience_regions: "public",
   experience_rejections: "public",
+  experience_relation_periods: "public",
+  experience_relations: "public",
   experience_separations: "public",
+  experience_series_proposals: "public",
   experience_shape_regions: "public",
   experience_sources: "public",
+  experience_subject_lines: "public",
+  experience_subjects: "public",
+  experience_sync_bars: "public",
   experience_sync_changes: "public",
   experience_sync_logs: "public",
+  experience_time_proposals: "public",
+  experience_treasure_period_views: "public",
+  experience_treasure_periods: "public",
   experience_treasure_placements: "public",
   experience_treasures: "public",
   experience_view_choices: "public",
   experience_view_suggestions: "public",
   experience_visit_questions: "public",
   experience_visit_suggestions: "public",
+  experience_websites: "public",
   experiences: "public",
   find_site_links: "public",
   gathered_work_venues: "workbench",
@@ -1574,15 +2184,25 @@ export const RELATION_SCHEMAS = {
   membership_fame: "public",
   osm_layer_builds: "workbench",
   osm_objects: "workbench",
+  place_arrival_points: "public",
   place_identifier_verdicts: "public",
   place_identifiers: "public",
+  place_past_position_regions: "public",
+  place_past_positions: "public",
   place_periods: "public",
+  place_seasons: "public",
   place_venues: "public",
   readership_month_files: "workbench",
   readership_months: "workbench",
   readership_staging: "workbench",
+  record_danger_periods: "public",
+  record_geometries: "public",
+  record_heritage_inscriptions: "public",
+  record_listings: "public",
   record_periods: "public",
+  record_rule_reads: "public",
   refresh_tokens: "public",
+  region_changes: "public",
   region_geom_pieces: "public",
   region_image_overlays: "public",
   region_import_state: "public",
@@ -1596,6 +2216,8 @@ export const RELATION_SCHEMAS = {
   regions: "public",
   schema_migrations: "public",
   separated_visit_questions: "public",
+  settlement_names: "public",
+  settlements: "public",
   source_records: "public",
   treasures: "public",
   user_auth_providers: "public",
@@ -1636,6 +2258,7 @@ export const RELATION_SCHEMAS = {
 export const COLUMN_WIDTHS = {
   administrative_divisions: {
     name: 255,
+    gadm_country: 3,
   },
   ai_learned_rules: {
     feature: 100,
@@ -1728,6 +2351,7 @@ export const COLUMN_WIDTHS = {
   },
   experience_curation_log: {
     action: 30,
+    reason_code: 20,
   },
   experience_hand_overs: {
     external_id: 255,
@@ -1746,6 +2370,12 @@ export const COLUMN_WIDTHS = {
   },
   experience_kinds: {
     name: 255,
+    form: 20,
+    tick_paints: 10,
+    tick_verb: 12,
+  },
+  experience_lies_within: {
+    basis: 8,
   },
   experience_location_regions: {
     assignment_type: 20,
@@ -1758,9 +2388,15 @@ export const COLUMN_WIDTHS = {
     existence: 10,
     approximate: 12,
   },
+  experience_makers: {
+    maker_item: 16,
+    maker_label: 250,
+    role: 9,
+  },
   experience_merge_proposals: {
     answer: 10,
     found_by: 10,
+    shared_item: 20,
   },
   experience_merge_suggestions: {
     judgement: 10,
@@ -1771,6 +2407,7 @@ export const COLUMN_WIDTHS = {
   },
   experience_parts: {
     reason: 20,
+    role: 10,
   },
   experience_planned_kind_answers: {
     planned_kind: 80,
@@ -1786,10 +2423,28 @@ export const COLUMN_WIDTHS = {
   experience_regions: {
     assignment_type: 20,
     listing: 8,
+    former_region_name: 255,
+  },
+  experience_relation_periods: {
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+  },
+  experience_relations: {
+    relation: 12,
+    strength: 12,
+    state: 10,
+    statement_property: 10,
+    statement_id: 80,
   },
   experience_separations: {
     scheme: 12,
     value: 64,
+  },
+  experience_series_proposals: {
+    found_by: 14,
+    answer: 12,
   },
   experience_shape_regions: {
     basis: 8,
@@ -1800,6 +2455,27 @@ export const COLUMN_WIDTHS = {
     last_sync_status: 50,
     wikidata_reader: 10,
     id_scheme: 20,
+    licence: 20,
+  },
+  experience_subject_lines: {
+    line: 12,
+    via: 24,
+  },
+  experience_subjects: {
+    line: 12,
+    item: 16,
+    words: 250,
+    label: 250,
+    article_url: 1000,
+    role: 60,
+    life_event: 8,
+    read_from: 14,
+    statement: 80,
+  },
+  experience_sync_bars: {
+    tier: 12,
+    signal: 10,
+    statistic: 8,
   },
   experience_sync_changes: {
     external_id: 255,
@@ -1810,9 +2486,39 @@ export const COLUMN_WIDTHS = {
   experience_sync_logs: {
     status: 50,
     phase: 20,
+    code_version: 40,
+  },
+  experience_time_proposals: {
+    what: 14,
+    pass: 26,
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+    season_says: 4,
+    osm_tag: 255,
+  },
+  experience_treasure_period_views: {
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+    ending: 10,
+  },
+  experience_treasure_periods: {
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+    ending: 10,
+    says: 8,
+  },
+  experience_treasure_placements: {
+    evidence: 12,
   },
   experience_treasures: {
     curation_state: 10,
+    copy_item: 20,
   },
   experience_view_choices: {
     field: 20,
@@ -1829,6 +2535,10 @@ export const COLUMN_WIDTHS = {
     reading: 12,
     model: 40,
   },
+  experience_websites: {
+    url: 1000,
+    language: 16,
+  },
   experiences: {
     external_id: 255,
     name: 500,
@@ -1839,6 +2549,20 @@ export const COLUMN_WIDTHS = {
     source_membership: 10,
     existence: 10,
     shape: 5,
+    access: 10,
+    access_from_span: 10,
+    access_reason: 12,
+    access_ref: 64,
+    access_tag: 100,
+    address_ref: 64,
+    address_source: 8,
+    address_tag: 100,
+    class_item: 20,
+    description_source: 16,
+    location_ref: 64,
+    location_ref_tag: 100,
+    unesco_url: 1000,
+    wikipedia_url: 1000,
   },
   geometry_computations: {
     status: 20,
@@ -1850,6 +2574,11 @@ export const COLUMN_WIDTHS = {
   osm_objects: {
     osm_type: 1,
   },
+  place_arrival_points: {
+    role: 14,
+    name: 500,
+    tag_read: 100,
+  },
   place_identifier_verdicts: {
     scheme: 12,
     value: 64,
@@ -1859,6 +2588,12 @@ export const COLUMN_WIDTHS = {
     scheme: 12,
     value: 64,
   },
+  place_past_positions: {
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+  },
   place_periods: {
     says: 8,
     from_span: 10,
@@ -1866,6 +2601,35 @@ export const COLUMN_WIDTHS = {
     until_span: 10,
     until_property: 12,
     ending: 12,
+  },
+  place_seasons: {
+    says: 4,
+    rule_kind: 16,
+    easter_calendar: 9,
+    lunar_calendar: 8,
+  },
+  record_danger_periods: {
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+  },
+  record_geometries: {
+    role: 7,
+    origin: 8,
+    tag_read: 100,
+    door: 8,
+  },
+  record_heritage_inscriptions: {
+    criteria: 6,
+    unesco_region: 40,
+  },
+  record_listings: {
+    from_span: 10,
+    from_property: 12,
+    until_span: 10,
+    until_property: 12,
+    ending: 10,
   },
   record_periods: {
     says: 8,
@@ -1875,9 +2639,17 @@ export const COLUMN_WIDTHS = {
     until_property: 12,
     ending: 12,
   },
+  record_rule_reads: {
+    archaeology_nature: 20,
+  },
   refresh_tokens: {
     token_hash: 255,
     family_id: 64,
+  },
+  region_changes: {
+    region_name: 255,
+    kind: 10,
+    act: 14,
   },
   region_import_state: {
     match_status: 30,
@@ -1893,9 +2665,20 @@ export const COLUMN_WIDTHS = {
     name: 255,
     description: 1000,
     color: 7,
+    from_property: 12,
+    from_span: 10,
+    until_property: 12,
+    until_span: 10,
   },
   separated_visit_questions: {
     answer: 10,
+  },
+  settlement_names: {
+    name: 200,
+  },
+  settlements: {
+    name: 200,
+    country_code: 2,
   },
   source_records: {
     external_id: 255,
@@ -1907,6 +2690,13 @@ export const COLUMN_WIDTHS = {
     source_membership: 10,
     reported_location_rough: 12,
     crowding_pin: 10,
+    admitted_for_item: 20,
+    part_role: 10,
+    reported_region_codes: 3,
+    reported_region_items: 20,
+    tier: 12,
+    visitor_finds: 10,
+    visitor_finds_signal: 13,
   },
   treasures: {
     external_id: 255,
@@ -1916,6 +2706,13 @@ export const COLUMN_WIDTHS = {
     artists: 500,
     curation_state: 10,
     wikipedia_url: 1000,
+    candidate_venue_items: 40,
+    found_at_item: 20,
+    found_at_label: 500,
+    iconic_by: 12,
+    kind_answer_slug: 80,
+    made_span: 10,
+    version_of_item: 20,
   },
   user_auth_providers: {
     provider_id: 255,
@@ -1934,6 +2731,8 @@ export const COLUMN_WIDTHS = {
     description: 1000,
     source: 1000,
     source_type: 50,
+    source_credit: 255,
+    source_licence: 40,
   },
 } as const;
 
@@ -1970,6 +2769,7 @@ export const CHECK_VALUES = {
   },
   experience_curation_log: {
     action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled", "separated", "kept_out", "merge_proposal_taken_back", "kind_added", "find_site_answered", "crowding_answered", "part_added", "part_taken_out", "part_put_back", "part_replaced"],
+    reason_code: ["not-this-kind", "not-worth-a-visit", "wrong-place", "duplicate", "gone", "source-text", "missing-from-rule", "not-one-place", "other"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
@@ -1978,11 +2778,22 @@ export const CHECK_VALUES = {
   experience_kind_suggestions: {
     reading: ["live", "planned", "none"],
   },
+  experience_kinds: {
+    form: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],
+    tick_paints: ["ground", "held_at", "asks_where"],
+    tick_verb: ["tried", "attended", "saw", "walked", "cycled", "read", "watched"],
+  },
+  experience_lies_within: {
+    basis: ["point", "outline"],
+  },
   experience_locations: {
     approximate: ["whole-minute", "shared"],
     curation_state: ["pending", "auto", "verified"],
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
+  },
+  experience_makers: {
+    role: ["creator", "architect"],
   },
   experience_merge_proposals: {
     answer: ["one", "two", "part_of"],
@@ -1996,6 +2807,7 @@ export const CHECK_VALUES = {
   },
   experience_parts: {
     reason: ["component", "wikidata_part_of", "curator"],
+    role: ["part", "copy", "section"],
   },
   experience_point_hint_suggestions: {
     judgement: ["same", "other"],
@@ -2007,13 +2819,40 @@ export const CHECK_VALUES = {
   experience_regions: {
     listing: ["offered", "fallback", "scope"],
   },
+  experience_relation_periods: {
+    from_span: ["decade", "century", "millennium"],
+    until_span: ["decade", "century", "millennium"],
+  },
+  experience_relations: {
+    relation: ["met_at", "held_at", "replica_of", "replaced_by", "runs_along"],
+    state: ["proposed", "standing", "refused"],
+    strength: ["one_of_them", "can_be_seen"],
+  },
+  experience_series_proposals: {
+    answer: ["series", "not_series", "same_place"],
+    found_by: ["far_parts", "second_point", "ensemble_class", "part_claims", "curator"],
+  },
   experience_shape_regions: {
     basis: ["area", "line", "nearest", "record"],
   },
   experience_sources: {
     id_scheme: ["whc-site", "whc-component", "wikidata", "wikidata-statement", "curator"],
     last_sync_status: ["success", "partial", "failed", "cancelled"],
+    licence: ["CC0 1.0", "CC BY-SA 4.0", "CC BY 4.0", "ODbL 1.0", "OGL 3.0", "own"],
     wikidata_reader: ["live", "subset"],
+  },
+  experience_subject_lines: {
+    line: ["commemorates", "depicts"],
+    via: ["commemorates", "memorials-category", "main-subject", "named-after", "statues-category", "depicts", "lead", "war-narrowed-by-event", "war-narrowed-by-lead", "war-narrowed-to-person", "curator"],
+  },
+  experience_subjects: {
+    life_event: ["born", "lived", "studied", "worked", "created", "died"],
+    read_from: ["statement", "osm-tag", "lead-reading", "curator"],
+  },
+  experience_sync_bars: {
+    signal: ["editions", "readers", "guides"],
+    statistic: ["enter", "stay", "median"],
+    tier: ["world", "surroundings"],
   },
   experience_sync_changes: {
     change_type: ["created", "updated", "conflict", "held", "contents", "missing", "returned", "failed", "filtered"],
@@ -2022,6 +2861,27 @@ export const CHECK_VALUES = {
   experience_sync_logs: {
     phase: ["fetching", "processing", "assigning"],
     status: ["running", "success", "partial", "failed", "cancelled"],
+  },
+  experience_time_proposals: {
+    from_span: ["decade", "century", "millennium"],
+    pass: ["osm-opening-hours", "wikidata-open-period", "wikidata-yearly-rule", "wikivoyage-season", "wikidata-designation-end", "wikidata-dated-coordinate"],
+    season_says: ["open", "held"],
+    until_span: ["decade", "century", "millennium"],
+    what: ["closure", "season", "listing_end", "past_position"],
+  },
+  experience_treasure_period_views: {
+    ending: ["moved", "stolen", "lost", "destroyed"],
+    from_span: ["decade", "century", "millennium"],
+    until_span: ["decade", "century", "millennium"],
+  },
+  experience_treasure_periods: {
+    ending: ["moved", "stolen", "lost", "destroyed"],
+    from_span: ["decade", "century", "millennium"],
+    says: ["there", "off_view"],
+    until_span: ["decade", "century", "millennium"],
+  },
+  experience_treasure_placements: {
+    evidence: ["statement", "venue_side", "shelf", "hand_over"],
   },
   experience_treasures: {
     curation_state: ["pending", "auto", "verified"],
@@ -2040,6 +2900,8 @@ export const CHECK_VALUES = {
     reading: ["visit", "part", "object", "nothing", "not-a-place", "other-kind"],
   },
   experiences: {
+    access: ["open", "restricted", "none"],
+    access_reason: ["men_only", "permit", "guided_only", "outside_only"],
     existence: ["extant", "lost"],
     shape: ["point", "area", "line", "none"],
     source_membership: ["present", "former"],
@@ -2058,6 +2920,9 @@ export const CHECK_VALUES = {
   import_runs: {
     status: ["running", "matching", "reviewing", "failed"],
   },
+  place_arrival_points: {
+    role: ["entrance", "visitor_centre", "ticket_office", "trailhead", "landing", "stop"],
+  },
   place_identifier_verdicts: {
     scheme: ["wikidata", "whc", "osm"],
     verdict: ["identifies", "refers", "removed"],
@@ -2065,10 +2930,37 @@ export const CHECK_VALUES = {
   place_identifiers: {
     scheme: ["wikidata", "whc", "osm"],
   },
+  place_past_positions: {
+    from_span: ["decade", "century", "millennium"],
+    until_span: ["decade", "century", "millennium"],
+  },
   place_periods: {
     ending: ["destroyed", "demolished", "removed", "collapsed"],
     from_span: ["decade", "century", "millennium"],
     says: ["stood", "used", "closed", "held"],
+    until_span: ["decade", "century", "millennium"],
+  },
+  place_seasons: {
+    easter_calendar: ["western", "orthodox"],
+    lunar_calendar: ["chinese", "hebrew", "islamic", "hindu"],
+    rule_kind: ["window", "easter_offset", "weekday_of_month", "lunar_date", "words"],
+    rule_week: ["-1"],
+    says: ["open", "held"],
+  },
+  record_danger_periods: {
+    from_span: ["decade", "century", "millennium"],
+    until_span: ["decade", "century", "millennium"],
+  },
+  record_geometries: {
+    door: ["local", "qlever", "overpass"],
+    role: ["outline", "buffer", "line"],
+  },
+  record_heritage_inscriptions: {
+    unesco_region: ["Africa", "Arab States", "Asia and the Pacific", "Europe and North America", "Latin America and the Caribbean"],
+  },
+  record_listings: {
+    ending: ["delisted", "dropped"],
+    from_span: ["decade", "century", "millennium"],
     until_span: ["decade", "century", "millennium"],
   },
   record_periods: {
@@ -2077,11 +2969,19 @@ export const CHECK_VALUES = {
     says: ["stood", "used", "closed", "held"],
     until_span: ["decade", "century", "millennium"],
   },
+  region_changes: {
+    act: ["deleted", "merged", "flattened", "pruned", "split", "gained_children", "view_replaced", "closed"],
+    kind: ["redrawn", "replaced"],
+  },
   region_image_overlays: {
     image_type: ["image/png", "image/jpeg", "image/webp"],
   },
   region_import_state: {
     match_status: ["no_candidates", "needs_review", "auto_matched", "manual_matched", "children_matched", "suggested"],
+  },
+  regions: {
+    from_span: ["decade", "century", "millennium"],
+    until_span: ["decade", "century", "millennium"],
   },
   separated_visit_questions: {
     answer: ["original", "separated", "both"],
@@ -2090,11 +2990,16 @@ export const CHECK_VALUES = {
     admission: ["admitted", "refused"],
     crowding_pin: ["list", "shadow"],
     curation_state: ["pending", "auto", "verified"],
+    part_role: ["part", "copy", "section"],
     reported_location_rough: ["whole-minute", "shared"],
     source_membership: ["present", "former"],
+    tier: ["world", "surroundings", "regional"],
+    visitor_finds: ["something", "unknown", "nothing"],
+    visitor_finds_signal: ["other_kind", "own_article", "picture", "mapped_object", "traveller"],
   },
   treasures: {
     curation_state: ["pending", "auto", "verified"],
+    iconic_by: ["editions", "readership"],
   },
   wikidata_claims: {
     rank: ["-1"],
