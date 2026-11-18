@@ -6,9 +6,11 @@
  * is offered by Places of worship and by Archaeology, only its podium is left,
  * and no run raised a question about it: a curator who judged it not worth a
  * visit had nowhere to say so. Here each kind is a row with where it stands;
- * an offered one can be taken out, with a note, after a step that says what
- * readers lose; a kept-out one says who kept it out and why, and is put back
- * with the override every pinned refusal has. An arrival and a rule's refusal
+ * an offered one is taken out by picking why from a refusal's reasons (#863),
+ * under a line that says what readers lose; a kept-out one says who kept it
+ * out and why, and is put back with the override every pinned refusal has.
+ * Each act sends the region the curator has open, which its log entry names
+ * as where they were working. An arrival and a rule's refusal
  * are answered on the review page, and say so. A kind no run offers the place
  * in is added at the foot (`PlaceKindAdd`, #2035), and an added one says who
  * added it. A kind that shows a crowded city's best known links to the
@@ -17,10 +19,9 @@
  * cities* tab, open on the place (`crowdedPlaceUrl`, #2487).
  */
 
-import { useState } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Alert, Box, Button, Chip, Stack, TextField, Tooltip, Typography } from '@mui/material';
-import { alpha, type Theme } from '@mui/material/styles';
+import { Alert, Box, Button, Chip, Stack, Tooltip, Typography } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchPlaceKinds, keepOutOfKind, setExperienceAdmission, type PlaceKindStanding,
@@ -32,7 +33,7 @@ import { typeLabelFor } from '../../utils/experienceTypes';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { PlaceKindAdd } from './PlaceKindAdd';
 import { ReasonMenu } from './ReasonMenu';
-import { ADDITION_REASON_CODES } from '@tyr/shared/curationLog';
+import { ADDITION_REASON_CODES, REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
 import { aroundLabel } from '../curation/crowding/crowdingWords';
 import { crowdedPlaceUrl } from '../../utils/appUrl';
 
@@ -54,10 +55,16 @@ function answeredBy(kind: PlaceKindStanding, act: 'kept out' | 'added'): string 
   return [`${act} by ${who}`, when].filter(Boolean).join(' · ');
 }
 
-/** The row's ground: tinted while it asks, greyed once kept out. */
-function rowGround(theme: Theme, asking: boolean, keptOut: boolean): string | undefined {
-  if (asking) return alpha(theme.palette.error.main, 0.05);
+/** The row's ground: greyed once kept out. */
+function rowGround(theme: Theme, keptOut: boolean): string | undefined {
   return keptOut ? theme.palette.action.hover : undefined;
+}
+
+/** What readers lose when the place is taken out of this kind, said above the reasons. */
+function takeOutLoses(kind: PlaceKindStanding, onlyOffered: boolean): string {
+  return onlyOffered
+    ? 'Its only kind: it leaves every list, the map and the counts. Visits stay.'
+    : `It leaves ${kind.kindName} and stays in its other kinds.`;
 }
 
 /** What a kind's answer moves: the card, the pins, the queue, the history and the reader's lists. */
@@ -84,18 +91,18 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
   /** The dialog's form has edits a link away would drop without asking. */
   unsavedEdits: boolean;
 }) {
-  const [asking, setAsking] = useState(false);
-  const [note, setNote] = useState('');
   const settled = useKindSettled(experienceId, regionId);
+  // Taking a place out goes against the kind's rule, so it says why (#863).
   const takeOut = useMutation({
-    mutationFn: () => keepOutOfKind(experienceId, { membershipId: kind.membershipId, note: note.trim() || undefined }),
-    onSuccess: () => { setAsking(false); setNote(''); settled(); },
+    mutationFn: ({ reasonCode, note }: { reasonCode: (typeof REFUSAL_REASON_CODES)[number]; note?: string }) =>
+      keepOutOfKind(experienceId, { membershipId: kind.membershipId, reasonCode, note, regionId: regionId ?? undefined }),
+    onSuccess: settled,
   });
-  // A put-back goes against the kind's rule, so it says why, as on the review page (#863).
+  // A put-back goes against the kind's rule too, as on the review page.
   const putBack = useMutation({
-    mutationFn: ({ reasonCode, note: words }: { reasonCode: (typeof ADDITION_REASON_CODES)[number]; note?: string }) =>
+    mutationFn: ({ reasonCode, note }: { reasonCode: (typeof ADDITION_REASON_CODES)[number]; note?: string }) =>
       setExperienceAdmission(experienceId, {
-        decision: 'override', membershipId: kind.membershipId, reasonCode, note: words,
+        decision: 'override', membershipId: kind.membershipId, reasonCode, note, regionId: regionId ?? undefined,
       }),
     onSuccess: settled,
   });
@@ -106,7 +113,7 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
     <Box
       sx={{
         p: 1.5, borderBottom: 1, borderColor: 'divider', '&:last-of-type': { borderBottom: 0 },
-        bgcolor: (theme) => rowGround(theme, asking, keptOut),
+        bgcolor: (theme) => rowGround(theme, keptOut),
       }}
     >
       <Stack direction="row" spacing={1.5} alignItems="center">
@@ -152,8 +159,16 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
             {aroundLabel({ kind_id: kind.kindId, kind_name: kind.kindName, kind_type: kind.type }, kind.crowding)}
           </Button>
         )}
-        {kind.canAnswer && kind.state === 'offered' && !asking && (
-          <Button size="small" variant="outlined" color="error" onClick={() => setAsking(true)}>Take out…</Button>
+        {kind.canAnswer && kind.state === 'offered' && (
+          <ReasonMenu
+            label="Take out"
+            reasons={REFUSAL_REASON_CODES}
+            size="small"
+            color="error"
+            heading={takeOutLoses(kind, onlyOffered)}
+            disabled={takeOut.isPending}
+            onChoose={(reasonCode, note) => takeOut.mutate({ reasonCode, note })}
+          />
         )}
         {kind.canAnswer && keptOut && (
           <ReasonMenu
@@ -162,45 +177,10 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
             size="small"
             color="primary"
             disabled={putBack.isPending}
-            onChoose={(reasonCode, words) => putBack.mutate({ reasonCode, note: words })}
+            onChoose={(reasonCode, note) => putBack.mutate({ reasonCode, note })}
           />
         )}
       </Stack>
-
-      {asking && (
-        <Stack spacing={1.25} sx={{ mt: 1.25 }}>
-          {onlyOffered ? (
-            <Alert severity="warning" sx={{ py: 0 }}>
-              {kind.kindName} is the only kind that offers it. Taken out, it leaves every list, the map and the counts.
-              Visits already recorded stay.
-            </Alert>
-          ) : (
-            <Typography variant="body2">
-              It leaves {kind.kindName}’s lists, counts and map now, and stays in its other kinds. Later runs keep it
-              out. It can be put back here or from the kept-out list.
-            </Typography>
-          )}
-          <TextField
-            label="Why (optional, kept in its history)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            size="small"
-            fullWidth
-            inputProps={{ maxLength: 1000 }}
-          />
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small" variant="contained" color="error" disabled={takeOut.isPending}
-              onClick={() => takeOut.mutate()}
-            >
-              Take out of {kind.kindName}
-            </Button>
-            <Button size="small" disabled={takeOut.isPending} onClick={() => { setAsking(false); setNote(''); }}>
-              Cancel
-            </Button>
-          </Stack>
-        </Stack>
-      )}
       {failed && <Alert severity="error" sx={{ py: 0, mt: 1 }}>{(failed as Error).message}</Alert>}
     </Box>
   );
@@ -245,7 +225,7 @@ export function PlaceKinds({ experienceId, regionId, unsavedEdits = false }: {
         ))}
         {addable.length > 0 && (
           <Box sx={{ borderTop: list.length > 0 ? 1 : 0, borderColor: 'divider' }}>
-            <PlaceKindAdd experienceId={experienceId} addable={addable} onAdded={settled} />
+            <PlaceKindAdd experienceId={experienceId} addable={addable} regionId={regionId} onAdded={settled} />
           </Box>
         )}
       </Box>

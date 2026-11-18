@@ -36,6 +36,8 @@ import type { WholeProgress } from '@tyr/shared/visits';
 import { placesCount, wholeCountLabel, type VisitCount } from '../shared/visitWords';
 import { LazyVisitDateLine } from '../shared/lazyVisitTrips';
 import { WholeVisitAsk } from '../shared/WholeVisitAsk';
+import type { Reasoned } from '../shared/ReasonMenu';
+import type { REGION_REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -113,7 +115,8 @@ export interface ExperienceListItemProps {
   /** And one of its works, which is the same rule one level over (#731). */
   onCorrectWork?: (experience: Experience, work: ExperienceTreasure) => void;
   onUnreject?: (experience: Experience) => void;
-  onRemoveFromRegion?: (experience: Experience) => void;
+  /** Take a rejected place out of the region, saying why (#863). */
+  onRemoveFromRegion?: (experience: Experience, why: Reasoned<typeof REGION_REFUSAL_REASON_CODES>) => void;
   /**
    * Called when this row's card has opened — the moment the list may scroll to
    * it, and the only place that knows it. Readiness is per row, and a second
@@ -309,7 +312,9 @@ function ExperienceListItemComponent({
     [onUnreject, experience],
   );
   const handleRemoveFromRegion = useMemo(
-    () => (onRemoveFromRegion ? () => onRemoveFromRegion(experience) : undefined),
+    () => (onRemoveFromRegion
+      ? (why: Reasoned<typeof REGION_REFUSAL_REASON_CODES>) => onRemoveFromRegion(experience, why)
+      : undefined),
     [onRemoveFromRegion, experience],
   );
 

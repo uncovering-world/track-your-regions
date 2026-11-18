@@ -72,8 +72,6 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/components/shared/FindsOnViewChip.tsx': { breaches: 1, slice: '#2444' },
   'src/components/shared/LocationPicker.tsx': { breaches: 2, slice: '#2444' },
   'src/components/shared/PlaceIdentifiers.tsx': { breaches: 1, slice: '#2444' },
-  'src/components/shared/PlaceKindAdd.tsx': { breaches: 1, slice: '#2444' },
-  'src/components/shared/PlaceKinds.tsx': { breaches: 1, slice: '#2444' },
   'src/components/shared/PointCorrection.tsx': { breaches: 4, slice: '#2444' },
   'src/components/shared/SiteFindQuestions.tsx': { breaches: 2, slice: '#2444' },
   'src/components/shared/WorkCorrection.tsx': { breaches: 4, slice: '#2444' },

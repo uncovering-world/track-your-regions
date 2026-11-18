@@ -6,24 +6,31 @@
  * Berlin is a courtyard of street art filed under no English Wikipedia
  * category and no genre, so no run of Public art finds it. Closed, this is one
  * row that says what it is for; open, the kind, its type from the kind's own
- * vocabulary, what the add does for readers and for later runs, and an
- * optional reason kept in the place's history. The list
+ * vocabulary, and what the add does for readers and for later runs. The add
+ * itself is picking why from an addition's reasons (#863), the curator's words
+ * under "Other…", and it sends the region the curator has open. The list
  * holds only the kinds the place is not in yet, and never World Heritage Sites
  * — the server's `addable`.
  */
 
 import { useId, useState } from 'react';
 import {
-  Alert, Box, Button, FormControl, InputLabel, MenuItem, Select, Stack, TextField, Typography,
+  Alert, Box, Button, FormControl, InputLabel, MenuItem, Select, Stack, Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useMutation } from '@tanstack/react-query';
+import { ADDITION_REASON_CODES } from '@tyr/shared/curationLog';
 import { addToKind, type AddableKind } from '../../api/curation';
 import { typeOptionsFor } from '../../utils/experienceTypes';
+import { ReasonMenu } from './ReasonMenu';
 
-export function PlaceKindAdd({ experienceId, addable, onAdded }: {
+type AdditionReason = (typeof ADDITION_REASON_CODES)[number];
+
+export function PlaceKindAdd({ experienceId, addable, regionId, onAdded }: {
   experienceId: number;
   addable: AddableKind[];
+  /** The region the curator has open, which the add's log entry names; null where none is. */
+  regionId: number | null;
   onAdded: () => void;
 }) {
   const kindLabel = useId();
@@ -31,11 +38,10 @@ export function PlaceKindAdd({ experienceId, addable, onAdded }: {
   const [open, setOpen] = useState(false);
   const [kindId, setKindId] = useState<number | ''>('');
   const [type, setType] = useState('');
-  const [note, setNote] = useState('');
-  const reset = () => { setOpen(false); setKindId(''); setType(''); setNote(''); };
+  const reset = () => { setOpen(false); setKindId(''); setType(''); };
   const add = useMutation({
-    mutationFn: () => addToKind(experienceId, {
-      kindId: kindId as number, type: type || undefined, note: note.trim() || undefined,
+    mutationFn: ({ reasonCode, note }: { reasonCode: AdditionReason; note?: string }) => addToKind(experienceId, {
+      kindId: kindId as number, type: type || undefined, reasonCode, note, regionId: regionId ?? undefined,
     }),
     onSuccess: () => { reset(); onAdded(); },
   });
@@ -91,18 +97,16 @@ export function PlaceKindAdd({ experienceId, addable, onAdded }: {
             there, even though they do not find it themselves. It can be taken out again here.
           </Typography>
         )}
-        <TextField
-          label="Why (optional, kept in its history)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          size="small"
-          fullWidth
-          inputProps={{ maxLength: 1000 }}
-        />
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="contained" disabled={!ready || add.isPending} onClick={() => add.mutate()}>
-            {kind ? `Add to ${kind.kindName}` : 'Add'}
-          </Button>
+          <ReasonMenu
+            label={kind ? `Add to ${kind.kindName}` : 'Add'}
+            reasons={ADDITION_REASON_CODES}
+            size="small"
+            variant="contained"
+            color="primary"
+            disabled={!ready || add.isPending}
+            onChoose={(reasonCode, note) => add.mutate({ reasonCode, note })}
+          />
           <Button size="small" disabled={add.isPending} onClick={reset}>Cancel</Button>
         </Stack>
         {add.error && <Alert severity="error" sx={{ py: 0 }}>{(add.error as Error).message}</Alert>}

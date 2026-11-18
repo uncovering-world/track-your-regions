@@ -26,6 +26,12 @@ import { CURATION_REASON_WORDS, type CurationReasonCode } from '@tyr/shared/cura
 const OTHER_WORDS_LABEL = 'A few words';
 const NOTE_MAX = 1000;
 
+/** What a pick from one surface's list hands its act: the reason, and the words where "Other…" was picked. */
+export interface Reasoned<L extends readonly CurationReasonCode[]> {
+  reasonCode: L[number];
+  note?: string;
+}
+
 export function ReasonMenu<C extends CurationReasonCode>({
   label, reasons, onChoose, disabled = false, color = 'inherit', variant = 'outlined', size, heading,
 }: {
@@ -76,7 +82,10 @@ export function ReasonMenu<C extends CurationReasonCode>({
         {label}
       </Button>
       <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
-        {heading && <ListSubheader sx={{ lineHeight: 2.5 }}>{heading}</ListSubheader>}
+        {/* A heading longer than the reasons wraps rather than widening the list. */}
+        {heading && (
+          <ListSubheader sx={{ lineHeight: 1.5, py: 1, maxWidth: 300, whiteSpace: 'normal' }}>{heading}</ListSubheader>
+        )}
         {listed.map(code => (
           <MenuItem key={code} onClick={() => choose(code)}>{CURATION_REASON_WORDS[code]}</MenuItem>
         ))}

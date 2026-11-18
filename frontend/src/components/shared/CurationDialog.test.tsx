@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../utils/queryInvalidation', () => ({
@@ -69,13 +69,18 @@ vi.mock('./PointPreviewDialog', () => ({
 }));
 
 import { fetchExperience, type Experience, type ExperienceLocationsResponse } from '../../api/experiences';
-import { editExperience, fetchPlaceKinds } from '../../api/curation';
+import {
+  editExperience, fetchPlaceKinds, rejectExperience, removeExperienceFromRegion, unrejectExperience,
+} from '../../api/curation';
 import { ApiError } from '../../api/fetchUtils';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { CurationDialog } from './CurationDialog';
 
 const mockedEdit = editExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedDetail = fetchExperience as unknown as ReturnType<typeof vi.fn>;
+const mockedReject = rejectExperience as unknown as ReturnType<typeof vi.fn>;
+const mockedRemove = removeExperienceFromRegion as unknown as ReturnType<typeof vi.fn>;
+const mockedUnreject = unrejectExperience as unknown as ReturnType<typeof vi.fn>;
 
 /** The issue's own example: a site whose picture points at a page the product may not draw. */
 const OLD_PICTURE = 'https://whc.unesco.org/document/109141';
@@ -142,6 +147,41 @@ describe('rejecting from the region (#613)', () => {
     // A curator of Tuscany curating the Uffizi from Italy's list.
     renderDialog(bamiyan, false);
     expect(screen.queryByText('Reject from Region')).not.toBeInTheDocument();
+  });
+
+  it('says why, from the region act\'s reasons, and keeps the curator\'s words under Other… (#863)', async () => {
+    mockedReject.mockResolvedValue({ success: true, experienceId: 1, regionId: 5 });
+    renderDialog();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      'Wrong place', 'Nothing to see', 'Same as another', 'Gone or not built', 'Other…',
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Wrong place' }));
+    await waitFor(() => expect(mockedReject).toHaveBeenCalledWith(1, { regionId: 5, reasonCode: 'wrong-place' }));
+
+    mockedReject.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Other…' }));
+    fireEvent.change(screen.getByLabelText('A few words'), { target: { value: 'the valley lies in Bamyan, not here' } });
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Reject' })).getByRole('button', { name: 'Reject' }));
+    await waitFor(() => expect(mockedReject).toHaveBeenCalledWith(1, {
+      regionId: 5, reasonCode: 'other', reason: 'the valley lies in Bamyan, not here',
+    }));
+  });
+
+  it('takes a rejected place out of the region with the reason picked, and takes a rejection back asking nothing', async () => {
+    mockedRemove.mockResolvedValue({ success: true, experienceId: 1, regionId: 5 });
+    mockedUnreject.mockResolvedValue({ success: true, experienceId: 1, regionId: 5 });
+    renderDialog({ ...bamiyan, is_rejected: true, rejection_reason: 'Same as another' });
+
+    expect(screen.getByText('Reason: Same as another')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from region' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Same as another' }));
+    await waitFor(() => expect(mockedRemove).toHaveBeenCalledWith(1, 5, { reasonCode: 'duplicate' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unreject' }));
+    await waitFor(() => expect(mockedUnreject).toHaveBeenCalledWith(1, 5));
   });
 });
 

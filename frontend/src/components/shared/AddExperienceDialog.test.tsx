@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../utils/queryInvalidation', () => ({
@@ -42,7 +42,8 @@ vi.mock('./LocationPicker', () => ({
   ),
 }));
 
-import { createManualExperience } from '../../api/curation';
+import { assignExperienceToRegion, createManualExperience } from '../../api/curation';
+import { searchExperiences } from '../../api/experiences';
 import { searchPlaces, suggestImageUrl } from '../../api/geocode';
 import { ApiError } from '../../api/fetchUtils';
 import { AddExperienceDialog } from './AddExperienceDialog';
@@ -62,7 +63,19 @@ function renderDialog() {
 function fillMinaret() {
   fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Minaret of Jam' } });
   fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+  pickCreate();
+}
+
+/** Create, saying why from the list the button opens (#863): the rule missed it. */
+function pickCreate() {
   fireEvent.click(screen.getByRole('button', { name: 'Create Experience' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
+}
+
+/** The same, once the button is there to find. */
+async function create() {
+  await screen.findByRole('button', { name: 'Create Experience' });
+  pickCreate();
 }
 
 beforeEach(() => {
@@ -85,7 +98,25 @@ describe('AddExperienceDialog create', () => {
       latitude: 34.3964,
       longitude: 64.5161,
       regionId: 5,
+      reasonCode: 'missing-from-rule',
     });
+  });
+
+  it('offers an addition\'s reasons, and keeps the curator\'s words under Other…', async () => {
+    mockedCreate.mockResolvedValue({ id: 901 });
+    renderDialog();
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Minaret of Jam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Experience' }));
+    expect(screen.getByText('Why add it by hand?')).toBeInTheDocument();
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['The rule missed it', 'Other…']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Other…' }));
+    fireEvent.change(screen.getByLabelText('A few words'), { target: { value: 'a minaret no rule reads' } });
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create Experience' })).getByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ reasonCode: 'other', note: 'a minaret no rule reads', regionId: 5 });
   });
 
   it('shows a refusal naming latitude under the coordinates', async () => {
@@ -168,7 +199,7 @@ describe('a draft kept across a close', () => {
     const { closeAndReopen } = renderKept(1);
     fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
     fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
 
     // Reopened from the list's generic button, which names no kind.
@@ -244,7 +275,7 @@ describe('a draft kept across a close', () => {
     fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Look up again' }));
     await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2));
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: pin.lat, longitude: pin.lng });
@@ -266,7 +297,7 @@ describe('a draft kept across a close', () => {
     fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
     fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2));
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedCreate.mock.calls[0][0]).toMatchObject({
@@ -342,7 +373,7 @@ describe('the location a lookup fills in', () => {
     expect(await screen.findByText(/Found: Stará radnice/)).toBeInTheDocument();
     // OpenStreetMap's data, shown with its credit (#2356).
     expect(screen.getByText('Found by Nominatim · © OpenStreetMap contributors')).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedSearch.mock.calls).toEqual([['Old Town Hall Czechia', 1]]);
@@ -358,7 +389,7 @@ describe('the location a lookup fills in', () => {
     lookUpInEurope('Charles Bridge');
 
     expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedSearch.mock.calls).toEqual([['Charles Bridge Europe', 1], ['Charles Bridge', 1]]);
@@ -374,7 +405,7 @@ describe('the location a lookup fills in', () => {
 
     expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.queryByText(/No location found/)).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedCreate.mock.calls[0][0]).toMatchObject({
@@ -417,7 +448,7 @@ describe('the location a lookup fills in', () => {
     mockedSuggest.mockImplementation(async () => CHARLES_BRIDGE);
     fireEvent.click(await screen.findByRole('button', { name: 'Look up again' }));
     await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(2));
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: pin.lat, longitude: pin.lng });
@@ -446,7 +477,7 @@ describe('the location a lookup fills in', () => {
     expect(screen.getByText('(Q439391)', { exact: false })).toBeInTheDocument();
     expect(screen.queryByText(/Matched:/)).not.toBeInTheDocument();
     expect(screen.getByText(/Found: Stará radnice/)).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     const sent = mockedCreate.mock.calls[0][0];
@@ -480,7 +511,7 @@ describe('the location a lookup fills in', () => {
     mockedSearch.mockImplementation(async (query: string) => (query === 'Old Town Hall Czechia' ? [BRNO] : []));
     fireEvent.click(screen.getByRole('button', { name: 'Look up again' }));
     expect(await screen.findByText(/No item matched the place/)).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     const sent = mockedCreate.mock.calls[0][0];
@@ -520,7 +551,7 @@ describe('the location a lookup fills in', () => {
 
     expect(screen.getByText(/No item matched the place/)).toBeInTheDocument();
     expect(screen.queryByText(/Matched:/)).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     const sent = mockedCreate.mock.calls[0][0];
     expect(sent).not.toHaveProperty('imageUrl');
@@ -567,7 +598,7 @@ describe('the location a lookup fills in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
 
     expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await create();
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedCreate.mock.calls[0][0]).toMatchObject({
@@ -592,5 +623,24 @@ describe('the location a lookup fills in', () => {
 
     await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(3));
     expect(mockedSuggest.mock.calls[2][0].wikidataId).toBeUndefined();
+  });
+});
+
+/** Adding a place the catalogue holds to the region, from Search & Add (#863). */
+describe('adding an existing place to the region', () => {
+  it('says why, from an addition\'s reasons, and sends it with the region', async () => {
+    const mockedFind = searchExperiences as unknown as ReturnType<typeof vi.fn>;
+    const mockedAssign = assignExperienceToRegion as unknown as ReturnType<typeof vi.fn>;
+    mockedFind.mockResolvedValue({ results: [{ id: 3218, name: 'Minaret of Jam', kind_name: 'World Heritage Sites' }] });
+    mockedAssign.mockResolvedValue({ success: true, experienceId: 3218, regionId: 5 });
+    renderDialog();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Search & Add' }));
+    fireEvent.change(screen.getByPlaceholderText('Search experiences by name...'), { target: { value: 'Jam' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['The rule missed it', 'Other…']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
+
+    await waitFor(() => expect(mockedAssign).toHaveBeenCalledWith(3218, { regionId: 5, reasonCode: 'missing-from-rule' }));
   });
 });

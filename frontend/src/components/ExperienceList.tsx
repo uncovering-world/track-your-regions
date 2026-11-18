@@ -47,6 +47,8 @@ import { useVisitedExperiences, useVisitedLocations, useVisitWritePending } from
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import { fetchExperienceKinds, type Experience, type ExperienceTreasure } from '../api/experiences';
 import { unrejectExperience, removeExperienceFromRegion } from '../api/curation';
+import type { Reasoned } from './shared/ReasonMenu';
+import type { REGION_REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
 import { useNavigation } from '../hooks/useNavigation';
 import { locationLabel, pointOfRow } from '../utils/locationLabel';
 import { LazyAddExperienceDialog, LazyCurationDialog } from './shared/lazyCurationDialogs';
@@ -64,6 +66,9 @@ import { queryKeys } from '../api/queryKeys';
 import { groupParts } from '../utils/partGroups';
 import { CARD_BROWSE_THRESHOLD } from './ExperienceList/CardLocationList';
 import { LazyVisitRemovedLine } from './shared/lazyVisitTrips';
+
+/** Why a rejected place is taken out of the region (#863). */
+type RegionRefusal = Reasoned<typeof REGION_REFUSAL_REASON_CODES>;
 
 interface ExperienceListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -205,8 +210,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   });
 
   const removeFromRegionMutation = useMutation({
-    mutationFn: ({ experienceId, rId }: { experienceId: number; rId: number }) =>
-      removeExperienceFromRegion(experienceId, rId),
+    mutationFn: ({ experienceId, rId, why }: { experienceId: number; rId: number; why: RegionRefusal }) =>
+      removeExperienceFromRegion(experienceId, rId, why),
     onSuccess: () => {
       invalidateExperiences(queryClient, { regionId });
     },
@@ -512,8 +517,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const handleUnreject = useCallback((exp: Experience) => {
     if (regionId) unreject({ experienceId: exp.id, rId: regionId });
   }, [regionId, unreject]);
-  const handleRemoveFromRegion = useCallback((exp: Experience) => {
-    if (regionId) removeFromRegion({ experienceId: exp.id, rId: regionId });
+  const handleRemoveFromRegion = useCallback((exp: Experience, why: RegionRefusal) => {
+    if (regionId) removeFromRegion({ experienceId: exp.id, rId: regionId, why });
   }, [regionId, removeFromRegion]);
 
   const virtualItems = virtualizer.getVirtualItems();

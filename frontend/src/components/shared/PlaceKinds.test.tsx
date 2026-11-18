@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PlaceKindStanding } from '../../api/curation';
@@ -88,23 +88,40 @@ describe("a place's kinds on its curation dialog", () => {
     expect(await screen.findByText('Places of worship')).toBeTruthy();
     expect(screen.getByText('temple · offered')).toBeTruthy();
     expect(screen.getByText('offered')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Take out…' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Take out' })).toHaveLength(2);
   });
 
-  it("takes the place out of one kind with the curator's note, after saying it stays in the others", async () => {
+  it('offers a refusal\'s reasons, says it stays in the others, and takes it out with the one picked (#863)', async () => {
     mockedKinds.mockResolvedValue({ kinds: [WORSHIP, ARCHAEOLOGY], addable: [] });
     mockedKeepOut.mockResolvedValue({ experienceId: 13761, membershipId: 5039, admission: 'refused' });
     show();
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Take out…' }))[1]);
-    expect(screen.getByText(/leaves Archaeology’s lists, counts and map now, and stays in its other kinds/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Why (optional, kept in its history)'), {
-      target: { value: 'Not a must: only the podium is left' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Take out of Archaeology' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Take out' }))[1]);
+    expect(screen.getByText('It leaves Archaeology and stays in its other kinds.')).toBeTruthy();
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      'Not this kind of place', 'Nothing to see', 'Not one place', 'Gone or not built', 'Same as another', 'Wrong place',
+      'Other…',
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Nothing to see' }));
+
+    // The region the curator has open goes with the act, for its log entry.
+    await waitFor(() => expect(mockedKeepOut).toHaveBeenCalledWith(13761, {
+      membershipId: 5039, reasonCode: 'not-worth-a-visit', regionId: 5,
+    }));
+  });
+
+  it('keeps the curator\'s words under Other…', async () => {
+    mockedKinds.mockResolvedValue({ kinds: [ARCHAEOLOGY, WORSHIP], addable: [] });
+    mockedKeepOut.mockResolvedValue({ experienceId: 13761, membershipId: 5039, admission: 'refused' });
+    show();
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Take out' }))[0]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Other…' }));
+    fireEvent.change(screen.getByLabelText('A few words'), { target: { value: 'Not a must: only the podium is left' } });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Take out' }));
 
     await waitFor(() => expect(mockedKeepOut).toHaveBeenCalledWith(13761, {
-      membershipId: 5039, note: 'Not a must: only the podium is left',
+      membershipId: 5039, reasonCode: 'other', note: 'Not a must: only the podium is left', regionId: 5,
     }));
   });
 
@@ -112,8 +129,25 @@ describe("a place's kinds on its curation dialog", () => {
     mockedKinds.mockResolvedValue({ kinds: [{ ...ARCHAEOLOGY, membershipId: 4877 }], addable: [] });
     show(15110);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Take out…' }));
-    expect(screen.getByText(/Archaeology is the only kind that offers it/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Take out' }));
+    expect(screen.getByText(/Its only kind: it leaves every list, the map and the counts/)).toBeTruthy();
+  });
+
+  it('sends no region where none is open', async () => {
+    mockedKinds.mockResolvedValue({ kinds: [ARCHAEOLOGY], addable: [] });
+    mockedKeepOut.mockResolvedValue({ experienceId: 13761, membershipId: 5039, admission: 'refused' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}><PlaceKinds experienceId={13761} regionId={null} /></QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Take out' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Gone or not built' }));
+
+    await waitFor(() => expect(mockedKeepOut).toHaveBeenCalled());
+    expect(mockedKeepOut.mock.calls[0][1].regionId).toBeUndefined();
   });
 
   it('says who kept a kind out and why, and puts it back with the override and the reason picked', async () => {
@@ -129,7 +163,7 @@ describe("a place's kinds on its curation dialog", () => {
     fireEvent.click(screen.getByRole('button', { name: 'Put back' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
     await waitFor(() => expect(mockedPutBack).toHaveBeenCalledWith(13761, {
-      decision: 'override', membershipId: 5039, reasonCode: 'missing-from-rule',
+      decision: 'override', membershipId: 5039, reasonCode: 'missing-from-rule', regionId: 5,
     }));
   });
 
@@ -143,7 +177,7 @@ describe("a place's kinds on its curation dialog", () => {
 
     expect(await screen.findByText('waiting for a curator, on the review page')).toBeTruthy();
     expect(screen.getByText('kept out by its rule: no public art class')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Take out…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Take out' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Put back' })).toBeNull();
   });
 
@@ -159,24 +193,44 @@ describe("a place's kinds on its curation dialog", () => {
       fireEvent.click(await screen.findByRole('option', { name: option }));
     }
 
-    it("files it under the kind and type chosen, with the curator's words", async () => {
-      mockedKinds.mockResolvedValue({ kinds: [ART_MUSEUMS], addable: ADDABLE });
-      mockedAdd.mockResolvedValue({ experienceId: 6285, membershipId: 41450, kindId: 3 });
-      show(6285);
-
+    /** The Kind and its Type chosen for Public art: street art. */
+    async function chooseStreetArt() {
       fireEvent.click(await screen.findByRole('button', { name: '+ Add to a kind…' }));
       await choose('Kind', 'Public art');
       expect(screen.getByText(/Readers find it in Public art from now on/)).toBeTruthy();
       // A kind with types waits for one, as a run files every place under one.
       expect((screen.getByRole('button', { name: 'Add to Public art' }) as HTMLButtonElement).disabled).toBe(true);
       await choose('Type', 'Street art');
-      fireEvent.change(screen.getByLabelText('Why (optional, kept in its history)'), {
-        target: { value: 'A mile of murals on the Berlin Wall' },
-      });
+    }
+
+    it('files it under the kind and type chosen, with the reason picked and the open region (#863)', async () => {
+      mockedKinds.mockResolvedValue({ kinds: [ART_MUSEUMS], addable: ADDABLE });
+      mockedAdd.mockResolvedValue({ experienceId: 6285, membershipId: 41450, kindId: 3 });
+      show(6285);
+
+      await chooseStreetArt();
       fireEvent.click(screen.getByRole('button', { name: 'Add to Public art' }));
+      expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['The rule missed it', 'Other…']);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
 
       await waitFor(() => expect(mockedAdd).toHaveBeenCalledWith(6285, {
-        kindId: 3, type: 'street-art', note: 'A mile of murals on the Berlin Wall',
+        kindId: 3, type: 'street-art', reasonCode: 'missing-from-rule', regionId: 5,
+      }));
+    });
+
+    it("keeps the curator's words under Other…", async () => {
+      mockedKinds.mockResolvedValue({ kinds: [ART_MUSEUMS], addable: ADDABLE });
+      mockedAdd.mockResolvedValue({ experienceId: 6285, membershipId: 41450, kindId: 3 });
+      show(6285);
+
+      await chooseStreetArt();
+      fireEvent.click(screen.getByRole('button', { name: 'Add to Public art' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Other…' }));
+      fireEvent.change(screen.getByLabelText('A few words'), { target: { value: 'A mile of murals on the Berlin Wall' } });
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add to Public art' }));
+
+      await waitFor(() => expect(mockedAdd).toHaveBeenCalledWith(6285, {
+        kindId: 3, type: 'street-art', reasonCode: 'other', note: 'A mile of murals on the Berlin Wall', regionId: 5,
       }));
     });
 
@@ -190,7 +244,7 @@ describe("a place's kinds on its curation dialog", () => {
       expect(await screen.findByText(/added by Ada ·/)).toBeTruthy();
       expect(screen.getByText('street art · offered')).toBeTruthy();
       expect(screen.getByText('“A mile of murals on the Berlin Wall”')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Take out…' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Take out' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: '+ Add to a kind…' })).toBeNull();
     });
 
