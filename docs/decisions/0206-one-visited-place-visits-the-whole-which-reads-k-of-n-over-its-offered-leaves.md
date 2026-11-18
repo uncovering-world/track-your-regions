@@ -1,7 +1,7 @@
 # ADR-0206: One visited place visits the whole, which reads "k of N" over its offered leaves
 
 **Date:** 2026-11-15
-**Status:** Accepted — decisions 2 and 3 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): a leaf that has no point is offered by its record in its whole, and a part with a shape of its own and parts of its own counts as one place of the whole above it; decision 7 narrowed by [ADR-0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md): a region is painted from a visit's own point, and a whole shown visited still paints none
+**Status:** Accepted — decisions 2 and 3 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): a leaf that has no point is offered by its record in its whole, and a part with a shape of its own and parts of its own counts as one place of the whole above it; decision 7 narrowed by [ADR-0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md): a region is painted from a visit's own point, and a whole shown visited still paints none; decision 4 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the triggers are on `experience_parts` and `source_records`
 
 ---
 

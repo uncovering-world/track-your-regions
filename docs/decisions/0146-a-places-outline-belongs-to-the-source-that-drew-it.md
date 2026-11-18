@@ -1,7 +1,7 @@
 # ADR-0146: A place's outline belongs to the source that drew it
 
 **Date:** 2026-10-25
-**Status:** Accepted
+**Status:** Accepted — its storage (introduction, decisions 1 and 2) narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): an outline is a view on its source's record; the owner rule stands
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0166: A work Wikipedia files in a museum's collection is the museum's where Wikidata says nothing
 
 **Date:** 2026-10-30
-**Status:** Accepted
+**Status:** Accepted — decision 3 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): what placed a work is on its placement, not on the work
 
 ---
 

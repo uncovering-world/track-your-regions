@@ -1,9 +1,9 @@
 # ADR-0217: Time in the catalogue is held as periods, and the catalogue is read as of a date
 
 **Date:** 2026-11-16
-**Status:** Accepted — decision 7 narrowed by [ADR-0224](0224-the-open-rules-of-adr-0217-to-adr-0219-are-the-maintainers-and-a-tick-paints-only-the-ground-the-traveller-was-on.md): a date offered on a tick of a place that no longer stands is held to its standing, and a trip dated after its end is refused and the traveller asked to correct it
+**Status:** Accepted — decision 7 narrowed by [ADR-0224](0224-the-open-rules-of-adr-0217-to-adr-0219-are-the-maintainers-and-a-tick-paints-only-the-ground-the-traveller-was-on.md): a date offered on a tick of a place that no longer stands is held to its standing, and a trip dated after its end is refused and the traveller asked to correct it; decisions 4, 7 and 8 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the kinds kept outside are a column; a record gone before 1900 is listed and not ticked; a trip before the beginning or in a gap is refused
 **Issue:** [#2578](https://github.com/uncovering-world/track-your-regions/issues/2578), Epic #2115
-**Built by:** #2578, #1719, #2128, #2008, #2009, #2584, #1676, #2622, #2633
+**Built by:** #2578, #1719, #2128, #2008, #2009, #2584, #1676, #2622, #2633, #2634
 **Narrows:** [ADR-0214](0214-a-place-carries-its-lifetime-and-only-its-own-end-hides-it.md)
 decisions 1 and 3, and the slot sentence of decision 2;
 [ADR-0020](0020-experience-lifecycle-and-run-changeset.md) decision 2 (the `existence` axis);

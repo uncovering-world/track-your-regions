@@ -1,7 +1,7 @@
 # ADR-0126: The two tiers of a kind differ by source and weigh the same
 
 **Date:** 2026-10-19
-**Status:** Accepted — extended to three tiers by [ADR-0178](0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md)
+**Status:** Accepted — extended to three tiers by [ADR-0178](0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md); decision 3 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the badge marks works only
 
 ---
 

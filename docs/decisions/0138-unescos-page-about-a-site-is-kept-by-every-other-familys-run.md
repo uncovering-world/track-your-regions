@@ -1,7 +1,7 @@
 # ADR-0138: UNESCO's page about a site is kept by every other family's run
 
 **Date:** 2026-10-23
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the UNESCO page is a column; the rule stands
 **Issue:** [#1851](https://github.com/uncovering-world/track-your-regions/issues/1851)
 **Narrows:** [ADR-0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) decision 2 (another family's field is kept only while that family's membership lists the place)
 

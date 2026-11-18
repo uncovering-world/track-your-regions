@@ -1,6 +1,6 @@
 # ADR-0040: A work names every one of its makers
 
-**Status**: Accepted — decision 6 narrowed by [ADR-0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md)
+**Status**: Accepted — decision 6 narrowed by [ADR-0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md); decisions 1 and 4 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): public art's makers are rows of `experience_makers`
 **Date**: 2026-08-31
 **Issue**: [#720](https://github.com/uncovering-world/track-your-regions/issues/720)
 

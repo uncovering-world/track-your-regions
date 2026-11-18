@@ -1,7 +1,7 @@
 # ADR-0037: A field of a part readers can see is held like the object's own
 
 **Date:** 2026-08-30
-**Status:** Accepted — decision 6 narrowed by [ADR-0050](0050-a-renamed-component-is-found-by-its-claim.md); decision 1 narrowed by [ADR-0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) and [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md)
+**Status:** Accepted — decision 6 narrowed by [ADR-0050](0050-a-renamed-component-is-found-by-its-claim.md); decision 1 narrowed by [ADR-0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) and [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md); decision 6 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the source's handle on a part is its part record
 
 ---
 

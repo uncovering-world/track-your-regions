@@ -1,8 +1,8 @@
 # ADR-0224: The open rules of ADR-0217 to ADR-0219 are the maintainer's, and a tick paints only the ground the traveller was on
 
 **Date:** 2026-11-17
-**Status:** Accepted
-**Built by:** #2619, #2579, #1169, #587, #2594, #2580, #2135, #1676, #2008, #2009, #2631, #2633
+**Status:** Accepted — decisions 2, 5 and 6 narrowed, and its open questions answered, by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): an event held at one place with no dated period answers that place on any trip, undated too; a view's own tree is read as ground in that view; a record gone before 1900 takes no undated tick; and each open question has the session's answer
+**Built by:** #2619, #2579, #1169, #587, #2594, #2580, #2135, #1676, #2008, #2009, #2631, #2633, #2634
 **Narrows:** [ADR-0219](0219-a-visit-is-one-row-on-what-the-traveller-met-and-a-tick-on-a-region-moves-or-asks-when-the-region-goes.md)
 decision 3 (a region drawn by hand that holds no division is placed on the canon by its outline,
 decision 4 here), decision 4 (no tolerance by area: a region covers another only where it holds

@@ -1,7 +1,7 @@
 # ADR-0117: The location pairing is made complete before any arm reads it
 
 **Date:** 2026-10-17
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the pairing pairs records, not points
 
 ---
 

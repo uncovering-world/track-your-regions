@@ -1,7 +1,7 @@
 # ADR-0125: A held answer to a kind's type is the kind's, and every other is the place's
 
 **Date:** 2026-10-19
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the answer's key is the record or the work, not a part's kind, reference and name
 
 ---
 

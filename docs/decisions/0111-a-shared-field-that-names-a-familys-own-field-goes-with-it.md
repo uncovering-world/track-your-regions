@@ -1,7 +1,7 @@
 # ADR-0111: A shared field that names another family's own field goes with that field
 
 **Date:** 2026-10-16
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `country_names` and `country_codes` retire: a record's countries are read from its placement
 **Issue:** [#1553](https://github.com/uncovering-world/track-your-regions/issues/1553)
 **Narrows:** [ADR-0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) decisions 1 and 3
 

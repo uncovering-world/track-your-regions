@@ -14,7 +14,7 @@ line that the world reads admits its museum and is Iconic, with its own entry an
 narrowed for Monuments & memorials, which reads the same line, by
 [ADR-0167](0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md) —
 a monument under the line that a Wikivoyage guide uses enters, for a curator; decisions 3 and 4
-stand
+stand; decision 2 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): no place carries the Iconic badge
 
 ---
 

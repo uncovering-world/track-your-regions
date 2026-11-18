@@ -1,7 +1,7 @@
 # ADR-0129: A Wikidata item a place holds none of passes the gate
 
 **Date:** 2026-10-21
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the item is the source record's id, not `metadata.wikidataQid`
 **Issue:** [#1794](https://github.com/uncovering-world/track-your-regions/issues/1794)
 **Narrows:** [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) decision 1
 

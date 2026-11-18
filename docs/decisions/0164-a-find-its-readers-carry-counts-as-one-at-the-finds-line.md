@@ -1,7 +1,7 @@
 # ADR-0164: A find its readers carry counts as one at the finds' line
 
 **Date:** 2026-10-30
-**Status:** Accepted — decision 1 extended under the pool's floor by ADR-0165
+**Status:** Accepted — decision 1 extended under the pool's floor by ADR-0165; decision 1 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): no place badge
 
 ---
 

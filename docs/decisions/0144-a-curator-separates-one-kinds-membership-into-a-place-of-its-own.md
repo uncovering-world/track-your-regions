@@ -1,7 +1,7 @@
 # ADR-0144: A curator separates one kind's membership of a place into a place of its own
 
 **Date:** 2026-10-24
-**Status:** Accepted — decision 3 narrowed by [ADR-0213](0213-a-parts-gate-is-its-record-in-its-whole.md): a part holding a kind of its own may have that kind's membership separated
+**Status:** Accepted — decision 3 narrowed by [ADR-0213](0213-a-parts-gate-is-its-record-in-its-whole.md): a part holding a kind of its own may have that kind's membership separated; decision 1 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the original keeps its source record, not a pair on the place
 
 ---
 
