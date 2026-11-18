@@ -92,7 +92,7 @@ function cardRow(sql: string, row: Record<string, unknown>): Record<string, unkn
   const kind = /'([a-z-]+)' AS kind/.exec(sql)?.[1];
   return {
     external_id: `ext-${String(row.id)}`, name: 'An object', kind_id: 1, kind_name: 'World Heritage Sites',
-    missing_since: null, source_membership: 'present', existence: 'extant', kind, proposed: null,
+    missing_since: null, source_membership: 'present', gone: false, kind, proposed: null,
     ...row,
   };
 }

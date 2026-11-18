@@ -16,7 +16,7 @@ const ACROPOLIS: ExperienceDetailRow = {
   subtitle: null, description: 'citadel on a rocky outcrop above Athens', description_source: null, description_adapted: false, type: 'site',
   country_codes: ['GR'], country_names: ['Greece'], image_url: null, image_credit: null, metadata: { sitelinks: 120 }, date_inscribed: '1987',
   created_at: new Date('2026-09-13T10:00:00.000Z'), updated_at: new Date('2026-09-14T11:30:00.000Z'),
-  source_membership: 'present', existence: 'extant', missing_since: null, longitude: 23.7263, latitude: 37.9715, focus: null,
+  source_membership: 'present', gone: false, missing_since: null, longitude: 23.7263, latitude: 37.9715, focus: null,
   boundary_geojson: { type: 'MultiPolygon', coordinates: [[[[23.72, 37.97], [23.73, 37.97], [23.73, 37.98], [23.72, 37.97]]]] },
   area_km2: 0.03, kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, source_name: 'Archaeology',
   source_description: null, kinds: [ACROPOLIS_IN_ARCHAEOLOGY],
@@ -83,7 +83,7 @@ const ACROPOLIS_ROW: ExperienceListRow = {
   kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
   image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263, focus: null,
   in_danger: false, danger_since: null, location_count: 1, cast_points: false, has_parts: false, leaf_count: null, treasure_count: 0, finds_count: 6,
-  source_membership: 'present', existence: 'extant', missing_since: null, is_new: false,
+  source_membership: 'present', gone: false, missing_since: null, is_new: false,
 };
 
 describe('experienceOf', () => {

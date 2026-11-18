@@ -9,7 +9,7 @@
  *
  * | column | question | who answers it |
  * |---|---|---|
- * | `existence` and `stands_today` | does it still stand? | the world |
+ * | `stands_today`, from the place's periods | does it still stand? | the world, and a curator's *lost* |
  * | the membership's `admission` | does a kind accept it? | the kind's rule (ADR-0024) |
  * | `experience_locations.missing_since` | does its source still offer this point? | the source |
  * | the membership's `curation_state` | has anyone looked at it? | a curator (ADR-0025) |
@@ -21,12 +21,15 @@
  * **Every reader predicate is spelled here or in `membership.ts`, and composed
  * everywhere else** (#791). They live in `db/` rather than beside a controller
  * so the sync writers, which gate what they overwrite on the same questions,
- * import them too; a literal `curation_state <> 'pending'` or
- * `existence <> 'lost'` anywhere else fails the backend lint.
+ * import them too; a literal `curation_state <> 'pending'`, `stands_today`
+ * or a read of a stood period (`says = 'stood'`) anywhere else fails the
+ * backend lint.
  *
- * `existence` and the verdicts on it are set by curators (ADR-0020, narrowed
- * by ADR-0021) and read here. They are not symmetric, because the reasons
- * behind them are not:
+ * A place's standing is its periods (`place_periods`, ADR-0217 decision 5):
+ * a run writes the ones its source reports through the gate, and a curator's
+ * *lost* closes the last one (`placePeriodsWriter.ts`). Whether its source
+ * still lists it is the curator's *former* (ADR-0020, narrowed by ADR-0021).
+ * The two are not symmetric, because the reasons behind them are not:
  *
  * - `former` — the source stopped listing it, but it is still standing. You can
  *   still go there, so it stays in every list and on the map; the card says so
@@ -54,12 +57,13 @@ import {
 import { pointsShownSql, wholeFocusSql } from './placePoints.js';
 
 /**
- * Hides a place that no longer stands: one a curator judged `lost`, and one
- * whose periods say it does not stand today (`stands_today`, derived from
- * `place_periods`, ADR-0217 decision 5): Nelson's Pillar, blown up in 1966,
- * or a place whose opening day is still ahead. `alias` is the `experiences`
- * alias in the query. A membership whose own standing ended, while the place
- * stands, is `membershipStandsSql`'s (`db/membership.ts`).
+ * Hides a place that does not stand today (`stands_today`, derived from
+ * `place_periods`, ADR-0217 decision 5): one that is gone (`placeGoneSql`),
+ * whether its run read it so (Nelson's Pillar, blown up in 1966) or a curator
+ * judged it lost (the Kakhovka Dam), and one whose opening day is still ahead.
+ * `alias` is the `experiences` alias in the query. A membership whose own
+ * standing ended, while the place stands, is `membershipStandsSql`'s
+ * (`db/membership.ts`).
  *
  * Written as a fragment rather than a boolean because it has to go into a
  * dozen queries that already build their WHERE by concatenation, and the one
@@ -69,30 +73,27 @@ import { pointsShownSql, wholeFocusSql } from './placePoints.js';
  * suits one reads wrong in the other.
  */
 export function hideLostSql(alias = 'e'): string {
-  return `${placeNotJudgedLostSql(alias)} AND ${alias}.stands_today`;
+  return `${alias}.stands_today`;
 }
 
 /**
- * A place a curator has not judged `lost`, whatever its periods say: the
- * verdict's half of `hideLostSql`. What a source's missing detection expects
- * back (`services/sync/missingDetection.ts`): the verdict answers the question
- * the detection would ask, while a place whose opening day is still ahead, or
- * whose periods say it ended, is one the source may still drop and be asked
- * about. `alias` is the `experiences` alias.
+ * A place that is gone (ADR-0217 decision 5): it has standing periods that
+ * name no kind and none of them is open. Nelson's Pillar, stood 1809 until
+ * 8 March 1966; the Kakhovka Dam once a curator answered *lost*, which closes
+ * its standing. A place whose only standing period opens on a day still ahead
+ * (the Jeddah Tower) does not stand today and is not gone. `alias` is the
+ * `experiences` alias.
+ *
+ * What a list's "show what is gone" reveals (`experienceShownWithGoneSql`),
+ * what a card names *lost* (`lifecycleSelectSql`), and what a source's missing
+ * detection leaves out (`services/sync/missingDetection.ts`): whether its
+ * source still lists a place that is gone asks nothing a reader would see.
+ * Asked only where the place does not stand today, so the probe of its open
+ * period (`idx_place_periods_open_standing`) runs for the few that do not.
  */
-export function placeNotJudgedLostSql(alias = 'e'): string {
-  return `${alias}.existence <> 'lost'`;
-}
-
-/**
- * A place a curator judged `lost` that its periods still say stands: what a
- * list's "show what is gone" reveals (`includeLost`), since dropping
- * `hideLostSql` brings back the verdict's half and a place that does not
- * stand today is out of every membership's standing (`membershipStandsSql`)
- * as well. `alias` is the `experiences` alias.
- */
-export function lostByVerdictSql(alias = 'e'): string {
-  return `${alias}.existence = 'lost' AND ${alias}.stands_today`;
+export function placeGoneSql(alias = 'e'): string {
+  return `(NOT ${alias}.stands_today AND NOT EXISTS (SELECT 1 FROM place_periods gone_p
+      WHERE gone_p.experience_id = ${alias}.id AND gone_p.kind_id IS NULL AND gone_p.says = 'stood' AND NOT gone_p.ended))`;
 }
 
 /**
@@ -277,14 +278,14 @@ export function readerPositionSql(alias = 'e', maySeeUnreadParam?: string): stri
 /**
  * Columns a card needs to label what it is showing.
  *
- * `existence` travels even where `lost` rows are filtered out: the same select
- * feeds visit history, where they are not. `missing_since` travels for a
+ * `gone` (`placeGoneSql`) travels even where a place that is gone is filtered
+ * out: the same select feeds visit history, where it is not. `missing_since` travels for a
  * different reason — a curator correcting a verdict has to send the row as they
  * saw it, flag included, and inferring it from the verdict would be an
  * assumption where the truth is one column away.
  */
 export function lifecycleSelectSql(alias = 'e'): string {
-  return `${alias}.source_membership, ${alias}.existence, ${alias}.missing_since`;
+  return `${alias}.source_membership, ${placeGoneSql(alias)} AS gone, ${alias}.missing_since`;
 }
 
 /**
@@ -438,6 +439,17 @@ export function experienceShownToReaderSql(alias = 'e'): string {
 }
 
 /**
+ * What a region's list and its markers hold when a reader asks to see what is
+ * gone (`includeLost`): the places `experienceShownToReaderSql` holds, and the
+ * places that are gone (`placeGoneSql`) that a kind offers. A gone place's
+ * memberships no longer stand, so it is in no list otherwise; it is never
+ * crowded out, since only a standing membership is a candidate.
+ */
+export function experienceShownWithGoneSql(alias = 'e'): string {
+  return `(${experienceShownToReaderSql(alias)} OR (${placeGoneSql(alias)} AND ${experienceOfferedToReaderSql(alias)}))`;
+}
+
+/**
  * Everything that must be true of a location before a reader may claim a visit
  * to it: the catalogue accepts its experience, a curator has passed that
  * experience, the source still offers the point, and a curator has passed the
@@ -449,7 +461,7 @@ export function experienceShownToReaderSql(alias = 'e'): string {
  * the four predicates — a different one missing each time. Four separate calls
  * invite three. One call cannot be partly written.
  *
- * The **experience's** `existence` is deliberately absent, matching the by-id reads:
+ * The **experience's** standing is deliberately absent, matching the by-id reads:
  * a place that no longer stands is still somewhere a traveller went, and the record
  * of having been there is the one thing that outlives it.
  *

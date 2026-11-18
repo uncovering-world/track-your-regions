@@ -115,6 +115,8 @@ export const CURATION_REASON_CODES = [
   'gone',
   'source-text',
   'missing-from-rule',
+  'never-gone',
+  'rebuilt',
   'other',
 ] as const;
 
@@ -135,6 +137,8 @@ export const CURATION_REASON_WORDS = {
   'gone': 'Gone or not built',
   'source-text': 'Source wording unusable as written',
   'missing-from-rule': 'The rule missed it',
+  'never-gone': 'It was never gone',
+  'rebuilt': 'Rebuilt since',
   'other': 'Other',
 } as const satisfies Record<CurationReasonCode, string>;
 
@@ -171,6 +175,26 @@ export const REGION_REFUSAL_REASON_CODES = [
  */
 export const ADDITION_REASON_CODES = [
   'missing-from-rule',
+  'other',
+] as const satisfies readonly CurationReasonCode[];
+
+/**
+ * The reasons a place recorded as gone by hand offers (ADR-0217 decision 5):
+ * the rule that reads a place as gone missed it.
+ */
+export const GONE_REASON_CODES = [
+  'missing-from-rule',
+  'other',
+] as const satisfies readonly CurationReasonCode[];
+
+/**
+ * The reasons a place's *gone* taken back offers: it never went, and the
+ * verdict misread it, or it was rebuilt, as Ponte Santa Trinita in Florence
+ * was after 1944.
+ */
+export const STANDS_REASON_CODES = [
+  'never-gone',
+  'rebuilt',
   'other',
 ] as const satisfies readonly CurationReasonCode[];
 

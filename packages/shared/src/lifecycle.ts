@@ -5,8 +5,10 @@
  * Each vocabulary is declared in the order the schema's CHECK lists it, and
  * pinned to that CHECK by a type in `backend/src/db/curationLogActions.test.ts`.
  *
- * The two-valued axes move freely: a curator may call a place lost and take it
- * back, a rule may refuse a membership and a run restore it. `curation_state`
+ * The two-valued axes move freely: a curator may call a point lost and take it
+ * back, a rule may refuse a membership and a run restore it. Whether a place
+ * still stands is not an axis of its row: it is read from its periods
+ * (ADR-0217 decision 5, `place_periods`). `curation_state`
  * does not. Two of its moves would break the gate of ADR-0025 without anything
  * failing — `verified` → `pending` takes a published row off every reader's
  * screen, and `pending` → `auto` publishes one nobody has passed — so the moves
@@ -28,7 +30,10 @@ export const ADMISSIONS = ['admitted', 'refused'] as const;
 export const CURATOR_REFUSAL_REASON = 'kept out by a curator';
 export type Admission = (typeof ADMISSIONS)[number];
 
-/** `existence` on a place and on a point: whether it still stands. */
+/**
+ * `existence` on a point: whether it still stands. A place's is its periods
+ * (ADR-0217 decision 5); a point's goes with the point tables (ADR-0225).
+ */
 export const EXISTENCES = ['extant', 'lost'] as const;
 export type Existence = (typeof EXISTENCES)[number];
 

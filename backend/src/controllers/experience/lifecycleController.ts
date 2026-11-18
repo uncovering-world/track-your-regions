@@ -24,32 +24,36 @@ import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import { loggedRegion } from '../../middleware/auth.js';
-import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySchema } from '../../types/index.js';
+import type { experienceAdmissionBodySchema, idParamSchema, placeStateBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { contentsReached, publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { answerAdmissionOnMembership, setListingVerdict } from './membershipWriter.js';
 import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 import { answerKindListingUnderLock } from './kindListingController.js';
-import {
-  lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
-} from '../../db/experienceWriter.js';
+import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { placeGoneUnderLock, setPlaceGone } from '../../db/placePeriodsWriter.js';
 import { logCurationAct, membershipRead } from '../../db/curationLogWriter.js';
 import type { CurationLogAction, CurationReasonCode } from '@tyr/shared/curationLog';
 
-/** The object's two axes, as the columns' CHECK lists spell them. */
+/** Whether the place's sources still list it, as the column's CHECK spells it. */
 type Membership = CheckValue<'experiences', 'source_membership'>;
-type Existence = CheckValue<'experiences', 'existence'>;
 
 /** The verdicts on a place as a whole, in the curation log's words. */
 type PlaceVerdictAction = Extract<CurationLogAction, 'marked_former' | 'marked_lost' | 'state_restored' | 'missing_dismissed'>;
 
-/** What a curator sends about an object's lifecycle, and the row they were looking at. */
+/**
+ * What a curator sends about an object's lifecycle, and the row they were
+ * looking at: whether its sources still list it, and whether it is gone
+ * (its standing periods, ADR-0217 decision 5).
+ */
 export interface StateAnswer {
   membership?: Membership;
-  existence?: Existence;
+  gone?: boolean;
   note?: string;
-  expected: { membership: Membership; existence: Existence; flagged: boolean };
+  /** Why the place is gone, or not (#863): required where the verdict moves whether it is. */
+  reasonCode?: CurationReasonCode;
+  expected: { membership: Membership; gone: boolean; flagged: boolean };
   /** One kind whose source stopped listing the place (#1264); the place as a whole where absent. */
   membershipId?: number;
 }
@@ -65,11 +69,32 @@ export interface AnswerRefusal {
   [detail: string]: unknown;
 }
 
+/** The refusal of a verdict that moves whether a place is gone without saying why, or none. */
+function unreasonedGone(nextGone: boolean, reasonCode: CurationReasonCode | undefined): AnswerRefusal | undefined {
+  if (reasonCode !== undefined) return undefined;
+  return {
+    status: 400,
+    error: nextGone
+      ? 'Recording a place as gone needs a reason, chosen under Lost'
+      : 'Saying a gone place still stands needs a reason',
+  };
+}
+
+/** The reason an entry keeps: the gone verdict's own; a delisting and a false alarm ask none. */
+function goneVerdictReason(action: PlaceVerdictAction, reasonCode: CurationReasonCode | undefined): CurationReasonCode | undefined {
+  return action === 'marked_lost' || action === 'state_restored' ? reasonCode : undefined;
+}
+
 /**
  * Record what a curator decided about an object's lifecycle.
  * POST /api/experiences/:id/state
- * Body: { membership?: 'present'|'former', existence?: 'extant'|'lost', note?: string,
- *         expected: { membership, existence, flagged } }
+ * Body: { membership?: 'present'|'former', gone?: boolean, note?: string,
+ *         expected: { membership, gone, flagged } }
+ *
+ * `gone: true` is the curator's *lost*: it closes the place's standing, as
+ * the curator's periods (`setPlaceGone`, ADR-0217 decision 5), and
+ * `gone: false` takes it back, or says a place its run read as gone still
+ * stands.
  *
  * `expected` is required — the row as the caller was looking at it. Compared
  * under the write lock; see the comment on that comparison for why nothing
@@ -82,7 +107,7 @@ export interface AnswerRefusal {
  */
 export async function setExperienceState(
   { params: { id: experienceId }, body, caller }: {
-    params: z.output<typeof idParamSchema>; body: z.output<typeof lifecycleStateBodySchema>; caller: Express.User;
+    params: z.output<typeof idParamSchema>; body: z.output<typeof placeStateBodySchema>; caller: Express.User;
   },
 ): Promise<ExperienceStateResult> {
   const userId = caller.id;
@@ -99,7 +124,9 @@ export async function setExperienceState(
     throw createError('You do not have curator permissions for this experience', 403);
   }
 
-  const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, body);
+  // The log names the region the curator has open where their scope covers it (#863).
+  const regionId = await loggedRegion(caller, experienceId, body.regionId, logRegionId);
+  const outcome = await answerStateUnderLock(experienceId, userId, regionId, body);
   if (outcome.refusal) {
     const { status, ...body } = outcome.refusal;
     throw new Refusal(status, body);
@@ -126,15 +153,15 @@ export async function answerStateUnderLock(
   if (answer.membershipId !== undefined) {
     return answerKindListingUnderLock(experienceId, userId, logRegionId, { ...answer, membershipId: answer.membershipId });
   }
-  const { membership, existence, note, expected } = answer;
+  const { membership, gone, note, reasonCode, expected } = answer;
   // One client, not pool.query('BEGIN') — see the note in curationEditController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections.
   const client = await pool.connect();
   let unusable: Error | undefined;
   let nextMembership: Membership;
-  let nextExistence: Existence;
-  let before: { source_membership: string; existence: string; missing_since?: Date | null };
+  let nextGone: boolean;
+  let before: { source_membership: string; gone: boolean; missing_since?: Date | null };
   try {
     await client.query('BEGIN');
 
@@ -146,26 +173,26 @@ export async function answerStateUnderLock(
       return { refusal };
     };
 
-    // Both columns are written whatever the curator sent, the unsent axis
+    // Both axes are written whatever the curator sent, the unsent one
     // defaulting to what is already there — so the axis nobody decided has to
     // be read under the lock that writes it. Two curators on one item is the
     // normal case, not a corner: every region-scoped curator covering any of
     // its regions sees it, as do its source's curator and every admin. From an
     // unlocked read, a verdict on one axis silently reverts a verdict on the
     // other, and the log would then assert `former` beside a column saying
-    // `present`. Reverting `lost` costs more still: it puts the row back inside
-    // missing detection's `placeNotJudgedLostSql` predicate, so the next clean
-    // run re-flags it and the item returns to the queue for good.
-    const locked = await lockExperience<typeof before>(
-      client, experienceId, 'source_membership, existence, missing_since',
+    // `present`. Reverting `lost` costs more still: the place is no longer
+    // gone (`placeGoneSql`), so the next clean run's missing detection
+    // re-flags it and the item returns to the queue for good.
+    const locked = await lockExperience<{ source_membership: string; missing_since: Date | null }>(
+      client, experienceId, 'source_membership, missing_since',
     );
     // The existence check ran on the pool, on another connection and earlier
     // in time. A row deleted in that window leaves nothing to lock, and the
     // true answer is 404 — `setExperienceAdmission` guards the same gap.
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
-    before = locked.row;
+    before = { ...locked.row, gone: await placeGoneUnderLock(client, locked.lock) };
     nextMembership = membership ?? (before.source_membership as Membership);
-    nextExistence = existence ?? (before.existence as Existence);
+    nextGone = gone ?? before.gone;
 
     // Does the row still look the way the curator saw it? Only the request can
     // say — a card drawn before the question was answered is otherwise
@@ -185,46 +212,56 @@ export async function answerStateUnderLock(
     // terminal: detection re-flags neither, so one mis-click would remove an
     // object from the product with no remedy short of SQL.
     if (before.source_membership !== expected.membership
-      || before.existence !== expected.existence
+      || before.gone !== expected.gone
       || (before.missing_since != null) !== expected.flagged) {
       return await refuse({
         status: 409,
         error: 'Someone else answered this first — reload to see where it stands',
         sourceMembership: before.source_membership,
-        existence: before.existence,
+        gone: before.gone,
       });
     }
 
-    const actions = decidedActions(before, nextMembership, nextExistence);
+    const actions = decidedActions(before, nextMembership, nextGone);
     if (actions.length === 0) {
       // Nothing moved, and the state is the one the curator saw. With a flag
       // standing that is the false alarm — the one verdict with no transition
       // to name. With none, the question was already closed: taking it would
-      // write a second `missing_dismissed` and move `state_decided_by` to
-      // whoever clicked last.
+      // write a second `missing_dismissed` for nobody's change.
       if (before.missing_since == null) {
         return await refuse({
           status: 409,
           error: 'Already answered: this object is not waiting on a decision',
           sourceMembership: before.source_membership,
-          existence: before.existence,
+          gone: before.gone,
         });
       }
       actions.push('missing_dismissed');
     }
 
-    await setLifecycleVerdict(client, locked.lock, {
-      existence: nextExistence, decidedBy: userId, note: note ?? null,
-    });
+    // A verdict that moves whether the place is gone goes against the rule
+    // that reads it, so it says why, as every hand-made act against a rule
+    // does (#863). The card's schema asks it; this holds a batch's lost too.
+    const goneMoves = nextGone !== before.gone;
+    const unreasoned = goneMoves ? unreasonedGone(nextGone, reasonCode) : undefined;
+    if (unreasoned) return await refuse(unreasoned);
+
+    // Only a verdict that moves the place's standing writes its periods: a
+    // false alarm or a listing verdict leaves them, and whose they are, as
+    // they stand.
+    if (goneMoves) {
+      await setPlaceGone(client, locked.lock, nextGone, userId);
+    }
     await setListingVerdict(client, locked.lock, nextMembership);
 
     // A verdict on the place as a whole: about no one membership.
     for (const action of actions) {
       await logCurationAct(client, {
         experienceId, curatorId: userId, action, regionId: logRegionId,
+        reasonCode: goneMoves ? goneVerdictReason(action, reasonCode) : undefined,
         details: {
           membership: { old: before.source_membership, new: nextMembership },
-          existence: { old: before.existence, new: nextExistence },
+          gone: { old: before.gone, new: nextGone },
           note: note ?? null,
         },
       });
@@ -243,7 +280,7 @@ export async function answerStateUnderLock(
     result: {
       experienceId,
       sourceMembership: nextMembership,
-      existence: nextExistence,
+      gone: nextGone,
     },
   };
 }
@@ -512,16 +549,14 @@ export async function answerAdmissionUnderLock(
       : (before.curation_state as CheckValue<'source_records', 'curation_state'>);
 
     // The verdict, the pin, the badge and the publication on the membership;
-    // who decided, when and the note on the place, beside the lifecycle
-    // verdicts that share those columns. Two statements, one transaction, one
-    // lock (#822).
+    // who decided, when and the note in the log entry below. One transaction,
+    // one lock (#822).
     // The rows a put-back arrival releases, read before the verdict below
     // makes it offered (contentsReached).
     const reach = publishes ? await contentsReached(client, experienceId, { membershipId }) : null;
     await answerAdmissionOnMembership(client, locked.lock, membershipId, {
       admitted, pin, publishes, reason: nextReason, curated,
     });
-    await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
       await publishArrivalContents(client, locked.lock, reach, userId));
@@ -625,17 +660,17 @@ async function placeAfterAdmissionRelease(
  * this curator's to log a second time.
  */
 function decidedActions(
-  existing: { source_membership: string; existence: string },
+  existing: { source_membership: string; gone: boolean },
   membership: Membership,
-  existence: Existence,
+  gone: boolean,
 ): PlaceVerdictAction[] {
   const actions: PlaceVerdictAction[] = [];
   if (membership === 'former' && existing.source_membership !== 'former') actions.push('marked_former');
-  if (existence === 'lost' && existing.existence !== 'lost') actions.push('marked_lost');
+  if (gone && !existing.gone) actions.push('marked_lost');
   // One restoration however many axes it undid — two identical rows would read
   // as two separate decisions.
   const restored = (membership === 'present' && existing.source_membership === 'former')
-    || (existence === 'extant' && existing.existence === 'lost');
+    || (!gone && existing.gone);
   if (restored) actions.push('state_restored');
   return actions;
 }

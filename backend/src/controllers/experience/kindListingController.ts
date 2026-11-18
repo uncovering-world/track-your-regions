@@ -21,7 +21,8 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { logCurationAct } from '../../db/curationLogWriter.js';
 import { MEMBERSHIPS, keptAsFormerSql } from '../../db/membership.js';
-import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import type { SourceMembership } from '@tyr/shared/lifecycle';
+import { placeGoneUnderLock } from '../../db/placePeriodsWriter.js';
 import { refuseOnMembership, setMembershipListingVerdict } from './membershipWriter.js';
 
 /** The reason a kind's membership is kept out once its source stopped listing the place. */
@@ -30,10 +31,10 @@ export const NO_LONGER_LISTED_REASON = 'no longer listed by its source';
 export interface KindListingAnswer {
   membershipId: number;
   membership?: SourceMembership;
-  existence?: Existence;
+  gone?: boolean;
   note?: string;
-  /** The membership as the curator was looking at it; `existence` is the place's. */
-  expected: { membership: SourceMembership; existence: Existence; flagged: boolean };
+  /** The membership as the curator was looking at it; `gone` is the place's. */
+  expected: { membership: SourceMembership; gone: boolean; flagged: boolean };
 }
 
 interface Refusal {
@@ -45,7 +46,7 @@ interface Refusal {
 interface Answered {
   experienceId: number;
   sourceMembership: SourceMembership;
-  existence: Existence;
+  gone: boolean;
 }
 
 /** The verdict on one kind, in one transaction under the place's lock. */
@@ -53,9 +54,9 @@ export async function answerKindListingUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { membershipId, membership, existence, note, expected }: KindListingAnswer,
+  { membershipId, membership, gone, note, expected }: KindListingAnswer,
 ): Promise<{ result?: Answered; refusal?: Refusal }> {
-  if (membership === undefined || (existence !== undefined && existence !== expected.existence)) {
+  if (membership === undefined || (gone !== undefined && gone !== expected.gone)) {
     return {
       refusal: {
         status: 409,
@@ -73,9 +74,7 @@ export async function answerKindListingUnderLock(
       return { refusal };
     };
 
-    const locked = await lockExperience<{ existence: Existence; missing_since: Date | null }>(
-      client, experienceId, 'existence, missing_since',
-    );
+    const locked = await lockExperience<{ missing_since: Date | null }>(client, experienceId, 'missing_since');
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
     // Every source dropped the place since the card was drawn: whether it still
     // stands is the place's own question now, and its card asks it.
@@ -124,8 +123,9 @@ export async function answerKindListingUnderLock(
       details: { takenOutOfKind: takesOut, note: note ?? null },
     });
 
+    const gone = await placeGoneUnderLock(client, locked.lock);
     await client.query('COMMIT');
-    return { result: { experienceId, sourceMembership: membership, existence: locked.row.existence } };
+    return { result: { experienceId, sourceMembership: membership, gone } };
   } catch (error) {
     unusable = await rollbackQuietly(client);
     throw error;

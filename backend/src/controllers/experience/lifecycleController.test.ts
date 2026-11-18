@@ -42,6 +42,7 @@ import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+import { answerStateUnderLock } from './lifecycleController.js';
 
 /** The declared routes these specs answer through (ADR-0071). */
 const postState = routeAt(experienceCurationRoutes, '/:id/state', 'post');
@@ -69,14 +70,17 @@ const ADMIN = { id: 1, role: 'admin' as const };
  * Serves `setExperienceState` only — `setExperienceAdmission` has its own
  * `refusedClient` below, and the two locked reads select different columns.
  *
- * `state` is the row as this handler's `FOR UPDATE` finds it, and the default is
- * a realistic one on purpose: the handler compares those three axes with what the
- * card claimed to be showing, so a mock without them would let a test pass while
- * the handler wrote NULL into an axis nobody decided. Nothing else belongs in the
- * row — a column this read does not select is padding that reads as a constraint.
+ * `state` is the place as this handler finds it under its `FOR UPDATE`: the
+ * row the lock reads, and `gone`, which is read in a statement after it. The
+ * default is a realistic one on purpose: the handler compares those three axes
+ * with what the card claimed to be showing, so a mock without them would let a
+ * test pass while the handler wrote NULL into an axis nobody decided. Nothing
+ * else belongs in the row — a column this read does not select is padding that
+ * reads as a constraint.
  */
 function makeClient(state?: Record<string, unknown>) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
+  const { gone = false, ...row } = state ?? {};
   return {
     queries,
     client: {
@@ -88,11 +92,11 @@ function makeClient(state?: Record<string, unknown>) {
         if (sql.includes(OBJECT_LOCK)) {
           return { rows: [{
             source_membership: 'present',
-            existence: 'extant',
             missing_since: new Date('2026-08-03T10:00:00Z'),
-            ...(state ?? {}),
+            ...row,
           }] };
         }
+        if (sql.includes('AS gone FROM experiences')) return { rows: [{ gone }] };
         if (sql.includes('array_agg(el.id)')) return { rows: [{ points: [21, 22], works: [31] }] };
         return { rows: [] };
       }),
@@ -109,8 +113,8 @@ describe('setExperienceState', () => {
 
   it('refuses a call that decides nothing, before anything is read', async () => {
     await expect(answerRoute(postState,
-      { user: CURATOR, params: { id: '5' }, body: { expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
-      makeRes() as never)).rejects.toThrow('Pass membership, existence, or both');
+      { user: CURATOR, params: { id: '5' }, body: { expected: { membership: 'present', gone: false, flagged: true } } } as never,
+      makeRes() as never)).rejects.toThrow('Pass membership, gone, or both');
     expect(mockedQuery).not.toHaveBeenCalled();
   });
 
@@ -119,7 +123,7 @@ describe('setExperienceState', () => {
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: CURATOR, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: CURATOR, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -130,13 +134,13 @@ describe('setExperienceState', () => {
     // The two reads are on different connections and a moment apart. Before
     // the verdict lived under its own lock (#852) this fell back to the
     // pool's snapshot and wrote an UPDATE that matched nothing, answering 200.
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const client = { query: vi.fn(async () => ({ rows: [] })), release: vi.fn() };
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -146,12 +150,12 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a curator whose scope does not reach the experience', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: CURATOR, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: CURATOR, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -159,13 +163,13 @@ describe('setExperienceState', () => {
   });
 
   it('clears missing_since on every verdict, including a false alarm', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
     // "present" over an already-present row: the source hiccupped, nothing moved
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       makeRes() as never,
     );
 
@@ -177,16 +181,18 @@ describe('setExperienceState', () => {
     // A false alarm leaves a kind a curator already answered former alone (#1264).
     expect(update?.params).toEqual([5, 'present', true]);
     expect(update?.sql).toContain("NOT $3 OR source_membership = 'present'");
-    expect(queries.find(q => q.sql.includes('UPDATE experiences'))?.sql).not.toContain('missing_since');
+    // The place's flag follows from its memberships, and a false alarm moves no standing period.
+    expect(queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
+    expect(queries.some(q => q.sql.includes('INSERT INTO place_periods'))).toBe(false);
   });
 
   it('records both decisions when one call carries both axes', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', gone: true, reasonCode: 'missing-from-rule', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       makeRes() as never,
     );
 
@@ -197,14 +203,14 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a decision made about a state that is no longer stored', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     // Another curator answered `former` between this card being drawn and clicked
-    const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant' });
+    const { client, queries } = makeClient({ source_membership: 'former', gone: false });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { gone: true, reasonCode: 'missing-from-rule', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -215,15 +221,15 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a card whose question a later run withdrew', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     // The source listed the object again, so the upsert cleared the flag and
     // left both axes exactly as the card rendered them
-    const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'present', gone: false, missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -237,14 +243,14 @@ describe('setExperienceState', () => {
   });
 
   it('allows a correction made with the current state in view', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'former', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'former', gone: false }] });
     // No flag: this is a decided row, reached from a view that shows it
-    const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'former', gone: false, missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'former', existence: 'extant', flagged: false } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'former', gone: false, flagged: false } } } as never,
       res as never,
     );
 
@@ -256,29 +262,119 @@ describe('setExperienceState', () => {
   });
 
   it('takes the lock before writing the verdict', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
-    const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
+    const { client, queries } = makeClient({ source_membership: 'present', gone: false });
     mockedConnect.mockResolvedValue(client);
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       makeRes() as never,
     );
 
     expect(queries[0].sql).toBe('BEGIN');
     expect(queries[1].sql).toContain(OBJECT_LOCK);
-    expect(queries.findIndex(q => q.sql.includes('UPDATE experiences'))).toBeGreaterThan(1);
+    expect(queries.findIndex(q => q.sql.includes('UPDATE source_records'))).toBeGreaterThan(1);
+  });
+
+  it('writes lost as the curator\'s end of the place\'s standing, under the lock', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
+    const { client, queries } = makeClient({ source_membership: 'present', gone: false });
+    mockedConnect.mockResolvedValue(client);
+
+    await answerRoute(postState,
+      { user: ADMIN, params: { id: '5' }, body: { gone: true, reasonCode: 'missing-from-rule', note: 'Breached on 6 June 2023', expected: { membership: 'present', gone: false, flagged: true } } } as never,
+      makeRes() as never,
+    );
+
+    // The Kakhovka Dam with no period held: one that ended, its dates not
+    // known, written whole as the curator's (source 11), with who decided.
+    const lock = queries.findIndex(q => q.sql.includes(OBJECT_LOCK));
+    const write = queries.findIndex(q => q.sql.includes('INSERT INTO place_periods'));
+    expect(write).toBeGreaterThan(lock);
+    const [placeId, rows, sourceId, decidedBy] = queries[write].params;
+    expect([placeId, sourceId, decidedBy]).toEqual([5, 11, ADMIN.id]);
+    expect(JSON.parse(rows as string)).toEqual([expect.objectContaining({ says: 'stood', from_year: null, ended: true, until_year: null })]);
+    expect(queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
+    const log = queries.find(q => q.sql.includes('experience_curation_log'));
+    expect(log?.params[2]).toBe('marked_lost');
+    expect(JSON.parse(log?.params[4] as string)).toMatchObject({
+      gone: { old: false, new: true }, note: 'Breached on 6 June 2023', reasonCode: 'missing-from-rule',
+    });
+  });
+
+  it('reads whether the place is gone in a statement after the lock, never in the lock statement', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
+    // Another curator's lost committed while this answer waited on the lock.
+    const { client, queries } = makeClient({ source_membership: 'present', gone: true });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await answerRoute(postState,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
+      res as never,
+    );
+
+    // The lock statement reads the row alone; a subquery there would see the
+    // standing periods as they were before the lock was granted.
+    const lock = queries.findIndex(q => q.sql.includes(OBJECT_LOCK));
+    expect(queries[lock].sql).not.toContain('place_periods');
+    expect(queries.findIndex(q => q.sql.includes('AS gone FROM experiences'))).toBeGreaterThan(lock);
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('asks why of a verdict that moves whether the place is gone, and of no other (#863)', () => {
+    const expected = { membership: 'present', gone: false, flagged: true };
+    const parse = (body: object) => postState.body!.safeParse({ expected, ...body }).success;
+    // Nelson's Pillar, which the gone rule missed, and Ponte Santa Trinita, rebuilt after 1944.
+    expect(parse({ gone: true })).toBe(false);
+    expect(parse({ gone: true, reasonCode: 'rebuilt' })).toBe(false);
+    expect(parse({ gone: true, reasonCode: 'missing-from-rule' })).toBe(true);
+    expect(parse({ gone: false })).toBe(false);
+    expect(parse({ gone: false, reasonCode: 'missing-from-rule' })).toBe(false);
+    expect(parse({ gone: false, reasonCode: 'rebuilt' })).toBe(true);
+    expect(parse({ membership: 'former' })).toBe(true);
+    expect(parse({ membership: 'former', reasonCode: 'other' })).toBe(false);
+  });
+
+  it('refuses a gone verdict sent without a reason past the schema, as a batch would', async () => {
+    const { client, queries } = makeClient({ source_membership: 'present', gone: false });
+    mockedConnect.mockResolvedValue(client);
+
+    const outcome = await answerStateUnderLock(5, ADMIN.id, null, {
+      gone: true, expected: { membership: 'present', gone: false, flagged: true },
+    });
+
+    expect(outcome.refusal).toMatchObject({ status: 400, error: expect.stringContaining('needs a reason') });
+    expect(queries.some(q => q.sql.includes('INSERT INTO place_periods'))).toBe(false);
+    expect(queries.some(q => q.sql.includes('experience_curation_log'))).toBe(false);
+    expect(queries.some(q => q.sql === 'ROLLBACK')).toBe(true);
+  });
+
+  it('keeps the reason off a delisting decided beside the gone verdict', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
+    const { client, queries } = makeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await answerRoute(postState,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', gone: true, reasonCode: 'missing-from-rule', expected: { membership: 'present', gone: false, flagged: true } } } as never,
+      makeRes() as never,
+    );
+
+    const logs = queries.filter(q => q.sql.includes('experience_curation_log'));
+    const reasonOf = (action: string) => JSON.parse(logs.find(q => q.params[2] === action)?.params[4] as string).reasonCode;
+    expect(reasonOf('marked_lost')).toBe('missing-from-rule');
+    expect(reasonOf('marked_former')).toBeUndefined();
   });
 
   it('refuses a verdict another curator already recorded', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     // Both curators had the same flagged card open; the other clicked first
-    const { client, queries } = makeClient({ source_membership: 'present', existence: 'lost', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'present', gone: true, missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { existence: 'lost', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { gone: true, reasonCode: 'missing-from-rule', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -290,15 +386,15 @@ describe('setExperienceState', () => {
   });
 
   it('still records a false alarm the curator did assert', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
-    const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
+    const { client, queries } = makeClient({ source_membership: 'present', gone: false });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
     // Nothing moves here either, but saying "it never went anywhere" is a
     // verdict, and it is the one that clears the flag
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -308,9 +404,9 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a stale verdict that would undo another curator\'s answer', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     // A answered `former`, which cleared the flag. B's card predates that.
-    const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'former', gone: false, missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -318,7 +414,7 @@ describe('setExperienceState', () => {
     // on the verdict alone catches it: only comparing what B was looking at
     // with what is stored does
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -327,7 +423,7 @@ describe('setExperienceState', () => {
   });
 
   it('refuses a decision on a question that was never open', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient({ missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
@@ -337,7 +433,7 @@ describe('setExperienceState', () => {
     // Asserting the message, not just the status, is what keeps the two 409s
     // apart: with `flagged: true` here the test would pass on the wrong gate.
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: false } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'present', expected: { membership: 'present', gone: false, flagged: false } } } as never,
       res as never,
     );
 
@@ -349,14 +445,14 @@ describe('setExperienceState', () => {
   });
 
   it('reaches the same verdict from the other axis', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient();
     mockedConnect.mockResolvedValue(client);
 
-    // `existence: 'extant'` on an extant row is the same assertion made about
+    // `gone: false` on an extant row is the same assertion made about
     // the other axis: nothing moved, and the curator said so
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { existence: 'extant', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { gone: false, reasonCode: 'never-gone', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       makeRes() as never,
     );
 
@@ -365,13 +461,13 @@ describe('setExperienceState', () => {
   });
 
   it('destroys the client when a refusal path cannot roll back either', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient();
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
       if (sql === 'ROLLBACK') throw new Error('rollback failed too');
       if (sql.includes(OBJECT_LOCK)) {
-        return { rows: [{ curated_fields: [], source_membership: 'former', existence: 'extant', missing_since: null }] };
+        return { rows: [{ curated_fields: [], source_membership: 'former', gone: false, missing_since: null }] };
       }
       return { rows: [] };
     });
@@ -381,7 +477,7 @@ describe('setExperienceState', () => {
     // A 409 leaves through `finally` like everything else, so dropping the
     // helper's result here pools a client whose transaction never closed
     await answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       res as never,
     );
 
@@ -390,21 +486,21 @@ describe('setExperienceState', () => {
   });
 
   it('destroys a client whose rollback also failed, rather than pooling it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient();
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
       if (sql === 'ROLLBACK') throw new Error('rollback failed too');
       if (sql.includes('experience_curation_log')) throw new Error('log write failed');
       if (sql.includes(OBJECT_LOCK)) {
-        return { rows: [{ curated_fields: [], source_membership: 'present', existence: 'extant', missing_since: new Date('2026-08-03T10:00:00Z') }] };
+        return { rows: [{ curated_fields: [], source_membership: 'present', gone: false, missing_since: new Date('2026-08-03T10:00:00Z') }] };
       }
       return { rows: [] };
     });
     mockedConnect.mockResolvedValue(client);
 
     await expect(answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       makeRes() as never,
     )).rejects.toThrow('log write failed');
 
@@ -415,7 +511,7 @@ describe('setExperienceState', () => {
   });
 
   it('rolls back rather than leaving a decision half-written', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', existence: 'extant' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1, source_membership: 'present', gone: false }] });
     const { client, queries } = makeClient();
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
@@ -425,7 +521,7 @@ describe('setExperienceState', () => {
         return { rows: [{
           curated_fields: [],
           source_membership: 'present',
-          existence: 'extant',
+          gone: false,
           missing_since: new Date('2026-08-03T10:00:00Z'),
         }] };
       }
@@ -434,7 +530,7 @@ describe('setExperienceState', () => {
     mockedConnect.mockResolvedValue(client);
 
     await expect(answerRoute(postState, 
-      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true } } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { membership: 'former', expected: { membership: 'present', gone: false, flagged: true } } } as never,
       makeRes() as never,
     )).rejects.toThrow('log write failed');
 

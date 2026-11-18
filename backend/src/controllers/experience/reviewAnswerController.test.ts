@@ -107,7 +107,7 @@ function poolAnswers({
   names = [{ id: 5, name: 'Chartres Cathedral', source_id: 4 }],
   subs = { arrival: true, held: false, contents: false },
   refusedOpen = true,
-  missing = { source_membership: 'present', existence: 'extant', missing_since: new Date('2026-09-01T00:00:00Z') },
+  missing = { source_membership: 'present', gone: false, missing_since: new Date('2026-09-01T00:00:00Z') },
   points = [] as Array<Record<string, unknown>>,
 } = {}) {
   mockedQuery.mockImplementation(async (sql: string) => {
@@ -202,7 +202,11 @@ describe('the dispatch table', () => {
   it('takes a reason and words with a rejection only, and a refusal\'s reason only', () => {
     const rows = [{ kind: 'waiting', id: 5 }];
     expect(() => postReviewAnswer.body!.parse({ rows, answer: 'accept', reasonCode: 'gone' })).toThrow();
-    expect(() => postReviewAnswer.body!.parse({ rows, answer: 'lost', note: 'collapsed' })).toThrow();
+    expect(() => postReviewAnswer.body!.parse({ rows, answer: 'accept', note: 'collapsed' })).toThrow();
+    // A lost answer takes a gone answer's reason (#863), never a refusal's.
+    expect(() => postReviewAnswer.body!.parse({ rows, answer: 'lost', reasonCode: 'gone' })).toThrow();
+    expect(postReviewAnswer.body!.parse({ rows, answer: 'lost', reasonCode: 'missing-from-rule', note: 'collapsed' }))
+      .toMatchObject({ answer: 'lost', reasonCode: 'missing-from-rule', note: 'collapsed' });
     expect(() => postReviewAnswer.body!.parse({ rows, answer: 'reject', reasonCode: 'missing-from-rule' })).toThrow();
     expect(postReviewAnswer.body!.parse({ rows, answer: 'reject', reasonCode: 'gone' }))
       .toMatchObject({ answer: 'reject', reasonCode: 'gone' });
@@ -289,11 +293,21 @@ describe('the dispatch table', () => {
   it.each([
     ['accept', { membership: 'former' }],
     ['reject', { membership: 'present' }],
-    ['lost', { existence: 'lost' }],
+    ['lost', { gone: true }],
   ])('answers a missing row with the verdict "%s" names and the row as the queue showed it', async (answer, verdict) => {
     await answerRoute(postReviewAnswer, req([{ kind: 'missing', id: 5 }], answer), makeRes() as never);
     expect(mockedState).toHaveBeenCalledWith(5, 7, 12, {
-      ...verdict, expected: { membership: 'present', existence: 'extant', flagged: true },
+      ...verdict, expected: { membership: 'present', gone: false, flagged: true },
+    });
+  });
+
+  it('records a missing place as lost with the batch\'s one reason and words (#863)', async () => {
+    const res = makeRes();
+    await answerRoute(postReviewAnswer,
+      req([{ kind: 'missing', id: 5 }], 'lost', { reasonCode: 'missing-from-rule', note: 'blown up in 2023' }), res as never);
+    expect(mockedState).toHaveBeenCalledWith(5, 7, 12, {
+      gone: true, reasonCode: 'missing-from-rule', note: 'blown up in 2023',
+      expected: { membership: 'present', gone: false, flagged: true },
     });
   });
 
@@ -317,6 +331,16 @@ describe('the dispatch table', () => {
     expect(result.answered[0].did).toEqual({ points: 2, pointsRefused: 1 });
     // One world view failed twice, named once: the sentence is for an admin.
     expect(result.placementFailed).toEqual([{ id: 5, name: 'Chartres Cathedral', worldViews: [{ id: 5, name: 'Administrative' }] }]);
+  });
+
+  it('keeps the batch\'s words with each point of a withdrawn row recorded as lost', async () => {
+    poolAnswers({ points: [{ id: 31, source_membership: 'present', existence: 'extant', missing_since: new Date() }] });
+    mockedLocationState.mockResolvedValueOnce({ result: { locationId: 31 } });
+    await answerRoute(postReviewAnswer,
+      req([{ kind: 'withdrawn', id: 5 }], 'lost', { reasonCode: 'missing-from-rule', note: 'washed away in 2023' }), makeRes() as never);
+    expect(mockedLocationState).toHaveBeenCalledWith(31, 5, 7, 12, {
+      existence: 'lost', note: 'washed away in 2023', expected: { membership: 'present', existence: 'extant', flagged: true },
+    });
   });
 
   it('reports a withdrawn row whose every point refused as refused', async () => {

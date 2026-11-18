@@ -453,7 +453,7 @@ export async function setMembershipListingVerdict(
  * on the part's record in the site the lock holds (ADR-0216): `former`, the
  * list no longer gives it, keeping the mark; `present`, a false alarm,
  * clearing it. Whether the part still stands is the part's own
- * (`setLifecycleVerdict`). The record's line points are the caller's to hide.
+ * standing periods' (`setPlaceGone`). The record's line points are the caller's to hide.
  */
 export async function setPartRecordListingVerdict(
   client: PoolClient,

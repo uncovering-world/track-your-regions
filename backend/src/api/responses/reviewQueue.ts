@@ -37,7 +37,7 @@ export type RegionCrossing = z.infer<typeof RegionCrossing>;
 const timestamp = z.iso.datetime({ offset: true });
 
 const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership);
-const Existence = z.enum(CHECK_VALUES.experiences.existence);
+const PointExistence = z.enum(CHECK_VALUES.experience_locations.existence);
 
 export const QueueKind = z.enum(QUEUE_KINDS)
   .describe('The class of an open question, which a batch answer names a row by.');
@@ -216,7 +216,7 @@ export const AnsweredPoint = z.strictObject({
   latitude: z.number().nullable(),
   longitude: z.number().nullable(),
   sourceMembership: SourceMembership,
-  existence: Existence,
+  existence: PointExistence,
   decidedAt: timestamp.nullable(),
   note: z.string().nullable(),
   decidedBy: z.string().nullable().describe(
@@ -455,7 +455,7 @@ export const ReviewQueueItem = z.strictObject({
   ),
   missing_since: timestamp.nullable(),
   source_membership: SourceMembership,
-  existence: Existence,
+  gone: z.boolean().describe('Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5).'),
   kind: z.enum(QUEUE_ITEM_KINDS),
   membership_id: z.number().int().nullable().optional().describe(
     'The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind\'s, and an answer'
@@ -494,9 +494,9 @@ export const ReviewQueueItem = z.strictObject({
   in_danger: z.boolean().optional(),
   danger_since: z.number().int().nullable().optional().describe('The year the site was listed in danger.'),
   admission_reason: z.string().nullable().optional().describe("Why this kind turned the row down, in the rule's own words."),
-  state_decided_at: timestamp.nullable().optional().describe('When a curator answered. Kept-out items only.'),
-  state_note: z.string().nullable().optional().describe("The curator's own words with the answer. Kept-out items only."),
-  state_system_note: z.string().nullable().optional().describe(
+  answered_at: timestamp.nullable().optional().describe('When a curator answered, read from the curation log. Kept-out items only.'),
+  answer_note: z.string().nullable().optional().describe("The curator's own words with the answer. Kept-out items only."),
+  answer_system_note: z.string().nullable().optional().describe(
     "What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195). Kept-out items only.",
   ),
   proposed: z.array(ProposedField).nullable().describe(

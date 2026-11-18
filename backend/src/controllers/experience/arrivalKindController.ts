@@ -32,7 +32,7 @@
 import type { z } from 'zod/v4';
 import type { ArrivalAnsweredWithKind } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
+import { lockExperience } from '../../db/experienceWriter.js';
 import { KINDS, MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { badRequest, createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { arrivalKindBodySchema, idParamSchema } from '../../types/index.js';
@@ -140,10 +140,9 @@ export async function moveArrivalUnderLock(
     if (!stays) {
       // The arrival's no, as a curator's no to an arrival is written: the
       // verdict, its reason and the pin, so the arriving kind's later runs
-      // leave it out; who decided and the note on the place.
+      // leave it out; who decided and the note in the curation log.
       const curated = [...new Set([...((arrival.curated_fields as string[]) ?? []), 'admission'])];
       await refuseOnMembership(client, locked.lock, arrivalMembershipId, CURATOR_REFUSAL_REASON, curated);
-      await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
       // Answered with another kind, the arrival's why is that it is not of its own.
       await logCurationAct(client, {
         experienceId, curatorId: userId, action: 'arrival_refused', regionId: logRegionId,

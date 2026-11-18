@@ -36,15 +36,20 @@
  * `experiences.stands_today` and `source_records.stands_today` are not written
  * here or anywhere: triggers derive them from the standing periods this module
  * writes.
+ *
+ * A curator's *lost* is a write of the place's standing periods too
+ * (`setPlaceGone`, ADR-0217 decision 5): it closes the last one, and taking it
+ * back opens it again, each as the curator's list.
  */
 
 import type { PoolClient } from 'pg';
 import {
-  latestDayOnEarth, outerDaysOf, periodsFault, PERIOD_SAYS, PLACE_STOOD,
-  type PeriodSays, type PlaceDate, type PlaceEnding,
+  latestDayOnEarth, outerDaysOf, periodsFault, PERIOD_SAYS, PLACE_STOOD, standsBy,
+  type CalendarDay, type PeriodSays, type PlaceDate, type PlaceEnding,
 } from '@tyr/shared/lifetime';
 import type { LockedExperience } from './experienceWriter.js';
 import { CURATOR_SOURCE_ID } from './membership.js';
+import { placeGoneSql } from './readerPredicates.js';
 
 /** One end of a period as a source states it: the date, and the statement it was read from. */
 export interface SourcedDate extends PlaceDate {
@@ -77,6 +82,14 @@ export interface PeriodsBy {
 
 /** What may name a kind: a standing period and a closure (the schema's `place_periods_kind_of_standing`). */
 const OF_A_KIND: readonly PeriodSays[] = ['stood', 'closed'];
+
+/** The periods a place holds that say one thing, with whose view they were taken from. */
+export interface HeldPeriods {
+  periods: readonly SourcedPeriod[];
+  sourceId: number;
+  /** The curator who set them, or null for a run's. */
+  decidedBy: number | null;
+}
 
 /** A source's whole view of a place's periods: each list it reports, by what it says. */
 export type RecordPeriods = Partial<Record<PeriodSays, readonly SourcedPeriod[]>>;
@@ -217,4 +230,133 @@ export async function writeRecordPeriods(
       WHERE ${differs('record_periods')}`,
     [recordId, JSON.stringify(rows), ofMembership],
   );
+}
+
+interface PeriodRow {
+  says: PeriodSays;
+  from_year: number | null; from_month: number | null; from_day: number | null; from_span: SourcedDate['span']; from_circa: boolean;
+  from_property: string | null; from_statement: string | null;
+  ended: boolean;
+  until_year: number | null; until_month: number | null; until_day: number | null; until_span: SourcedDate['span']; until_circa: boolean;
+  until_property: string | null; until_statement: string | null;
+  ending: SourcedPeriod['ending']; what: string | null;
+  source_id: number; decided_by: number | null;
+}
+
+const endOf = (
+  year: number | null, month: number | null, day: number | null, span: SourcedDate['span'], circa: boolean,
+  property: string | null, statement: string | null,
+): SourcedDate | null => (year === null ? null : { year, month, day, span, circa, property, statement });
+
+/**
+ * The periods the place holds for every kind, by what they say: what a run's
+ * gate compares its view with (`lifetimeWrites.ts`) and what a curator's
+ * *lost* closes. A period of one membership is that membership's, never the
+ * place's.
+ */
+export async function heldPeriodsOf(client: Pick<PoolClient, 'query'>, placeId: number): Promise<Partial<Record<PeriodSays, HeldPeriods>>> {
+  const { rows } = await client.query<PeriodRow>(
+    `SELECT says, from_year, from_month, from_day, from_span, from_circa, from_property, from_statement, ended,
+            until_year, until_month, until_day, until_span, until_circa, until_property, until_statement,
+            ending, what, source_id, decided_by
+       FROM place_periods WHERE experience_id = $1 AND kind_id IS NULL ORDER BY says, ordinal`,
+    [placeId],
+  );
+  const held: Partial<Record<PeriodSays, HeldPeriods>> = {};
+  for (const says of PERIOD_SAYS) {
+    const own = rows.filter((row) => row.says === says);
+    if (own.length === 0) continue;
+    held[says] = {
+      sourceId: own[0].source_id,
+      decidedBy: own.find((row) => row.decided_by !== null)?.decided_by ?? null,
+      periods: own.map((row) => ({
+        from: endOf(row.from_year, row.from_month, row.from_day, row.from_span, row.from_circa, row.from_property, row.from_statement),
+        ended: row.ended,
+        until: endOf(row.until_year, row.until_month, row.until_day, row.until_span, row.until_circa, row.until_property, row.until_statement),
+        ending: row.ending,
+        what: row.what,
+      })),
+    };
+  }
+  return held;
+}
+
+/**
+ * Whether the locked place is gone (`placeGoneSql`), read in a statement of
+ * its own once the lock is granted. The lock statement cannot say it: under
+ * READ COMMITTED a statement that waited on the row lock reads the locked row
+ * as it was committed, but `place_periods` as of the snapshot it began with,
+ * from before the verdict it waited on.
+ */
+export async function placeGoneUnderLock(client: Pick<PoolClient, 'query'>, lock: LockedExperience): Promise<boolean> {
+  const { rows } = await client.query<{ gone: boolean }>(
+    `SELECT ${placeGoneSql('e')} AS gone FROM experiences e WHERE e.id = $1`, [lock.id],
+  );
+  return rows[0]?.gone === true;
+}
+
+/** A standing period that ended, its start and its end not known: a curator's *lost* on a place with no period. */
+const ENDED_UNDATED: SourcedPeriod = { from: null, ended: true, until: null, ending: null, what: null };
+
+/**
+ * The standing periods once a curator says the place is gone: the open one
+ * ends, at a date not known, and how is not said. One that begins on a day
+ * still ahead is dropped instead, since no period both begins ahead and has
+ * ended. A place with none is given one that ended, its start and end not
+ * known (ADR-0217 decision 5).
+ */
+export function closedStanding(stood: readonly SourcedPeriod[], today: CalendarDay): readonly SourcedPeriod[] {
+  const begun = stood.filter((period) => period.ended || standsBy([period], today));
+  if (begun.length === 0) return [ENDED_UNDATED];
+  return begun.map((period) => (period.ended ? period : { ...period, ended: true, until: null, ending: null }));
+}
+
+/**
+ * The standing periods once a curator, or an admission pin, says the place
+ * stands: the last one is open again. A list that only says the place ended,
+ * with nothing known of when it stood, says nothing then and is not kept: an
+ * admission pin reads it so on every run. A curator's word is written once and
+ * kept, so it keeps a period of its own (`standingTakenBack`).
+ */
+export function reopenedStanding(stood: readonly SourcedPeriod[]): readonly SourcedPeriod[] {
+  const last = stood.at(-1);
+  if (!last || stood.some((period) => !period.ended)) return stood;
+  if (stood.length === 1 && last.from === null) return [];
+  return [...stood.slice(0, -1), { ...last, ended: false, until: null, ending: null }];
+}
+
+/** A standing period open since a date not known: a curator's word that a place stands, with nothing known of when it began. */
+const OPEN_UNDATED: SourcedPeriod = { from: null, ended: false, until: null, ending: null, what: null };
+
+/**
+ * The standing periods once a curator takes a *lost* back: the last one open
+ * again (`reopenedStanding`), or, where nothing would be left, one open since a
+ * date not known. A list of none is no one's, so a run would write its view
+ * over it; an open period of the curator's is kept. A Wikidata item that states
+ * a demolition and no inception is read as one period that ended, its dates
+ * not known, and the curator's *it was never gone* has to outlast the next
+ * read of it.
+ */
+export function standingTakenBack(stood: readonly SourcedPeriod[]): readonly SourcedPeriod[] {
+  const reopened = reopenedStanding(stood);
+  return reopened.length > 0 ? reopened : [OPEN_UNDATED];
+}
+
+/**
+ * A curator's word on whether the place still stands (ADR-0217 decision 5,
+ * ADR-0225 slice B2): *lost* closes its standing (`closedStanding`), taking it
+ * back opens it again (`standingTakenBack`). The list is written whole as the
+ * curator's, with who decided and when, so a run that reports another view
+ * keeps it (`lifetimeWrites.ts`). Nelson's Pillar, read as gone by its run,
+ * stands again only on a curator's word; the Kakhovka Dam ends on one.
+ */
+export async function setPlaceGone(
+  client: PoolClient,
+  lock: LockedExperience,
+  gone: boolean,
+  decidedBy: number,
+): Promise<void> {
+  const stood = (await heldPeriodsOf(client, lock.id))[PLACE_STOOD]?.periods ?? [];
+  const next = gone ? closedStanding(stood, latestDayOnEarth(new Date())) : standingTakenBack(stood);
+  await writePlacePeriods(client, lock, PLACE_STOOD, next, { sourceId: CURATOR_SOURCE_ID, decidedBy });
 }

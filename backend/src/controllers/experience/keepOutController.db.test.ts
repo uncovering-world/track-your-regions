@@ -133,7 +133,7 @@ describe('taking a published place out of one kind', () => {
     const read = await getReviewQueue({ query: reviewQueueQuerySchema.parse({ q: NAME }), caller: caller() });
     expect(read.keptOut).toEqual([expect.objectContaining({
       id: CONCORD, membership_id: archaeology, admission_reason: CURATOR_REFUSAL_REASON,
-      state_note: 'Not a must: only the podium is left',
+      answer_note: 'Not a must: only the podium is left',
     })]);
   });
 

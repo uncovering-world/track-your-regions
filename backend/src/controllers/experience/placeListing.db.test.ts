@@ -129,7 +129,7 @@ describe('whether a source still lists a place (ADR-0084)', () => {
     await stopListing(artMuseums);
 
     const outcome = await answerStateUnderLock(LOUVRE, userId, null, {
-      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true },
+      membership: 'former', expected: { membership: 'present', gone: false, flagged: true },
     });
 
     expect(outcome.refusal).toBeUndefined();

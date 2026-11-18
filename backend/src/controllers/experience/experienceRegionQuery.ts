@@ -11,12 +11,14 @@
 
 import { canCurateExperienceSql } from '../../middleware/auth.js';
 import {
-  hideLostSql,
+  experienceOfferedToReaderSql,
   experienceShownToReaderSql,
+  experienceShownWithGoneSql,
+  hideLostSql,
   lifecycleSelectSql,
-  lostByVerdictSql,
   offeredLinkSql,
   offeredLocationSql,
+  placeGoneSql,
   publishedContentSql,
   placedInReaderRegionsSql,
   readerPositionSql,
@@ -178,7 +180,7 @@ export function buildRegionQueries(opts: {
   // labels it from the columns selected above.
   //
   // A refusal has no toggle and never gets one. `includeLostRows` exists so a
-  // reader can ask to see what no longer exists; a row its kind's rule
+  // reader can ask to see what no longer exists (`experienceShownWithGoneSql`); a row its kind's rule
   // turned down is not something the reader is missing, it is something that
   // should never have been offered (ADR-0024). The curation queue reads it
   // through its own query.
@@ -191,23 +193,23 @@ export function buildRegionQueries(opts: {
   // one membership is both admitted and passed, which is the kind it is
   // listed under and the pin the map draws — and not crowded out of a crowded
   // city (`experienceShownToReaderSql`, ADR-0172).
-  const lifecycleFilter = ` AND ${experienceShownToReaderSql()}`
-    + (includeLostRows ? '' : ` AND ${hideLostSql()}`);
-  // The same rule as an expression, for the count: one aggregate answers how
+  const lifecyclePredicate = includeLostRows
+    ? experienceShownWithGoneSql()
+    : `${experienceShownToReaderSql()} AND ${hideLostSql()}`;
+  const lifecycleFilter = ` AND ${lifecyclePredicate}`;
+  // The same rule as an expression serves the count: one aggregate answers how
   // many the list is showing and another how many it is holding back, so the
   // page can offer the toggle only where there is something behind it.
-  const lifecyclePredicate = includeLostRows
-    ? experienceShownToReaderSql()
-    : `${experienceShownToReaderSql()} AND ${hideLostSql()}`;
+  //
   // Refused rows are excluded here too. This number is an offer to reveal, and
   // revealing would not bring back a row the other predicate still hides.
-  // Pending rows are excluded for the same reason: showing lost rows again
-  // would not un-hide one that is also unread, so it must not be counted as
-  // something the toggle would reveal. Nor is one crowded out, or one whose
-  // only membership no longer stands in its kind: the toggle drops
-  // `hideLostSql` and keeps `experienceShownToReaderSql`, so it counts what
-  // that keeps.
-  const lostHiddenPredicate = `${lostByVerdictSql()} AND ${experienceShownToReaderSql()}`;
+  // Pending rows are excluded for the same reason: showing what is gone would
+  // not un-hide one that is also unread, so it must not be counted as
+  // something the toggle would reveal. Nor is a place whose opening day is
+  // still ahead, or one whose only membership no longer stands in its kind
+  // while the place stands: neither is gone (`placeGoneSql`), and the toggle
+  // reveals only what is.
+  const lostHiddenPredicate = `${placeGoneSql()} AND ${experienceOfferedToReaderSql()}`;
   // What puts an object in this region: a point a reader may see, as its row
   // says (#521, ADR-0197) — `readerRegionMembershipSql` says why a row alone
   // is not enough without that mark. It goes on the WHERE of all four

@@ -335,13 +335,13 @@ const placement = publication.pick({ placementFailed: true, placementFailedWorld
 
 const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership)
   .describe('Whether the source still lists it: `former` once it has delisted it.');
-const Existence = z.enum(CHECK_VALUES.experiences.existence)
-  .describe('Whether it is still there to visit: `lost` once it is gone.');
-
 export const ExperienceStateResult = z.strictObject({
   experienceId: z.number().int(),
   sourceMembership: SourceMembership,
-  existence: Existence,
+  gone: z.boolean().describe(
+    'Whether it is gone: it has standing periods and none is open (ADR-0217 decision 5). A curator\'s *lost* closes'
+    + ' them, and taking it back opens the last one again.',
+  ),
 }).describe("An object's lifecycle as a curator's verdict left it.");
 export type ExperienceStateResult = z.infer<typeof ExperienceStateResult>;
 

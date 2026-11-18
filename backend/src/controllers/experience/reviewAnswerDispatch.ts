@@ -65,6 +65,7 @@ import type { PlacementFailure, PublishResult } from '../../api/responses/curati
 import type { ReviewAnswerDid } from '../../api/responses/reviewQueue.js';
 import type { QueueKind as AnswerKind, ReviewAnswer as Answer } from './reviewQueueVocabulary.js';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import { placeGoneSql } from '../../db/readerPredicates.js';
 import type { CurationReasonCode } from '@tyr/shared/curationLog';
 import { shownBySql } from '../../db/placePoints.js';
 
@@ -104,7 +105,10 @@ type Answerer = {
    * batch's in one query.
    */
   bulk?: boolean;
-  /** Why a rejection turns an arrival away, and the curator's words: one for every row (#863). */
+  /**
+   * Why a rejection turns an arrival away, or why a lost answer's places are
+   * gone, and the curator's words: one for every row (#863).
+   */
   reasonCode?: CurationReasonCode;
   note?: string;
 };
@@ -421,16 +425,30 @@ async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
   };
 }
 
-type Axes = { source_membership: SourceMembership; existence: Existence; missing_since: Date | null };
+/** A place's two axes as the queue showed them: its listing, and whether it is gone (`placeGoneSql`). */
+type PlaceAxes = { source_membership: SourceMembership; gone: boolean; missing_since: Date | null };
+/** A point's two axes, which keeps its own `existence` until the point tables go (ADR-0225). */
+type PointAxes = { source_membership: SourceMembership; existence: Existence; missing_since: Date | null };
 
-/** The verdict the answer names, on either an object or a point. */
-function verdictFor(answer: Answer): { membership?: SourceMembership; existence?: 'lost' } {
+/** The verdict the answer names on a place. */
+function placeVerdictFor(answer: Answer): { membership?: SourceMembership; gone?: true } {
+  if (answer === 'lost') return { gone: true };
+  return { membership: answer === 'accept' ? 'former' : 'present' };
+}
+
+/** The verdict the answer names on a point. */
+function pointVerdictFor(answer: Answer): { membership?: SourceMembership; existence?: 'lost' } {
   if (answer === 'lost') return { existence: 'lost' };
   return { membership: answer === 'accept' ? 'former' : 'present' };
 }
 
-/** The `expected` block an open row means — the row as the queue showed it. */
-function expectedOf(row: Axes) {
+/** The `expected` block an open place means — the row as the queue showed it. */
+function placeExpectedOf(row: PlaceAxes) {
+  return { membership: row.source_membership, gone: row.gone, flagged: row.missing_since != null };
+}
+
+/** The `expected` block an open point means. */
+function pointExpectedOf(row: PointAxes) {
   return { membership: row.source_membership, existence: row.existence, flagged: row.missing_since != null };
 }
 
@@ -438,15 +456,18 @@ async function answerMissing(who: Answerer, answer: Answer): Promise<Outcome> {
   const { experienceId, userId, logRegionId, membershipId } = who;
   if (membershipId !== null) return answerKindMissing(who, answer, membershipId);
   const open = await pool.query(
-    `SELECT e.source_membership, e.existence, e.missing_since
+    `SELECT e.source_membership, ${placeGoneSql('e')} AS gone, e.missing_since
        FROM experiences e
       WHERE e.id = $1 AND ${missingOpenSql('e')}`,
     [experienceId],
   );
-  const row = open.rows[0] as Axes | undefined;
+  const row = open.rows[0] as PlaceAxes | undefined;
   if (!row) return refused(409, 'Already answered: this object is not waiting on a decision');
+  // A place recorded as lost says why, the batch's one reason for every place
+  // it reaches; the writer refuses one without (#863).
   const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, {
-    ...verdictFor(answer), expected: expectedOf(row),
+    ...placeVerdictFor(answer), expected: placeExpectedOf(row),
+    ...(answer === 'lost' ? { reasonCode: who.reasonCode, note: who.note } : {}),
   });
   return outcome.refusal ? refusedBy(outcome.refusal) : { did: {} };
 }
@@ -462,15 +483,15 @@ async function answerKindMissing(who: Answerer, answer: Answer, membershipId: nu
     return refused(409, 'Other sources still list this place, so it is not answered as lost here');
   }
   const open = await pool.query(
-    `SELECT m.source_membership, e.existence, m.missing_since
+    `SELECT m.source_membership, ${placeGoneSql('e')} AS gone, m.missing_since
        FROM experiences e JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
       WHERE e.id = $1 AND m.id = $2 AND ${membershipMissingOpenSql('m', 'e')}`,
     [experienceId, membershipId],
   );
-  const row = open.rows[0] as Axes | undefined;
+  const row = open.rows[0] as PlaceAxes | undefined;
   if (!row) return refused(409, 'Already answered: this kind is not waiting on a decision');
   const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, {
-    ...verdictFor(answer), expected: expectedOf(row), membershipId,
+    ...placeVerdictFor(answer), expected: placeExpectedOf(row), membershipId,
   });
   return outcome.refusal ? refusedBy(outcome.refusal) : { did: {} };
 }
@@ -493,7 +514,7 @@ async function answerWithdrawn(who: Answerer, answer: Answer): Promise<Outcome> 
       ORDER BY el.id`,
     [experienceId],
   );
-  const points = open.rows as Array<Axes & { id: number }>;
+  const points = open.rows as Array<PointAxes & { id: number }>;
   if (points.length === 0) {
     return refused(409, 'Already answered: this object has no point waiting on a decision');
   }
@@ -501,8 +522,10 @@ async function answerWithdrawn(who: Answerer, answer: Answer): Promise<Outcome> 
   const worldViews: Placement['worldViews'] = [];
   let firstRefusal: AnswerRefusal | null = null;
   for (const point of points) {
+    // A point recorded as lost keeps the batch's note, as a place does.
     const outcome = await answerLocationStateUnderLock(point.id, experienceId, userId, logRegionId, {
-      ...verdictFor(answer), expected: expectedOf(point),
+      ...pointVerdictFor(answer), expected: pointExpectedOf(point),
+      ...(answer === 'lost' && who.note !== undefined ? { note: who.note } : {}),
     });
     if (outcome.refusal) {
       did.pointsRefused! += 1;

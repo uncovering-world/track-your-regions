@@ -7,7 +7,8 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import { membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, placeOfferedSql, placeShownSql } from '../../db/membership.js';
 import {
-  experienceShownToReaderSql, hideLostSql, lostByVerdictSql, readableByIdSql,
+  experienceOfferedToReaderSql, experienceShownToReaderSql, experienceShownWithGoneSql, hideLostSql, placeGoneSql,
+  readableByIdSql,
 } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
@@ -39,7 +40,7 @@ const EXPERIENCE_ROW = {
   created_at: new Date('2026-08-04T15:01:24.341Z'),
   updated_at: new Date('2026-08-04T15:01:24.341Z'),
   source_membership: 'present',
-  existence: 'extant',
+  gone: false,
   missing_since: null,
   longitude: 128.6,
   latitude: 35.9,
@@ -334,13 +335,13 @@ describe('lifecycle visibility across the read paths', () => {
       // filter sits inside the `experience_count` subquery and not in the outer
       // WHERE is Postgres's answer, not a mock's.
       if (filtersLost) {
-        expect(all).toMatch(/e\.existence <> 'lost'/);
+        expect(all).toMatch(/(?:AND|WHERE)\s+k?e\.stands_today/);
       } else {
         // Pinned so this path stays in step with the sibling by-id reads in
         // experienceLocationController.test.ts, not because leaving `lost`
         // reachable here is settled — the handler's own comment flags closing
         // it as a separate decision about a different question.
-        expect(all).not.toMatch(/e\.existence <> 'lost'/);
+        expect(all).not.toMatch(/(?:AND|WHERE)\s+k?e\.stands_today/);
       }
       // `former` is a claim about the source's catalogue, not about the world.
       // Left unanchored on purpose: a negative is strongest when it names no
@@ -414,16 +415,15 @@ describe('lifecycle visibility across the read paths', () => {
 
   it('keeps a refused row hidden from a caller who asked to see what is gone', async () => {
     // The discriminating case for two predicates rather than one: `includeLost`
-    // drops the existence filter and must leave admission alone (ADR-0024).
+    // drops the standing filter and must leave admission alone (ADR-0024).
     await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
-    // Aliased: `readerPositionSql` filters *locations* on existence, so that a
-    // row is never positioned at a place this same caller cannot see. The claim
-    // here is about the experience.
-    expect(sql).not.toContain("e.existence <> 'lost'");
+    // The gone places are let in only where a kind offers them.
+    expect(sql).toContain(experienceShownWithGoneSql('e'));
+    expect(sql).not.toContain(`AND ${hideLostSql('e')}`);
     expect(sql).toContain("admission <> 'refused'");
   });
 
@@ -432,8 +432,8 @@ describe('lifecycle visibility across the read paths', () => {
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     const [list, count] = mockedQuery.mock.calls.map(c => String(c[0]));
-    expect(list).toContain("existence <> 'lost'");
-    expect(count).toContain("existence <> 'lost'");
+    expect(list).toContain(`AND ${hideLostSql('e')}`);
+    expect(count).toContain(`AND ${hideLostSql('e')}`);
   });
 
   it('gates the same rows it lists, or the tree would disagree with itself', async () => {
@@ -470,13 +470,12 @@ describe('lifecycle visibility across the read paths', () => {
       makeRes() as never);
 
     const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
-    // Anchored on the experience alias, because a *point's* own `existence` is
-    // filtered here whatever the reader asked: "show what is gone" is an affordance
-    // about objects, and a component a curator declared gone is never put back on the
-    // map — `offeredLocationSql` carries `el.existence <> 'lost'` beside the
-    // withdrawal flag (ADR-0026). Unanchored, this would read that as the reader's
-    // request being ignored.
-    expect(all).not.toContain("e.existence <> 'lost'");
+    // A *point's* own `existence` is filtered here whatever the reader asked:
+    // "show what is gone" is an affordance about places, and a component a
+    // curator declared gone is never put back on the map — `offeredLocationSql`
+    // carries `el.existence <> 'lost'` beside the withdrawal flag (ADR-0026).
+    expect(all).toContain(experienceShownWithGoneSql('e'));
+    expect(all).not.toContain(`AND ${hideLostSql('e')}`);
   });
 
   it('says how many it is holding back, so the page can offer to show them', async () => {
@@ -486,14 +485,13 @@ describe('lifecycle visibility across the read paths', () => {
     // Answered by the count that was already running: a permanent "show lost"
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
-    // Only what the toggle can bring back: not a lost place crowded out, nor
-    // one whose only membership no longer stands in its kind.
+    // Only what the toggle can bring back: a gone place a kind offers.
     expect(count).toContain(
-      `FILTER (WHERE ${lostByVerdictSql('e')} AND ${experienceShownToReaderSql('e')})`);
+      `FILTER (WHERE ${placeGoneSql('e')} AND ${experienceOfferedToReaderSql('e')})`);
     expect(count).toContain('lost_hidden');
     // A refused row is not something the reader is being offered a look at:
     // revealing the lost would not bring it back (ADR-0024). Same for a
-    // pending one: `curation_state` has no toggle here, unlike `existence`
+    // pending one: `curation_state` has no toggle here, unlike standing
     // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
     expect(count).toContain(
       `FILTER (WHERE ${experienceShownToReaderSql('e')} AND ${hideLostSql('e')})`);
@@ -505,11 +503,11 @@ describe('lifecycle visibility across the read paths', () => {
       makeRes() as never);
 
     // The total has to follow the list, or the page would say 40 and show 41.
-    // `includeLost` drops the lost predicate and only that one: admission and
+    // `includeLost` lets in the gone places and nothing else: admission and
     // curation_state have no toggle, so both survive into a count the caller
     // asked to widen.
     expect(String(mockedQuery.mock.calls[1][0])).toContain(
-      `FILTER (WHERE ${experienceShownToReaderSql('e')})`);
+      `FILTER (WHERE ${experienceShownWithGoneSql('e')})`);
   });
 
   it('reports nothing hidden once it is showing them', async () => {
