@@ -1329,6 +1329,108 @@ The rejection's own `reason` (`experience_rejections.reason`, shown as *Reason: 
 rejected place) keeps the curator's words, else the picked reason's words, and none for a bare
 *Other*.
 
+#### The standing questions, as queries (#863)
+
+A kind's rule is tuned from what curators did by hand. These five queries answer the questions
+that tuning asks. They run read-only (`BEGIN READ ONLY; … ROLLBACK;`, `npm run db:shell`).
+
+Each groups by what its question asks about (a kind, a region, a source or an act), and two
+conventions run through them:
+
+- **The kind.** A row names its kind in `details.kindId`. Entries written before the log
+  recorded it (#2625) name only `details.membershipId`, and are read through that membership's
+  kind, as `actKindNameSql` (`backend/src/db/actKind.ts`) reads them for the audit table.
+- **Considered acts only.** A considered act is `(details ? 'bulk') IS NOT TRUE`. Plain
+  `NOT (details ? 'bulk')` would drop a row whose `details` is null.
+
+**What curators add by hand, per kind and reason.** A place added to a kind, or created, says
+the rule that admitted the rest has a hole:
+
+```sql
+SELECT k.name AS kind, l.action, l.details->>'reasonCode' AS reason, count(*) AS acts
+  FROM experience_curation_log l
+  LEFT JOIN source_records m ON m.id = (l.details->>'membershipId')::int
+  LEFT JOIN experience_kinds k ON k.id = coalesce((l.details->>'kindId')::int, m.kind_id)
+ WHERE l.action IN ('kind_added', 'created') AND (l.details ? 'bulk') IS NOT TRUE
+ GROUP BY 1, 2, 3 ORDER BY acts DESC;
+```
+
+**What curators move or take out, per region.** A placement a curator corrects says the region
+assignment is wrong there. `details.before` holds the standing the act replaced:
+
+```sql
+SELECT r.name AS region, l.action, l.details->>'reasonCode' AS reason,
+       l.details->'before'->>'assignment' AS was_assigned, count(*) AS acts
+  FROM experience_curation_log l
+  LEFT JOIN regions r ON r.id = l.region_id
+ WHERE l.action IN ('added_to_region', 'removed_from_region', 'rejected', 'unrejected')
+   AND (l.details ? 'bulk') IS NOT TRUE
+ GROUP BY 1, 2, 3, 4 ORDER BY acts DESC;
+```
+
+**Which branches of a rule curators confirm, and which they override, per kind.**
+
+- *Kept out as the rule said* (`admission_confirmed`) and *put back* (`admission_overridden`)
+  name the rule's own reason in `details.reason`. That reason is the branch.
+- *Turned away* (`arrival_refused`) and *taken out* (`kept_out`) say no to what the rule let
+  in. Their branch is the curator's reason code.
+
+On the development catalogue of 2026-11-18:
+
+- the most frequent override was the Public art rule's "a place of worship, not public art",
+  put back 21 times. Those entries predate both the kind and the membership in the log, so
+  their kind column is empty;
+- the most frequent refusal was 113 Bridges & engineering marvels arrivals turned away.
+
+```sql
+SELECT k.name AS kind, l.action,
+       coalesce(l.details->>'reasonCode', '-') AS curator_said,
+       left(l.details->>'reason', 80) AS rule_said, count(*) AS acts
+  FROM experience_curation_log l
+  LEFT JOIN source_records m ON m.id = (l.details->>'membershipId')::int
+  LEFT JOIN experience_kinds k ON k.id = coalesce((l.details->>'kindId')::int, m.kind_id)
+ WHERE l.action IN ('admission_confirmed', 'admission_overridden', 'arrival_refused', 'kept_out')
+   AND (l.details ? 'bulk') IS NOT TRUE
+ GROUP BY 1, 2, 3, 4 ORDER BY acts DESC;
+```
+
+**Which fields curators rewrite every time, per source.** Rewriting the same field on many of
+one source's places says the source is not usable as written.
+
+- An edit (`edited`) keeps each changed field as `{ old, new }`.
+- A declined proposal (`declined_source`) lists the fields it refused.
+
+A place held by two sources counts under each. On the development catalogue, the World
+Heritage description, rewritten on three places (Aksum, Garamba, the Berlin Modernism Housing
+Estates), leads:
+
+```sql
+SELECT s.name AS source, f.field, count(DISTINCT l.experience_id) AS places
+  FROM experience_curation_log l
+  CROSS JOIN LATERAL (
+    SELECT key AS field FROM jsonb_each(l.details)
+     WHERE l.action = 'edited' AND jsonb_typeof(value) = 'object' AND value ? 'new'
+    UNION ALL
+    SELECT x->>'field' FROM jsonb_array_elements(
+      CASE WHEN l.action = 'declined_source' THEN l.details->'fields' ELSE '[]'::jsonb END) x
+  ) f
+  JOIN source_records sr ON sr.experience_id = l.experience_id AND sr.kind_id IS NOT NULL
+  JOIN experience_sources s ON s.id = sr.source_id
+ WHERE l.action IN ('edited', 'declined_source') AND (l.details ? 'bulk') IS NOT TRUE
+ GROUP BY 1, 2 ORDER BY places DESC;
+```
+
+**How much of the log is considered at all, per act.** Use this before reading any of the
+above, so that a bulk act's count is not read as many decisions:
+
+```sql
+SELECT l.action,
+       count(*) FILTER (WHERE l.details ? 'bulk') AS bulk,
+       count(*) FILTER (WHERE (l.details ? 'bulk') IS NOT TRUE) AS considered
+  FROM experience_curation_log l
+ GROUP BY 1 ORDER BY considered DESC;
+```
+
 ## Sync Architecture
 
 Each source has a dedicated sync service in `backend/src/services/sync/`. All follow the same pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progress is tracked via the `runningSyncs` Map, and the run's log row follows it a few seconds behind (`syncProgressWriter.ts`, #1131), so a restart leaves a row that says how far the run got; `finally` blocks use a captured `thisProgress` reference to avoid timer race conditions.
