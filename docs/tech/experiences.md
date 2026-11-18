@@ -1229,6 +1229,26 @@ What a row carries beyond who, what, where and when, in `details`:
 | `reasonCode` | an act sent with one; a refusal of an arrival answered with another kind (`not-this-kind`); a refusal of a place with nothing to see (`not-worth-a-visit`) | why the curator acted, a code of `CURATION_REASON_CODES` (`@tyr/shared/curationLog`); the curator's own words stay in `note` |
 | `bulk`, `syncLogId` | one click over many places: *Publish all waiting* for a source (`publishWaiting`), and one answer to a selection of more than one row in the review feed (`answerReviewRows`) on every arm that publishes, turns away, puts back or answers a source's value (`bulkOf` in `reviewAnswerDispatch.ts`) | the act was not considered place by place; `syncLogId` is the run it released or answered — the proposal, or the run that brought the arrival — and is absent for unread contents alone. A considered act carries neither key, so `(details ? 'bulk') IS NOT TRUE` is the considered acts. A crowded city's answers are not marked: the curator gives each place its own answer |
 | `before`, `after` | `added_to_region`, `removed_from_region`, `rejected`, `unrejected` | where the place stood in the region: how it was assigned there (`auto`, `manual` or `null`) and whether it was rejected there; `after` on undoing a hand-made assignment, where an automatic row may come back. `unrejected` names the rejection it took back (`rejection`: its reason, who made it and when) |
+| `reason` | `rejected` | the curator's own words, written under *Other…*; the code alone leaves it out |
+
+**The row's `region_id` is where the curator was working**, never what authorised the act:
+
+- an act on a region (reject, un-reject, assign, take out) names that region;
+- a place created by hand names the region it was created in;
+- an act on the curation dialog's *Kinds* (`/:id/keep-out`, `/:id/kinds`, `/:id/admission`) names
+  the region the curator had open in Map mode or Discover, sent as the body's optional
+  `regionId`, where the place lies in it or below it and the curator's own scope covers it
+  (`loggedRegion`). A row's region decides which curators read it and whether a curator may
+  read the place's log at all (`resolveCurationLogScope`), so an open region the place is not
+  in, or one outside the actor's scope, gives way to the scope check's.
+
+The region sent grants nothing: the act's scope is checked as it is without it
+(`resolveExperienceScope`). An act sent with none (the review page, where no region is open,
+and a curation dialog opened from a review card) keeps the region that scope check returns:
+the lowest-id region of the place in a region-scoped curator's scope, and none for an admin
+or an unrestricted curator. The writer records a region that no longer exists as none, as the
+foreign key's `ON DELETE SET NULL` would have left it, so a region deleted while the page was
+open does not fail the act.
 
 The membership's own `admission_reason` keeps the constant `'kept out by a curator'` on a
 curator's refusal ([ADR-0053](../decisions/0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md)
@@ -1245,23 +1265,41 @@ chooser offers it (`ReasonMenu`), and the surfaces that offer them. An endpoint 
 | `not-this-kind` | Not this kind of place | a refusal (`REFUSAL_REASON_CODES`) |
 | `not-worth-a-visit` | Nothing to see | a refusal |
 | `not-one-place` | Not one place | a refusal |
-| `wrong-place` | Wrong place | a refusal; an answer to a source's value (`SOURCE_ANSWER_REASON_CODES`) |
-| `duplicate` | Same as another | a refusal |
-| `gone` | Gone or not built | a refusal |
+| `wrong-place` | Wrong place | a refusal; a region act (`REGION_REFUSAL_REASON_CODES`); an answer to a source's value (`SOURCE_ANSWER_REASON_CODES`) |
+| `duplicate` | Same as another | a refusal; a region act |
+| `gone` | Gone or not built | a refusal; a region act |
 | `source-text` | Source wording unusable as written | an answer to a source's value |
-| `missing-from-rule` | The rule missed it | a put-back, or a place added to a kind by hand (`ADDITION_REASON_CODES`) |
+| `missing-from-rule` | The rule missed it | an addition: a put-back, a place added to a kind, created or placed in a region by hand (`ADDITION_REASON_CODES`) |
 | `other` | Other | every surface |
 
-A hand-made act on a place in a region (reject, un-reject, assign, take out) offers every
-code.
+`not-worth-a-visit` (*Nothing to see*) is a region act's too. A region act, a place rejected
+from a region or removed from it, is about where the place stands rather than what it is, so
+it offers neither `not-this-kind` nor `not-one-place`.
 
-Two acts must give a reason: an arrival turned away (`/:id/refuse-arrival`, and a `reject` of
-`/review/answer` that reaches an arrival) and a place put back against its kind's rule on its
-card, the kept-out list or *Kinds* (`/:id/admission` with `override`). The request without
-one is a 400 for the two single-row endpoints; the batch refuses each arrival it reaches
-without one, as one line of its report. A batch's put-back of rule-refused rows
-(`answerRefused`, which neither pins nor asks) is recorded without a reason. Every other act
-takes one optionally.
+These acts must give a reason, and the request without one is a 400:
+
+- an arrival turned away (`/:id/refuse-arrival`, and a `reject` of `/review/answer` that
+  reaches an arrival; the batch refuses each arrival it reaches without one, as one line of
+  its report);
+- a place put back against its kind's rule on its card, the kept-out list or *Kinds*
+  (`/:id/admission` with `override`);
+- a place taken out of a kind on *Kinds* (`/:id/keep-out`), or added to one (`/:id/kinds`);
+- a place created by hand (`POST /api/experiences`) or placed in a region by hand
+  (`/:id/assign`);
+- a place rejected from a region (`/:id/reject`) or removed from it
+  (`DELETE /:id/remove-from-region/:regionId`).
+
+These take one optionally:
+
+- a batch's put-back of rule-refused rows (`answerRefused`, which neither pins nor asks),
+  recorded without a reason;
+- `decline-source`, whose per-field answer has no chooser;
+- an arrival answered with another kind (`/:id/arrival-kind`), whose refusal is already
+  `not-this-kind`;
+- a hand-made assignment undone (`DELETE /:id/assign/:regionId`), which no screen offers.
+
+Taking a rejection back (`/:id/unreject`) takes no reason: the place returns to where its own
+points put it, which agrees with the placement rule.
 
 Where the review page asks it:
 
@@ -1273,6 +1311,23 @@ Where the review page asks it:
 | The refusal card and the kept-out list (`RefusedCards.tsx`), a place's *Kinds* (`PlaceKinds.tsx`) | *Put back ▾* | an addition's |
 | The refusal card | *Keep out* | none: it agrees with the rule |
 | A disagreement with a curator's edit (`ReviewQueue.tsx`) | *Keep current* | none yet: each field's answer sits in a table row, one per fact |
+
+And where the curation dialog and the region's list ask it:
+
+| Surface | Control | Reasons offered |
+|---|---|---|
+| A place's *Kinds*, an offered kind (`PlaceKinds.tsx`) | *Take out ▾*, under a line saying what readers lose | a refusal's |
+| A place's *Kinds*, the add at its foot (`PlaceKindAdd.tsx`) | *Add to <kind> ▾* | an addition's |
+| The curation dialog (`CurationDialog.tsx`) | *Reject ▾* | a region act's; the words under *Other…* become the rejection's reason |
+| | *Remove from region ▾* | a region act's |
+| | *Unreject* | none |
+| A rejected place's card in the region's list (`ExperienceExpandedDetails.tsx`) | *Remove ▾* | a region act's |
+| | *Unreject* | none |
+| The add dialog (`AddExperienceDialog.tsx`) | *Create Experience ▾*, a search result's *Add ▾* | an addition's |
+
+The rejection's own `reason` (`experience_rejections.reason`, shown as *Reason: …* beside the
+rejected place) keeps the curator's words, else the picked reason's words, and none for a bare
+*Other*.
 
 ## Sync Architecture
 
@@ -7579,12 +7634,12 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 
 | Method | Endpoint | Body |
 |--------|----------|------|
-| POST | `/api/experiences` | Create manual experience. Required `kindId` (no default); the row is filed under that kind's own source, first by display order (#819). Optional `websiteUrl` and `wikipediaUrl` stored in `metadata.website` / `metadata.wikipediaUrl`, and the saved `imageUrl` has its `metadata.imageCredit` resolved and stored with it — resolved before the transaction opens, so a slow Commons never holds a lock. Optional `reasonCode`, an addition's (§ What a log entry records); the `created` entry names the membership and its kind |
-| POST | `/api/experiences/:id/reject` | `{ regionId, reason?, reasonCode? }` — the entry records where the place stood in the region before |
-| POST | `/api/experiences/:id/unreject` | `{ regionId, reasonCode? }` — the entry names the rejection taken back |
-| POST | `/api/experiences/:id/assign` | `{ regionId, reasonCode? }` — the entry records where the place stood in the region before |
-| DELETE | `/api/experiences/:id/assign/:regionId` | Manual assignment removal; `?reasonCode=`. The entry records the place's standing in the region before and after |
-| DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute; `?reasonCode=`. The entry records how the place was assigned there |
+| POST | `/api/experiences` | Create manual experience. Required `kindId` (no default); the row is filed under that kind's own source, first by display order (#819). Optional `websiteUrl` and `wikipediaUrl` stored in `metadata.website` / `metadata.wikipediaUrl`, and the saved `imageUrl` has its `metadata.imageCredit` resolved and stored with it — resolved before the transaction opens, so a slow Commons never holds a lock. A `reasonCode`, an addition's, **required** (else 400; § What a log entry records), and an optional `note`; the `created` entry names the membership and its kind, and the region the place was created in |
+| POST | `/api/experiences/:id/reject` | `{ regionId, reasonCode, reason? }` — `reasonCode` a region act's, **required**; `reason` the curator's words, which the rejection keeps as its reason, else the code's words. The entry names the region and records where the place stood in it before |
+| POST | `/api/experiences/:id/unreject` | `{ regionId }` — asks no reason; the entry names the rejection taken back |
+| POST | `/api/experiences/:id/assign` | `{ regionId, reasonCode, note? }` — `reasonCode` an addition's, **required**. The entry records where the place stood in the region before |
+| DELETE | `/api/experiences/:id/assign/:regionId` | Manual assignment removal; optional `?reasonCode=`, a region act's (no screen offers this act). The entry records the place's standing in the region before and after |
+| DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute; `?reasonCode=`, a region act's, **required**, and optional `&note=`. The entry records how the place was assigned there |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `type`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`, `descriptionAdapted`, `commemorates`). The two links are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge, and an `imageUrl` change writes `metadata.imageCredit` in the same statement, each a per-key metadata claim; `commemorates` is the curator's whole list of whom the place commemorates, stored as `{ via: 'curator', subjects }` and claimed, an empty list included (§ Whom or what a place commemorates). An empty string **clears** a field: the column is stored as `NULL` (`clearedToNull` — what every other writer stores for "nothing", and the catalogue holds no `''` in these columns), a metadata link as `null`, and the clearing is claimed like any other edit so the next run does not write the source's value back (#696). **A field it sets answers the held proposal for that field** (`settleHeldByEdit`, `heldSettledByEdit.ts`, #2293). The edit still claims the field, which says "this value is mine now", and [ADR-0038](../decisions/0038-a-held-proposal-is-answered-per-field.md) keeps that apart from a refusal. Beside the claim, every open held row of the place's own fields that the edit wrote, on any membership's pending proposal, is recorded in `experience_held_decisions` by value under the edit's lock: *published* where the stored value is the one proposed, *refused* otherwise. A membership left with nothing open loses its pointer (`clearAnsweredHeldPointers`). A changeset names the object's picture `imageUrl`, the column's field in `CURATED_KEY_BY_FIELD`. The credit is one answer with the picture (ADR-0038 decision 1a, `pictureCreditPartner`): wherever the edit set the picture, it takes the picture row's answer, and is refused where the run proposed a credit alone for the picture the edit replaced, so it is never published later under the curator's photograph. The one credit left asked is the run's beside the run's own picture, published by the edit where the edit could name nobody. A type is answered on the membership the edit wrote it on alone. The `edited` log row names what it answered (`heldSettled`) |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) — the place's own and those about every entry a standing merge folded into it, down a chain (`LOG_PLACES_CTE`, `curationLogController.ts`, #1366), each of the latter naming the folded entry (`folded_id`, `folded_name`); a folded entry's copy of a `merged` / `merge_undone` row is left out where the merge's survivor is one of the entries read, which holds the same row; an earlier merge of the entry into another place, since undone, stays |
 | GET | `/api/experiences/commemorates/search` | `?q=` (2–200 characters) — the people and events a name finds on Wikidata, for the edit's `commemorates`: `{ candidates: [{ item, label, description, articleUrl }] }`, best first, at most eight; 502 where Wikidata does not answer (#2144, `commemorationSearch.ts`, `searchLimiter`) |
@@ -7601,13 +7656,13 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | GET | `/api/experiences/:id/find-links` | The finds a run proposed as coming from a site, then the links confirmed (#2242, `findSiteLinksController.ts`, § Archaeology), for a curator in the site's scope: a find passed itself and shown by a museum a reader may be sent to, with those museums, `origin` and `distance_m`; a refused pair is not listed |
 | GET | `/api/experiences/:id/find-links/candidates` | `?q=` (2–100 characters) — the works a curator may link to the site by hand, named like the words, ten at most, the best known first (#2242, `authenticatedLimiter`) |
 | PUT | `/api/experiences/:id/find-links/:treasureId` | `{ answer: 'confirmed' \| 'refused' }` — say whether the find comes from the site; a no on a confirmed link takes it back, and a yes on a pair with no row links the find by hand (`linkFindToSite`, `origin` curator). Under the site's object lock (`answerFindSiteLink`), logged as `find_site_answered`; 404 for a no on a pair with no link, and for a find no reader sees or the museum that shows it |
-| POST | `/api/experiences/:id/admission` | `{ decision: 'confirm', note?, reasonCode? }` or `{ decision: 'override', note?, remember?, reasonCode }` — answer a refusal. `reasonCode` is optional and a refusal's with `confirm`, which agrees with the rule; it is **required** and an addition's with `override`, which goes against it, else 400 (§ What a log entry records); the entry names the membership and its kind. `remember` (#1368) is read only with `override`: absent or true, the put-back pins as below; false admits the row for now, unpinned, and the next run applies the rule again — the choice a card offers as *Remember a put-back on later runs*, and the log row's `pinned` records it. `confirm` keeps the row refused and hidden — and drops its Iconic flag through the same fragment the run's refusal writes use, since the pin written here is what keeps every later run off the row (#760) — while `override` admits it again and leaves the flag where the refusal put it. A confirmation, and a put-back that is remembered, pin `admission` in `curated_fields`, which stops a later run reversing the answer while it says what the pin answered; an unremembered put-back leaves the queue because the row is no longer refused (ADR-0097); no `expected` block is needed, because a second curator collides with that answer — the pin, or a batch's `admission_answered_at` (ADR-0067) — and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
+| POST | `/api/experiences/:id/admission` | `{ decision: 'confirm', note?, reasonCode?, regionId? }` or `{ decision: 'override', note?, remember?, reasonCode, regionId? }` — answer a refusal. `reasonCode` is optional and a refusal's with `confirm`, which agrees with the rule; it is **required** and an addition's with `override`, which goes against it, else 400 (§ What a log entry records); the entry names the membership and its kind, and `regionId`, the region the curator has open, as its region. `remember` (#1368) is read only with `override`: absent or true, the put-back pins as below; false admits the row for now, unpinned, and the next run applies the rule again — the choice a card offers as *Remember a put-back on later runs*, and the log row's `pinned` records it. `confirm` keeps the row refused and hidden — and drops its Iconic flag through the same fragment the run's refusal writes use, since the pin written here is what keeps every later run off the row (#760) — while `override` admits it again and leaves the flag where the refusal put it. A confirmation, and a put-back that is remembered, pin `admission` in `curated_fields`, which stops a later run reversing the answer while it says what the pin answered; an unremembered put-back leaves the queue because the row is no longer refused (ADR-0097); no `expected` block is needed, because a second curator collides with that answer — the pin, or a batch's `admission_answered_at` (ADR-0067) — and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
 | GET | `/api/experiences/review/pins` | `?experienceId=` — the admission pins in the caller's scope, by kind then place, or one place's (#1369, `listAdmissionPins`): `{ pins: [{ experienceId, name, membershipId, kindName, answer, answeredReason, answeredAt, note, curatorName, questioned, canHandBack }], more }`, the first 500. Scoped per membership's source as the review queue is; a curator's name only where the act is in the caller's regions, as in the curation log |
 | POST | `/api/experiences/:id/admission-pin/hand-back` | `{ membershipId, note? }` — hand back an admission pin with no question asked (#1369, `handBackPin`), in the scope of the membership's source. Under the place's lock: 409 where the pin is gone, is a curator's own refusal of an arrival (its way back is the put-back) or is a curator's add to a kind (its way back is `/:id/keep-out`); otherwise `handBackAdmissionPin` and one log row `admission_pin_handed_back`. The row keeps its admission until the next run decides. Answers `AdmissionPinHandedBack`. `authenticatedLimiter` |
 | POST | `/api/experiences/:id/visit-question` | `{ decision: 'keep' \| 'refuse', membershipId, note? }` — answer a run's question about an offered place with nothing to see (#1770, `visitQuestionController.ts`), in the scope of the membership's source. Under the place's lock the question is re-read with `visitQuestionOpenSql`: one already answered, or closed by a refusal, a pin or a delisting since, is a 409 with nothing written. `refuse` writes a curator's refusal on the membership (`refuseOnMembership`, reason `VISIT_REFUSAL_REASON`, pinned), `keep` writes nothing on it; either records the answer on the question (`answer`, `answered_by`, `answered_at`) and one `visit_question_answered` log row. Answers `VisitQuestionAnswered`: `{ experienceId, membershipId, answer, admission }`. Carries `authenticatedLimiter` |
 | GET | `/api/experiences/:id/kinds` | Every kind a place belongs to, for the curation dialog's *Kinds* section (#2022, `keepOutController.ts`), read by a curator whose scope reaches the place, as its identifiers and its history are (403 otherwise, 404 for a missing place): each membership with its kind, type and `state` — `offered` (`membershipOfferedSql`), `waiting` (admitted, not passed), `kept-out` (refused and pinned: a curator's no) or `refused` (the rule's) — the reason on a refusal, and on a kept-out one when it was answered, by whom — named only where the log's per-row rule would — and with which note, read from the curation log through `PINNED_BY`; the note only within the caller's scope, as the pins list shows a pin only there. `canAnswer` is the caller's scope on the membership's source (`queueScopeSql`). A kind a curator added (`added`, #2035) is read the same way off its `kind_added` log row. `addable` lists the kinds the place may be put into (`addableKinds`, `kindAddController.ts`): every kind it holds no membership in, in any state, World Heritage Sites aside, whose first source by `display_priority` the caller's scope reaches. Answers `PlaceKindStandings` |
-| POST | `/api/experiences/:id/keep-out` | `{ membershipId, note?, reasonCode? }` (a refusal's, § What a log entry records) — take a published place out of one of its kinds from its own card, with no question asked (#2022, `keepOutController.ts`), in the scope of the membership's source. Under the place's lock the membership is re-read and must belong to the place and be offered (`membershipOfferedSql`); else 409 with nothing written — an arrival has `refuse-arrival`, a rule's refusal `/:id/admission`. Writes a curator's refusal on the membership (`refuseOnMembership`, reason `CURATOR_REFUSAL_REASON`, the one a refused arrival carries, pinned) and one `kept_out` log row with the kind and the note; the place stays in its other kinds, and the put-back is `/:id/admission` `override`, on the same card or the kept-out list. Answers `KeptOutOfKind`: `{ experienceId, membershipId, admission }`. Carries `authenticatedLimiter` |
-| POST | `/api/experiences/:id/kinds` | `{ kindId, type?, note?, reasonCode? }` (an addition's, § What a log entry records) — put a place into a kind no run offers it in, from its own card (#2035, `kindAddController.ts`): Haus Schwarzenberg in Berlin, a courtyard of street art filed under no English Wikipedia category and no genre, which no run of Public art finds. The kind's source is its first by `display_priority`, and its scope is the grant (403 otherwise); World Heritage Sites is refused with 400, since a place is one only by UNESCO's inscription. Under the place's lock the kind is re-read and the place must hold no membership in it, in any state (409: a waiting arrival, a rule's refusal or a kept-out kind is answered on its own row). Writes one membership (`insertCuratorKindMembership`): admitted, `verified`, published at once and pinned on `admission` and, where one was given, `type`, so no run's rule refuses it or retypes it, and it is not among the pins against a rule (`review/pins`, the hand-back); its `external_id` is the Wikidata item another membership of the place carries, else the place's own key, and the item already held in that source by another place is 409 with nothing written. No run marks it missing: every source but UNESCO is ranked, and missing detection runs on an authoritative source alone (`missingDetectionSkipReason`). One `kind_added` log row with the kind, the type and the note; the way back is `/:id/keep-out` on the same card. Answers `KindAddedToPlace`: `{ experienceId, membershipId, kindId }`. Carries `authenticatedLimiter` |
+| POST | `/api/experiences/:id/keep-out` | `{ membershipId, reasonCode, note?, regionId? }` (`reasonCode` a refusal's, **required**; `regionId` the region the curator has open, the entry's region; § What a log entry records) — take a published place out of one of its kinds from its own card, with no question asked (#2022, `keepOutController.ts`), in the scope of the membership's source. Under the place's lock the membership is re-read and must belong to the place and be offered (`membershipOfferedSql`); else 409 with nothing written — an arrival has `refuse-arrival`, a rule's refusal `/:id/admission`. Writes a curator's refusal on the membership (`refuseOnMembership`, reason `CURATOR_REFUSAL_REASON`, the one a refused arrival carries, pinned) and one `kept_out` log row with the kind and the note; the place stays in its other kinds, and the put-back is `/:id/admission` `override`, on the same card or the kept-out list. Answers `KeptOutOfKind`: `{ experienceId, membershipId, admission }`. Carries `authenticatedLimiter` |
+| POST | `/api/experiences/:id/kinds` | `{ kindId, reasonCode, type?, note?, regionId? }` (`reasonCode` an addition's, **required**; `regionId` the region the curator has open, the entry's region; § What a log entry records) — put a place into a kind no run offers it in, from its own card (#2035, `kindAddController.ts`): Haus Schwarzenberg in Berlin, a courtyard of street art filed under no English Wikipedia category and no genre, which no run of Public art finds. The kind's source is its first by `display_priority`, and its scope is the grant (403 otherwise); World Heritage Sites is refused with 400, since a place is one only by UNESCO's inscription. Under the place's lock the kind is re-read and the place must hold no membership in it, in any state (409: a waiting arrival, a rule's refusal or a kept-out kind is answered on its own row). Writes one membership (`insertCuratorKindMembership`): admitted, `verified`, published at once and pinned on `admission` and, where one was given, `type`, so no run's rule refuses it or retypes it, and it is not among the pins against a rule (`review/pins`, the hand-back); its `external_id` is the Wikidata item another membership of the place carries, else the place's own key, and the item already held in that source by another place is 409 with nothing written. No run marks it missing: every source but UNESCO is ranked, and missing detection runs on an authoritative source alone (`missingDetectionSkipReason`). One `kind_added` log row with the kind, the type and the note; the way back is `/:id/keep-out` on the same card. Answers `KindAddedToPlace`: `{ experienceId, membershipId, kindId }`. Carries `authenticatedLimiter` |
 | POST | `/api/experiences/:id/admission-pin` | `{ decision: 'keep' \| 'release', membershipId, asked: { verdict, reason }, note? }` — answer a run that asked again about a curator's admission pin (#1367, `pinQuestionController.ts`), in the scope of the membership's source. Under the place's lock the question is re-read and must be the one the card showed (`asked`), else 409 with nothing written. `keep` makes the pin answer what the run now says; `release` writes the run's verdict — an admission, or a refusal with its reason, marked answered — in the pin's place. One log row (`admission_pin_kept` / `admission_pin_released`). Answers `PinQuestionAnswered`: `{ experienceId, membershipId, admission, pinned }`. `authenticatedLimiter` |
 | GET | `/api/experiences/:id/identifiers` | A place's external identifiers (#1896, `placeIdentifierController.ts`): scheme, value, whether each identifies or refers, the columns it came from, the curator's word on it, and the other live places that hold it. In the scope of the place as a whole. |
 | POST | `/api/experiences/:id/identifiers` | A curator's word on one identifier (#1896): `identifies`, `refers`, `removed` or `derived`, with a note; refused with the holder named where another live place identifies the value. Written under the place's lock and the value's keys, logged as `identifier_settled`. |
@@ -9297,7 +9352,7 @@ endpoint refuses it with 409 — and its way back is the kept-out list's put-bac
 add to a kind no run offers the place in (`kind_added`, `ADDED_BY_CURATOR`) is pinned too but,
 while it is admitted, is not in the list at all: no rule turned the place down, and a run that
 never lists it would refuse it once the pin came off, so the hand-back refuses it with 409 and its
-way back is the Kinds row's *Take out…*. It is told by the add in its history, not by its latest
+way back is the Kinds row's *Take out*. It is told by the add in its history, not by its latest
 act, so a take-out and a put-back since leave it an add, and the Kinds row still names who added
 it. It stays an add only until a run lists the place: the add is keyed by the place's Wikidata
 item, so the kind's run that comes to list it upserts this same membership and stamps
