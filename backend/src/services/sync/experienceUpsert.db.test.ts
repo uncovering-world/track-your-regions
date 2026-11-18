@@ -5,6 +5,7 @@ import { markNotAdmitted } from './admission.js';
 import { countSeenAmongActive, flagMissingExperiences } from './missingDetection.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
 import { KIND_FACT_KEYS } from './kindFacts.js';
+import { inscriptionFacts, inscriptionFactsOfRecordSql, inscriptionOf } from '../../db/inscription.js';
 
 /**
  * A run finds its place through its own membership (#1244, ADR-0084), executed
@@ -332,8 +333,9 @@ describe("a place's countries, which no reader sees (#1579)", () => {
 });
 
 describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
-  // Wood Buffalo National Park's picture credit as Commons now reads it, and the
-  // Danube Limes' area re-measured: on a place readers see, under a gated source.
+  // Wood Buffalo National Park's picture credit as Commons now reads it, on a
+  // place readers see, under a gated source. An inscribed area re-measured is
+  // the inscription's, in inscriptionWriter.db.test.ts (#2127).
   const PICTURE = 'https://commons.wikimedia.org/wiki/Special:FilePath/Wood_Buffalo_fixture.jpg';
   const OLD_CREDIT = { author: 'No machine-readable author provided. Ansgar Walk', license: 'CC BY-SA 2.5' };
   const NEW_CREDIT = { author: 'Ansgar Walk', license: 'CC BY-SA 2.5' };
@@ -341,8 +343,8 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     ...params(archaeology, NEW_SITE_QID, 'A new site'), imageUrl, metadata: { wikidataQid: NEW_SITE_QID, ...metadata },
   });
 
-  it('writes a credit re-read for the same file and an area moved under a tenth, and asks about the rest', async () => {
-    const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT, areaHectares: 821.7474 }));
+  it('writes a credit re-read for the same file, and asks about the rest', async () => {
+    const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT }));
     await pool.query(
       `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
@@ -352,8 +354,8 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
        VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
     )).rows[0].id;
-    // The place's metadata with the run's membership's facts over it, where
-    // the area lives (#2068): the record as the run names it.
+    // The place's metadata with the run's membership's facts over it (#2068):
+    // the record as the run names it.
     const state = async () => (await pool.query<{ metadata: Record<string, unknown>; pointer: number | null; state: string }>(
       `SELECT e.metadata || m.facts AS metadata, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
          FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
@@ -361,27 +363,20 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       [created.experienceId, archaeology],
     )).rows[0];
     try {
-      const passed = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT, areaHectares: 821.748 }), { syncLogId: log });
+      const passed = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT }), { syncLogId: log });
 
       expect(passed.changeSet.heldFields).toEqual([]);
-      expect(passed.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([
-        ['metadata.areaHectares', 'remeasured'], ['metadata.imageCredit', 'same-file-credit'],
-      ]);
+      expect(passed.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['metadata.imageCredit', 'same-file-credit']]);
       // Written, no question raised, and the curator's pass still stands.
       expect(await state()).toMatchObject({
-        metadata: expect.objectContaining({ imageCredit: NEW_CREDIT, areaHectares: 821.748 }), pointer: null, state: 'verified',
+        metadata: expect.objectContaining({ imageCredit: NEW_CREDIT }), pointer: null, state: 'verified',
       });
-
-      // Moved by more than a tenth — the Brú na Bóinne's 770 → 796 is not, this is:
-      // written all the same, since no reader is shown the area (#1834).
-      const moved = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), { syncLogId: log });
-      expect(moved.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['metadata.areaHectares', 'unseen']]);
 
       // A credit under another licence is asked.
       const relicensed = { ...NEW_CREDIT, license: 'CC BY-SA 4.0' };
-      const held = await upsertExperienceRecord(site({ imageCredit: relicensed, areaHectares: 1000 }), { syncLogId: log });
+      const held = await upsertExperienceRecord(site({ imageCredit: relicensed }), { syncLogId: log });
       expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.imageCredit']);
-      expect(await state()).toMatchObject({ metadata: expect.objectContaining({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), pointer: log });
+      expect(await state()).toMatchObject({ metadata: expect.objectContaining({ imageCredit: NEW_CREDIT }), pointer: log });
     } finally {
       await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
@@ -681,13 +676,20 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       [ACROPOLIS, unesco.id, ACROPOLIS_WHC, JSON.stringify(UNESCO_NAMES), UNESCO_TEXT,
         JSON.stringify({ unescoUrl: UNESCO_PAGE, wikidataQid: ACROPOLIS_QID })],
     );
-    await pool.query(
+    const records = await pool.query<{ id: number; source_id: number }>(
       `INSERT INTO source_records
          (experience_id, kind_id, source_id, external_id, curation_state, published_at, facts)
-       VALUES ($1, $2, $3, $4, 'auto', NOW(), $9), ($1, $5, $6, $7, 'auto', NOW(), $8)`,
+       VALUES ($1, $2, $3, $4, 'auto', NOW(), '{}'), ($1, $5, $6, $7, 'auto', NOW(), $8)
+       RETURNING id, source_id`,
       [ACROPOLIS, unesco.kind_id, unesco.id, ACROPOLIS_WHC, arch.kind_id, arch.id, ACROPOLIS_QID,
-        JSON.stringify({ wikidataClasses: ['Q570116'] }), JSON.stringify(UNESCO_FACTS)],
+        JSON.stringify({ wikidataClasses: ['Q570116'] })],
     );
+    // UNESCO_FACTS as their tables hold them (#2127).
+    const whc = records.rows.find(r => r.source_id === unesco.id)!.id;
+    await pool.query(`INSERT INTO record_heritage_inscriptions (record_id, criteria, transboundary, unesco_region)
+                      VALUES ($1, '{(i),(ii),(iii),(iv),(vi)}', false, 'Europe and North America')`, [whc]);
+    await pool.query(`INSERT INTO record_listings (record_id, ordinal, from_year, from_first, source_id)
+                      VALUES ($1, 1, 1987, day_index(1987, 1, 1), 1)`, [whc]);
   });
 
   // The classes are Archaeology's own fact, kept on its membership (ADR-0153).
@@ -696,10 +698,13 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       WHERE experience_id = $1 AND external_id = $2`, [ACROPOLIS, ACROPOLIS_QID],
   )).rows[0].classes;
 
+  // The inscription as its tables give it back under the record's keys (#2127).
   const inscription = async () => (await pool.query<{ facts: Record<string, unknown> }>(
-    `SELECT facts FROM source_records WHERE experience_id = $1 AND external_id = $2`,
+    `SELECT m.facts || COALESCE(${inscriptionFactsOfRecordSql('m')}, '{}'::jsonb) AS facts
+       FROM source_records m WHERE m.experience_id = $1 AND m.external_id = $2`,
     [ACROPOLIS, ACROPOLIS_WHC],
   )).rows[0].facts;
+  const STORED_INSCRIPTION = inscriptionFacts(inscriptionOf(UNESCO_FACTS));
 
   const stored = async () => (await pool.query<{
     name_local: Record<string, string>; description: string | null; country_codes: string[];
@@ -722,7 +727,7 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       name_local: UNESCO_NAMES, description: UNESCO_TEXT, country_codes: ['GR'], country_names: ['Greece'],
       metadata: { unescoUrl: UNESCO_PAGE },
     });
-    expect(await inscription()).toEqual(UNESCO_FACTS);
+    expect(await inscription()).toEqual(STORED_INSCRIPTION);
     expect(await archaeologyClasses()).toEqual(['Q570116', 'Q839954']);
     expect(proposed(outcome)).not.toEqual(expect.arrayContaining(['nameLocal.fr']));
     // The Archaeology record names the country 'France' (the fixture's default): UNESCO's 'Greece' stands (#1553).
@@ -745,7 +750,7 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
 
     expect((await stored()).metadata).toMatchObject({ wikidataQid: ACROPOLIS_QID, unescoUrl: UNESCO_PAGE });
     expect((await stored()).metadata).not.toHaveProperty('dateInscribed');
-    expect(await inscription()).toEqual(UNESCO_FACTS);
+    expect(await inscription()).toEqual(STORED_INSCRIPTION);
     expect(await archaeologyClasses()).toEqual(['Q570116']);
   });
 

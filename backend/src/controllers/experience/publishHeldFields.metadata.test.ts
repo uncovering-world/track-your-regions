@@ -47,6 +47,10 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
+// The inscription's own writes are inscriptionWriter's, proven on a database
+// (inscriptionWriter.db.test.ts); here, what publishing hands it (#2127).
+vi.mock('../../db/inscriptionWriter.js', () => ({ writeInscription: vi.fn(async () => undefined) }));
+
 /** A place-owned key beside the credit, and the run's rewrite of it. */
 const U1 = 'https://whc.unesco.org/en/list/1264';
 const U2 = 'https://whc.unesco.org/en/list/1264/';
@@ -54,6 +58,7 @@ const U2 = 'https://whc.unesco.org/en/list/1264/';
 import {
   grantScope, makeClient, mockedConnect, mockedQuery, none, only, publish,
 } from './publishController.fixtures.js';
+import { writeInscription } from '../../db/inscriptionWriter.js';
 
 beforeEach(() => {
   mockedQuery.mockReset();
@@ -94,7 +99,8 @@ describe('the metadata column, which no single entry describes', () => {
     // Bamiyan's real card: run 68 holds `metadata.inDanger` on its own row and
     // the criteria and the picture credit inside the catch-all, so the table
     // draws two answer cells and a curator can take the flag alone. The flag is
-    // the World Heritage membership's (#2068), so it lands among its facts.
+    // the World Heritage membership's (#2068), so it lands on its inscription
+    // (#2127), and nothing of it in the membership's other facts.
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
@@ -112,13 +118,43 @@ describe('the metadata column, which no single entry describes', () => {
     // The key this call names, and the catch-all's own keys left exactly as the
     // membership holds them — `nextFacts` sees no catch-all entry, so it starts
     // from what is stored rather than from what the run proposed for the rest.
-    expect(facts(queries)).toEqual({ inDanger: true, criteria: '(i)' });
+    expect(facts(queries)).toEqual({});
+    expect(vi.mocked(writeInscription)).toHaveBeenCalledWith(client, { id: 5 }, 77, { inDanger: true, criteria: '(i)' }, 1);
     // And nothing of the place's: its own metadata is not written at all.
     expect(queries.some(q => q.sql.includes('UPDATE experiences') && /metadata = \$/.test(q.sql))).toBe(false);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['metadata.inDanger'], heldLeftOpen: 1,
     }));
     expect(none(queries, 'pending_change_sync_log_id = NULL')).toBe(true);
+    // Opening a stay is the dataset's word the curator accepted: no claim.
+    expect(none(queries, '["danger"]')).toBe(true);
+  });
+
+  it('takes the flag off alone, as the curator\'s, onto a stay the tables give back open', async () => {
+    grantScope();
+    // Bamiyan with its stay open since 2003, read back from the tables as
+    // "Y 2003" beside the flag; the curator takes the flag alone. The flag
+    // wins over the listing (`inscriptionOf`), the writer ends the stay as
+    // the curator's, and the membership claims `danger` for it.
+    vi.mocked(writeInscription).mockResolvedValueOnce(true);
+    const { client, queries } = makeClient({
+      row: {
+        curation_state: 'auto', pending_change_sync_log_id: 53,
+        metadata: { unescoUrl: U1 },
+        membership_facts: { inDanger: true, dangerList: 'Y 2003', criteria: '(i)' },
+      },
+      proposal: [
+        { field: 'metadata.inDanger', old: true, new: false, held: true },
+        { field: 'metadata', old: { criteria: '(i)' }, new: { criteria: '(i)(ii)(iii)(iv)' }, held: true },
+      ],
+    });
+
+    await publish({ heldFields: ['metadata.inDanger'], expectedSyncLogId: 53 }, client);
+
+    expect(vi.mocked(writeInscription)).toHaveBeenCalledWith(
+      client, { id: 5 }, 77, { inDanger: false, dangerList: 'Y 2003', criteria: '(i)' }, 1,
+    );
+    expect(only(queries, '["danger"]').params).toEqual([5, 77]);
   });
 
   it('publishes nothing onto the place about a monument\'s makers, which are its kind\'s (ADR-0153)', async () => {

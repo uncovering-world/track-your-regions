@@ -36,6 +36,7 @@ import {
   type SiteFacts, type WorldHeritageIndex,
 } from './unescoWikidata.js';
 import { pool } from '../../db/index.js';
+import { inscriptionFacts, inscriptionOf } from '../../db/inscription.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { WaitBudget } from './sourceRetry.js';
@@ -477,13 +478,17 @@ export function transformRecord(
   const imageUrl = facts.picture?.url ?? null;
 
   const metadata: Record<string, unknown> = {
-    dateInscribed: record.date_inscribed,
-    inDanger: isInDanger(record),
-    dangerList: record.danger_list || null,
-    criteria: record.criteria_txt,
-    region: record.region,
-    areaHectares: record.area_hectares,
-    transboundary: isSet(record.transboundary),
+    // The inscription, in the one form its typed tables give back
+    // (`db/inscription.ts`), so a run compares like with like.
+    ...inscriptionFacts(inscriptionOf({
+      dateInscribed: record.date_inscribed,
+      inDanger: isInDanger(record),
+      dangerList: record.danger_list,
+      criteria: record.criteria_txt,
+      region: record.region,
+      areaHectares: record.area_hectares,
+      transboundary: isSet(record.transboundary),
+    })),
     unescoUrl: `https://whc.unesco.org/en/list/${record.id_no}`,
     wikipediaUrl: facts.article,
     unesco: unescoProvenance(String(record.id_no), readAt, Boolean(record.short_description_en)),

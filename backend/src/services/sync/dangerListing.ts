@@ -10,12 +10,10 @@
  * dated field is a current listing rather than a history, and reading it is
  * reading the same fact the flag states.
  *
- * The source's flag does not survive the import: what is stored is the boolean
- * the importer worked out and this string, as it arrived. That is why the parser
- * is its own module rather than a private detail of the importer -- the importer
- * asks it whether a site is in danger, and the read that puts "since 2013" under
- * the badge asks it the same question of the same string months later. One rule,
- * one runtime.
+ * The importer asks it whether a site is in danger, and the inscription's
+ * reading of the run's record (`inscriptionOf`, `db/inscription.ts`) asks it
+ * since when, which becomes the start of the open stay the badge reads "since
+ * 2013" from. One rule, one runtime.
  */
 
 /** A listing as the field states it: whether it stands, and since when. */

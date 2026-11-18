@@ -1,9 +1,13 @@
 /**
  * The writes to a place's periods (#2578, ADR-0217): what the place holds in
  * `place_periods`, and each source's view of it on its record in
- * `record_periods` (ADR-0084).
+ * `record_periods` (ADR-0084); and the periods a record holds on a list kept
+ * outside the catalogue (`writeRecordList`, #2127): its listing in
+ * `record_listings` (Liverpool on the World Heritage List from 2004 until
+ * 21 July 2021) and its stays on the List of World Heritage in Danger in
+ * `record_danger_periods` (Cologne Cathedral, 2004 to 2006).
  *
- * The two tables' writers are a closed list the backend lint names
+ * The four tables' writers are a closed list the backend lint names
  * (`PLACE_PERIOD_WRITE_RULES`, ADR-0069): this module, and the seed. Every
  * write is made under the place's lock and requires its `LockedExperience`, so
  * a run writing its view and a curator correcting a period never interleave on
@@ -359,4 +363,176 @@ export async function setPlaceGone(
   const stood = (await heldPeriodsOf(client, lock.id))[PLACE_STOOD]?.periods ?? [];
   const next = gone ? closedStanding(stood, latestDayOnEarth(new Date())) : standingTakenBack(stood);
   await writePlacePeriods(client, lock, PLACE_STOOD, next, { sourceId: CURATOR_SOURCE_ID, decidedBy });
+}
+
+/** The tables of a record's periods on a list kept outside the catalogue. */
+export type RecordListTable = 'record_listings' | 'record_danger_periods';
+
+/** How a listing ended: the list struck the whole site off, or stopped giving a component. */
+export type ListingEnding = 'delisted' | 'dropped';
+
+/**
+ * One period of a record on a list: a listing, whose end may say how it ended,
+ * or a stay on the List of World Heritage in Danger, whose end says nothing.
+ */
+export interface ListPeriod {
+  from: SourcedDate | null;
+  ended: boolean;
+  until: SourcedDate | null;
+  ending: ListingEnding | null;
+}
+
+/** A list's columns after its key, as both tables hold them; `ending` is the listings' alone. */
+const LIST_COLUMNS = PERIOD_COLUMNS.filter(([name]) => name !== 'what' && name !== 'ending');
+const listColumnsOf = (table: RecordListTable): (typeof PERIOD_COLUMNS)[number][] =>
+  (table === 'record_listings' ? [...LIST_COLUMNS, ['ending', 'text'] as const] : LIST_COLUMNS);
+
+/** The row of a list period as the tables hold it, numbered from 1 in the order given. */
+export function listRowsOf(table: RecordListTable, periods: readonly ListPeriod[]): Record<string, unknown>[] {
+  const notOfAList = new Set(['says', 'what', 'ending']);
+  return rowsOf('stood', periods.map((period) => ({ ...period, ending: null, what: null }))).map((row, index) => {
+    const own = Object.fromEntries(Object.entries(row).filter(([name]) => !notOfAList.has(name)));
+    return table === 'record_listings' ? { ...own, ending: periods[index].ending } : own;
+  });
+}
+
+/** A list period back from its row: the inverse of `listRowsOf`. */
+export function listPeriodOf(row: Readonly<Record<string, unknown>>): ListPeriod {
+  const date = (end: 'from' | 'until'): SourcedDate | null => (row[`${end}_year`] == null ? null : {
+    year: row[`${end}_year`] as number,
+    month: (row[`${end}_month`] as number | null) ?? null,
+    day: (row[`${end}_day`] as number | null) ?? null,
+    span: (row[`${end}_span`] as SourcedDate['span']) ?? null,
+    circa: row[`${end}_circa`] === true,
+    property: (row[`${end}_property`] as string | null) ?? null,
+    statement: (row[`${end}_statement`] as string | null) ?? null,
+  });
+  return { from: date('from'), ended: row.ended === true, until: date('until'), ending: (row.ending as ListingEnding | null) ?? null };
+}
+
+/**
+ * A record's periods on one list as the tables hold them, in order, with
+ * which of them a curator decided or another source wrote (`others`, one per
+ * period): a run rewrites none of those (`writeRecordList`), and `theirs`
+ * says the list holds one.
+ */
+export async function readRecordList(
+  client: Pick<PoolClient, 'query'>,
+  table: RecordListTable,
+  recordId: number,
+  sourceId: number,
+): Promise<{ periods: ListPeriod[]; others: boolean[]; theirs: boolean }> {
+  const columns = listColumnsOf(table).map(([name]) => name).join(', ');
+  const rows = (await client.query<Record<string, unknown>>(
+    `SELECT ${columns}, (source_id <> $2 OR decided_at IS NOT NULL) AS theirs
+       FROM ${table} WHERE record_id = $1 ORDER BY ordinal`,
+    [recordId, sourceId],
+  )).rows;
+  const others = rows.map((row) => row.theirs === true);
+  return { periods: rows.map(listPeriodOf), others, theirs: others.includes(true) };
+}
+
+/** Whether `rows` keeps every period of `held` that is another's as it stands, at its place. */
+function keepsOthers(table: RecordListTable, held: { periods: ListPeriod[]; others: boolean[] }, rows: Record<string, unknown>[]): boolean {
+  const heldRows = listRowsOf(table, held.periods);
+  return held.others.every((other, index) => !other || JSON.stringify(rows[index]) === JSON.stringify(heldRows[index]));
+}
+
+/**
+ * Upsert a list's rows from the first, after taking off the rows past its
+ * length, as `by` says them: a run's (`decidedBy` null), or a curator's,
+ * stamped with who decided and when. A row `kept` names is left untouched,
+ * and a row written as it stands, by the same hand, is not rewritten.
+ */
+async function putRecordList(
+  client: PoolClient,
+  table: RecordListTable,
+  recordId: number,
+  all: Record<string, unknown>[],
+  by: PeriodsBy,
+  kept: readonly boolean[] = [],
+): Promise<void> {
+  await client.query(`DELETE FROM ${table} WHERE record_id = $1 AND ordinal > $2`, [recordId, all.length]);
+  const rows = all.filter((_, index) => kept[index] !== true);
+  if (rows.length === 0) return;
+  const columns = listColumnsOf(table);
+  const names = columns.map(([name]) => name);
+  const set = names.map((name) => `${name} = EXCLUDED.${name}`).join(', ');
+  const stamp = table === 'record_listings' ? ', updated_at = clock_timestamp()' : '';
+  const stored = [...names, 'source_id', 'decided_by'].map((name) => `${table}.${name}`).join(', ');
+  const incoming = [...names, 'source_id', 'decided_by'].map((name) => `EXCLUDED.${name}`).join(', ');
+  const decided = by.decidedBy !== null || by.sourceId === CURATOR_SOURCE_ID;
+  await client.query(
+    `INSERT INTO ${table} (record_id, ordinal, ${names.join(', ')}, source_id, decided_by, decided_at)
+     SELECT $1, p.ordinal, ${names.map((name) => `p.${name}`).join(', ')}, $3, $4, CASE WHEN $5::boolean THEN clock_timestamp() END
+       FROM jsonb_to_recordset($2::jsonb) AS p(ordinal smallint, ${columns.map(([name, type]) => `${name} ${type}`).join(', ')})
+      ORDER BY p.ordinal
+     ON CONFLICT (record_id, ordinal) DO UPDATE
+        SET ${set}, source_id = EXCLUDED.source_id, decided_by = EXCLUDED.decided_by, decided_at = EXCLUDED.decided_at${stamp}
+      WHERE (${stored}) IS DISTINCT FROM (${incoming})`,
+    [recordId, JSON.stringify(rows), by.sourceId, by.decidedBy, decided],
+  );
+}
+
+/**
+ * Write a run's whole list of a record's periods on one list, in time order,
+ * replacing what the run held: an empty list takes them off. A period a
+ * curator decided, or another source wrote, stays as it stands: a list that
+ * would change or drop one is left whole and `false` answered, and one that
+ * keeps each at its place writes the run's periods around them. Bamiyan's stay
+ * a curator ended stays ended while the dataset still reads "Y 2003", and a
+ * stay the dataset opens after it is written beside it.
+ * The periods past the new list's length go first and the rest are written in
+ * order, so the one open period a record may hold on a list
+ * (`idx_record_listings_open`, `idx_record_danger_periods_open`) is never two
+ * on the way; a stay's overlap and order are the deferred
+ * `trg_danger_periods_hold`'s, at the commit. A period written as it stands is
+ * not rewritten. The record must be one of the locked place's.
+ */
+export async function writeRecordList(
+  client: PoolClient,
+  lock: LockedExperience,
+  table: RecordListTable,
+  recordId: number,
+  periods: readonly ListPeriod[],
+  sourceId: number,
+): Promise<boolean> {
+  const owned = await client.query('SELECT 1 FROM source_records WHERE id = $1 AND experience_id = $2', [recordId, lock.id]);
+  if (owned.rowCount === 0) throw new RangeError(`placePeriodsWriter: record ${recordId} is not a record of place ${lock.id}`);
+  if (periods.some((period) => period.ending !== null && (table !== 'record_listings' || !period.ended))) {
+    throw new RangeError('placePeriodsWriter: only a listing that ended says how it ended');
+  }
+  const held = await readRecordList(client, table, recordId, sourceId);
+  const rows = listRowsOf(table, periods);
+  if (!keepsOthers(table, held, rows)) return false;
+  // Another's period, kept at its place, keeps its hand too.
+  await putRecordList(client, table, recordId, rows, { sourceId, decidedBy: null }, held.others);
+  return true;
+}
+
+/**
+ * A curator's whole list of a record's periods on one list (ADR-0225), as
+ * `writeRecordList` writes a run's, each period the curator changed stamped as
+ * the Curators source's with who decided and when: a run keeps every one of
+ * them as it stands. A period the list holds as it stands, at its place, keeps
+ * its own hand, so Wikidata's history still corrects Cologne's stay of 2004 to
+ * 2006 once a curator ended a later one. The record must be one of the locked
+ * place's; a stay a curator
+ * decides needs the record's claim on `danger` by the commit
+ * (`trg_danger_periods_hold`), which its caller writes.
+ */
+export async function writeCuratorRecordList(
+  client: PoolClient,
+  lock: LockedExperience,
+  table: RecordListTable,
+  recordId: number,
+  periods: readonly ListPeriod[],
+  decidedBy: number,
+): Promise<void> {
+  const owned = await client.query('SELECT 1 FROM source_records WHERE id = $1 AND experience_id = $2', [recordId, lock.id]);
+  if (owned.rowCount === 0) throw new RangeError(`placePeriodsWriter: record ${recordId} is not a record of place ${lock.id}`);
+  const rows = listRowsOf(table, periods);
+  const heldRows = listRowsOf(table, (await readRecordList(client, table, recordId, CURATOR_SOURCE_ID)).periods);
+  const unchanged = rows.map((row, index) => JSON.stringify(row) === JSON.stringify(heldRows[index]));
+  await putRecordList(client, table, recordId, rows, { sourceId: CURATOR_SOURCE_ID, decidedBy }, unchanged);
 }

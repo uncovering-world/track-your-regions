@@ -2,25 +2,28 @@
  * Tests for what a list read says about a site being in danger.
  *
  * The badge was drawn from a flag that was false on all 1272 UNESCO rows
- * (#600). What it draws from now comes off the site's World Heritage
- * membership while that stands (#2068), and the year beside it comes out of
- * the string the source sent.
+ * (#600). What it draws from now is the open stay on the List of World
+ * Heritage in Danger the site's World Heritage membership holds while that
+ * stands (#2068, #2127), and the year beside it is the stay's start.
  */
 
 import { describe, it, expect } from 'vitest';
 import { dangerSelectSql, withDangerFields } from './experienceDanger.js';
 
 describe('dangerSelectSql', () => {
-  it('reads the facts of the World Heritage membership a reader is shown', () => {
+  it('reads the open stay of the World Heritage membership a reader is shown', () => {
     const sql = dangerSelectSql();
 
     expect(sql).toContain('wh.experience_id = e.id AND wh.kind_id = 1');
     expect(sql).toContain("wh.admission <> 'refused'");
     expect(sql).toContain("wh.source_membership = 'present'");
+    // A stay that ended (Cologne Cathedral, 2004 to 2006) draws nothing.
+    expect(sql).toContain('FROM record_danger_periods d');
+    expect(sql).toContain('NOT d.ended');
     // A run that merely missed the site changes nothing a reader sees.
     expect(sql).not.toContain('missing_since');
-    expect(sql).toMatch(/AS inscription$/);
-    expect(sql).not.toContain('metadata');
+    expect(sql).toMatch(/AS danger_stay$/);
+    expect(sql).not.toContain('facts');
   });
 
   it('takes an alias like the select fragments beside it', () => {
@@ -31,47 +34,35 @@ describe('dangerSelectSql', () => {
 describe('withDangerFields', () => {
   it('sends the flag as a boolean and the year as a number', () => {
     // Ancient City of Aleppo: on the List of World Heritage in Danger since 2013.
-    const row = withDangerFields({
-      id: 775, name: 'Ancient City of Aleppo', inscription: { inDanger: true, dangerList: 'Y 2013', criteria: '(iii)(iv)' },
-    });
+    const row = withDangerFields({ id: 775, name: 'Ancient City of Aleppo', danger_stay: { since: 2013 } });
 
     expect(row).toEqual({
       id: 775, name: 'Ancient City of Aleppo', in_danger: true, danger_since: 2013,
     });
   });
 
-  it('leaves the source\'s own facts on the server', () => {
-    // A client parsing "Y 2013" for itself would be a third copy of one rule.
-    const row = withDangerFields({ id: 1, inscription: { inDanger: true, dangerList: 'Y 2013' } });
+  it('leaves the stay itself on the server', () => {
+    const row = withDangerFields({ id: 1, danger_stay: { since: 2013 } });
 
-    expect(row).not.toHaveProperty('inscription');
-    expect(row).not.toHaveProperty('danger_list');
+    expect(row).not.toHaveProperty('danger_stay');
   });
 
-  it('dates nothing for a site that is not in danger', () => {
-    // Belize Barrier Reef Reserve System, taken off the danger list in 2018:
-    // the run sends no listing, and a year on a false flag would be a date with
-    // nothing to date.
-    expect(withDangerFields({ id: 851, inscription: { inDanger: false, dangerList: null } }))
+  it('draws no badge where no stay is open', () => {
+    // Belize Barrier Reef Reserve System, taken off the danger list in 2018,
+    // and Cologne Cathedral, whose stay ended in 2006: the read hands back no
+    // stay, and a year on a site out of danger would be a date with nothing to date.
+    expect(withDangerFields({ id: 851, danger_stay: null }))
       .toEqual({ id: 851, in_danger: false, danger_since: null });
   });
 
-  it('still says a site is in danger when the listing carries no year', () => {
-    expect(withDangerFields({ id: 2, inscription: { inDanger: true, dangerList: null } }))
+  it('still says a site is in danger when its stay carries no year', () => {
+    expect(withDangerFields({ id: 2, danger_stay: { since: null } }))
       .toEqual({ id: 2, in_danger: true, danger_since: null });
-  });
-
-  it('draws no badge where no World Heritage membership stands', () => {
-    // A place no World Heritage membership holds, or one judged former or refused:
-    // the read hands back no facts at all.
-    expect(withDangerFields({ id: 4, inscription: null }))
-      .toEqual({ id: 4, in_danger: false, danger_since: null });
   });
 
   it('leaves every other field of the row alone', () => {
     const row = withDangerFields({
-      id: 3, name: 'Tyre', kind_name: 'World Heritage Sites',
-      inscription: { inDanger: true, dangerList: 'Y 2026' },
+      id: 3, name: 'Tyre', kind_name: 'World Heritage Sites', danger_stay: { since: 2026 },
     });
 
     expect(row.name).toBe('Tyre');

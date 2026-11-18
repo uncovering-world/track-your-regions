@@ -31,7 +31,8 @@ const WRITE = /^experiences is written by its writer modules only/;
 const POINT_WRITE = /^experience_locations and experience_location_placements are written by their writer modules only/;
 const WORK_WRITE = /^treasures, experience_treasures and experience_treasure_placements are written by their writer modules only/;
 const REGION_WRITE = /^regions is written by its writer modules only/;
-const PERIOD_WRITE = /^place_periods and record_periods are written by their writer module only/;
+const PERIOD_WRITE = /^place_periods, record_periods, record_listings and record_danger_periods are written by their writer module only/;
+const INSCRIPTION_WRITE = /^record_heritage_inscriptions is written by its writer module only/;
 
 describe('the catalogue lint rules', () => {
   // The first lint in a worker loads the whole config and its plugins; pay it
@@ -145,6 +146,8 @@ describe('the catalogue lint rules', () => {
     ['a place\'s period set in a controller', 'export const q = `INSERT INTO place_periods (experience_id, says, ordinal) VALUES ($1, $2, $3)`;\n', 'src/controllers/experience/lint-fixture.ts'],
     ['a place\'s periods taken off in a sync service', "export const q = 'delete from place_periods where experience_id = $1';\n", 'src/services/sync/lint-fixture.ts'],
     ['a record\'s view rewritten in the run\'s upsert', 'export const q = `UPDATE record_periods SET ended = true WHERE record_id = $1`;\n', 'src/services/sync/experienceUpsert.ts'],
+    ['a delisting written in the UNESCO run', 'export const q = `UPDATE record_listings SET ended = true, ending = \'delisted\' WHERE record_id = $1`;\n', 'src/services/sync/unescoSyncService.ts'],
+    ['a stay on the Danger List opened by a controller', 'export const q = `INSERT INTO record_danger_periods (record_id, ordinal) VALUES ($1, 1)`;\n', 'src/controllers/experience/lint-fixture.ts'],
   ])('refuses a write to a place\'s periods outside their writer: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => PERIOD_WRITE.test(m))).toBe(true);
   });
@@ -153,7 +156,24 @@ describe('the catalogue lint rules', () => {
     ['a read', 'export const q = `SELECT says, ended FROM place_periods WHERE experience_id = $1`;\n', 'src/controllers/lint-fixture.ts'],
     ['the writer module', 'export const q = `INSERT INTO record_periods (record_id, says, ordinal) VALUES ($1, $2, $3)`;\n', 'src/db/placePeriodsWriter.ts'],
     ['the seed', 'export const q = `INSERT INTO place_periods (experience_id, says, ordinal) VALUES ($1, $2, $3)`;\n', 'src/db/seed/lint-fixture.ts'],
+    ['a stay on the Danger List read for the badge', 'export const q = `SELECT from_year FROM record_danger_periods WHERE NOT ended`;\n', 'src/db/inscription.ts'],
   ])('lets a period write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => PERIOD_WRITE.test(m))).toBe(false);
+  });
+
+  it.each([
+    ['an inscription written by the UNESCO run', 'export const q = `INSERT INTO record_heritage_inscriptions (record_id, transboundary) VALUES ($1, false)`;\n', 'src/services/sync/unescoSyncService.ts'],
+    ['an inscription\'s area set in a controller', 'export const q = `UPDATE record_heritage_inscriptions SET area_ha = $2 WHERE record_id = $1`;\n', 'src/controllers/experience/lint-fixture.ts'],
+    ['the period writer, which holds no inscription', 'export const q = `DELETE FROM record_heritage_inscriptions WHERE record_id = $1`;\n', 'src/db/placePeriodsWriter.ts'],
+  ])('refuses a write to an inscription outside its writer: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => INSCRIPTION_WRITE.test(m))).toBe(true);
+  });
+
+  it.each([
+    ['a read', 'export const q = `SELECT area_ha FROM record_heritage_inscriptions WHERE record_id = $1`;\n', 'src/db/inscription.ts'],
+    ['the writer module', 'export const q = `INSERT INTO record_heritage_inscriptions (record_id, transboundary) VALUES ($1, false)`;\n', 'src/db/inscriptionWriter.ts'],
+    ['the seed', 'export const q = `INSERT INTO record_heritage_inscriptions (record_id, transboundary) VALUES ($1, false)`;\n', 'src/db/seed/lint-fixture.ts'],
+  ])('lets an inscription write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
+    expect((await reported(code, file)).some(m => INSCRIPTION_WRITE.test(m))).toBe(false);
   });
 });

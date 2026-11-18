@@ -1459,8 +1459,8 @@ describe('the object fragment carries the danger listing', () => {
     ]) {
       const call = mockedQuery.mock.calls.find(([sql]) => String(sql).includes(marker));
       expect(call, `no query for ${marker}`).toBeDefined();
-      // The World Heritage membership's facts, as the badge reads them (#2068).
-      expect(String(call![0])).toMatch(/wh\.kind_id = 1[\s\S]*\) AS inscription/);
+      // The World Heritage membership's open stay, as the badge reads it (#2068, #2127).
+      expect(String(call![0])).toMatch(/record_danger_periods d[\s\S]*wh\.kind_id = 1[\s\S]*\) AS danger_stay/);
     }
   });
 
@@ -1469,8 +1469,8 @@ describe('the object fragment carries the danger listing', () => {
     // The raw columns come back only from a statement that selected them, so a
     // fragment that dropped the listing fails here as well as above — the
     // mapping cannot be proved on columns the query never asked for.
-    mockQueue(sql => (sql.includes("'kept-out' AS kind") && sql.includes('AS inscription')
-      ? [{ id: 208, name: 'Bamiyan Valley', inscription: { inDanger: true, dangerList: 'Y 2003' } }]
+    mockQueue(sql => (sql.includes("'kept-out' AS kind") && sql.includes('AS danger_stay')
+      ? [{ id: 208, name: 'Bamiyan Valley', danger_stay: { since: 2003 } }]
       : []));
 
     await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, res as never);
@@ -1481,6 +1481,6 @@ describe('the object fragment carries the danger listing', () => {
       keptOut: [expect.objectContaining({ name: 'Bamiyan Valley', in_danger: true, danger_since: 2003 })],
     }));
     const [[payload]] = res.json.mock.calls;
-    expect(payload.keptOut[0]).not.toHaveProperty('inscription');
+    expect(payload.keptOut[0]).not.toHaveProperty('danger_stay');
   });
 });

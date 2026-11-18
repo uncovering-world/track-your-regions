@@ -223,15 +223,23 @@ const CONFLICT_DECISION_WRITE = 'experience_conflict_decisions is written by its
 const CONFLICT_DECISION_WRITE_RULES = spelledWriteRules('experience_conflict_decisions', CONFLICT_DECISION_WRITE);
 
 /**
- * A place's periods and each source's view of them (#2578, ADR-0217): the two
+ * A place's periods and each source's view of them (#2578, ADR-0217), and a
+ * record's periods on a list kept outside the catalogue (#2127): the four
  * tables `src/db/placePeriodsWriter.ts` writes under the place's lock.
  */
-const PLACE_PERIOD_WRITE = 'place_periods and record_periods are written by their writer module only (ADR-0069): add a named '
-  + 'write to src/db/placePeriodsWriter.ts, taking the place\'s LockedExperience token.';
+const PLACE_PERIOD_WRITE = 'place_periods, record_periods, record_listings and record_danger_periods are written by their '
+  + 'writer module only (ADR-0069): add a named write to src/db/placePeriodsWriter.ts, taking the place\'s LockedExperience token.';
 const PLACE_PERIOD_WRITE_RULES = [
   ...spelledWriteRules('place_periods', PLACE_PERIOD_WRITE),
   ...spelledWriteRules('record_periods', PLACE_PERIOD_WRITE),
+  ...spelledWriteRules('record_listings', PLACE_PERIOD_WRITE),
+  ...spelledWriteRules('record_danger_periods', PLACE_PERIOD_WRITE),
 ];
+
+/** A World Heritage Site's inscription (#2127, ADR-0225): `src/db/inscriptionWriter.ts`, under the place's lock. */
+const INSCRIPTION_WRITE = 'record_heritage_inscriptions is written by its writer module only (ADR-0069): add a named write '
+  + 'to src/db/inscriptionWriter.ts, taking the place\'s LockedExperience token.';
+const INSCRIPTION_WRITE_RULES = spelledWriteRules('record_heritage_inscriptions', INSCRIPTION_WRITE);
 
 /** A curator's choice between two sources' views of a place (#1246): `viewChoices.ts`. */
 const VIEW_CHOICE_WRITE = 'experience_view_choices is written by its writer module only (ADR-0077): add a named write to '
@@ -517,7 +525,7 @@ const SOURCE_RULE_FAMILIES = [
   TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  PART_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
+  PART_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, INSCRIPTION_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
   COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
@@ -530,7 +538,7 @@ const SOURCE_RULE_FAMILIES = [
 const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  PART_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
+  PART_WRITE_RULES, PLACE_PERIOD_WRITE_RULES, INSCRIPTION_WRITE_RULES, VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
   COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
@@ -785,6 +793,12 @@ export default [
     files: ['src/db/placePeriodsWriter.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(PLACE_PERIOD_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/db/inscriptionWriter.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(INSCRIPTION_WRITE_RULES),
     },
   },
   {

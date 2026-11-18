@@ -15,7 +15,9 @@
  * Whose a field is is its entry in `@tyr/shared/placeFields`. UNESCO's facts
  * about an inscription are the World Heritage kind's (#2068): Liverpool's
  * inscription year and danger listing went with its membership when the site
- * was delisted.
+ * was delisted. They leave `facts` for the inscription's typed tables on the
+ * way to the database (`splitInscriptionFacts`, `writeInscription`, #2127),
+ * and come back under these keys when the membership is read.
  *
  * Most facts no reader is shown, and a run writes them whole past the gate.
  * Three of the inscription's are shown (the year, the danger flag and its

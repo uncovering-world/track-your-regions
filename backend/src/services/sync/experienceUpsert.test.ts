@@ -20,8 +20,15 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
   rollbackQuietly: vi.fn(async () => undefined),
 }));
+// The inscription's own writes are inscriptionWriter's, proven on a database
+// (inscriptionWriter.db.test.ts); here, only what the upsert hands it. A place
+// the statement just created is locked by the transaction that made it.
+vi.mock('../../db/inscriptionWriter.js', () => ({ writeInscription: vi.fn(async () => undefined) }));
+vi.mock('../../db/experienceWriter.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../../db/experienceWriter.js')>(),
+  lockExperience: vi.fn(async (_client: unknown, id: number) => ({ lock: { id }, row: { id } })) }));
 
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { writeInscription } from '../../db/inscriptionWriter.js';
 import { membershipAdmittedSql, placeOfferedSql, placeVisibleSql } from '../../db/membership.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienceUpsert.js';
 import { SYNC_OWNED_METADATA_KEYS } from './changeSet.js';
@@ -53,8 +60,6 @@ const PARAMS: ExperienceUpsertParams = {
   metadata: { inDanger: false, dateInscribed: 1981 },
 };
 
-/** The run's record's World Heritage facts, which its membership stores (#2068). */
-const FACTS = JSON.stringify(PARAMS.metadata);
 
 /** The row the read after the lock returns: the place as it stood, and the hold decided on it. */
 function storedRow(overrides: Record<string, unknown> = {}) {
@@ -103,7 +108,7 @@ function writtenRow(overrides: Record<string, unknown> = {}) {
     metadata: PARAMS.metadata,
     // Returned so an unchanged row with nothing held costs no further
     // statement; a test that omitted it would exercise the wrong branch.
-    pending_change_sync_log_id: null,
+    pending_change_sync_log_id: null, membership_id: 7001,
     ...overrides,
   };
 }
@@ -693,7 +698,10 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // suffix (#1967), and the kind's own facts for its membership (ADR-0153),
     // whole for a new one and as a held one keeps them (#2068).
     expect(params).toHaveLength(38);
-    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, FACTS, FACTS]);
+    // Serengeti's inscription is none of them: it goes to its own tables, on
+    // the membership the statement wrote, under the run's lock (#2127).
+    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, '{}', '{}']);
+    expect(vi.mocked(writeInscription)).toHaveBeenCalledWith(client, { id: 501 }, 7001, PARAMS.metadata);
     expect(sql).not.toContain("'artworkCount'");
   });
 

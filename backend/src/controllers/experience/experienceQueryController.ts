@@ -26,7 +26,7 @@ import {
   rowKindJoinSql, rowKindSelectSql,
 } from '../../db/membership.js';
 import { wholeOfSql } from '../../db/placePoints.js';
-import { inscriptionFactsSql } from '../../db/inscription.js';
+import { inscriptionYearSql } from '../../db/inscription.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { regionTailCountsQuery } from './experienceTailQuery.js';
@@ -123,8 +123,8 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       e.metadata,
       e.metadata->'imageCredit' AS image_credit,
       -- The inscription's year is the World Heritage kind's, shown while its
-      -- membership stands (#2068).
-      ${inscriptionFactsSql('e')}->>'dateInscribed' AS date_inscribed,
+      -- membership stands (#2068): the start of its listing (#2127).
+      ${inscriptionYearSql('e')} AS date_inscribed,
       e.created_at,
       e.updated_at,
       ${lifecycleSelectSql()},

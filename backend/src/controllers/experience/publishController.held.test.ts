@@ -31,6 +31,10 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
+// The inscription's own writes are inscriptionWriter's, proven on a database
+// (inscriptionWriter.db.test.ts); here, what publishing hands it (#2127).
+vi.mock('../../db/inscriptionWriter.js', () => ({ writeInscription: vi.fn(async () => undefined) }));
+
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { computeChangeSet, type ExperienceSnapshot } from '../../services/sync/changeSet.js';
 

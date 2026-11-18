@@ -79,10 +79,11 @@ beforeEach(async () => {
   );
 });
 
-/** The area UNESCO inscribed, on the site's World Heritage membership (#2068). */
+/** The area UNESCO inscribed, on the site's World Heritage membership's inscription (#2068, #2127). */
 const inscribe = (hectares: number) => pool.query(
-  `UPDATE source_records SET facts = jsonb_build_object('areaHectares', $2::numeric)
-    WHERE experience_id = $1 AND kind_id = 1`, [SITE, hectares],
+  `INSERT INTO record_heritage_inscriptions (record_id, area_ha, transboundary)
+   SELECT m.id, $2::numeric, false FROM source_records m WHERE m.experience_id = $1 AND m.kind_id = 1
+   ON CONFLICT (record_id) DO UPDATE SET area_ha = EXCLUDED.area_ha`, [SITE, hectares],
 );
 
 afterAll(async () => {

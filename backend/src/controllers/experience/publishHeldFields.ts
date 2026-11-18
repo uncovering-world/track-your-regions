@@ -463,7 +463,9 @@ export function isKindFactField(field: string): boolean {
  * proposal says nothing about them (ADR-0153, #2068). A held fact is a shown
  * one, the danger flag or the inscription year: its entry decides its own key
  * over the facts the membership holds, as a metadata entry does over the
- * place's metadata. A catch-all `metadata` entry filed before ADR-0039 carries
+ * place's metadata; the inscription's among them are read back from its typed
+ * tables and written there (`publishFactsOnMembership`, #2127). A catch-all
+ * `metadata` entry filed before ADR-0039 carries
  * none to the membership; the run writes the rest on its next pass.
  */
 function nextFacts(stored: unknown, published: ProposedField[]): Record<string, unknown> | null {

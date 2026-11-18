@@ -46,7 +46,7 @@ describe('the danger flag against its tag', () => {
     // hand-made object flagged in danger with nothing tagging it. Measured
     // against the live catalogue with one such row inserted in a transaction:
     // uncoalesced finds nothing, this finds it.
-    expect(sql).toContain("COALESCE(e.tags ? 'in_danger', FALSE) <> COALESCE(wh.facts->'inDanger' = 'true'::jsonb, FALSE)");
+    expect(sql).toContain("COALESCE(e.tags ? 'in_danger', FALSE) <> (stay.record_id IS NOT NULL)");
   });
 
   it('asks the two stored columns, not UNESCO\'s own field', () => {
@@ -74,10 +74,12 @@ describe('the danger flag against its tag', () => {
     // credit is not — see `heldFieldRefusedSql`.
     expect(sql).toContain(collapse(heldFieldAnsweredSql('e.id', 'ch.sync_log_id')));
     expect(sql).not.toContain(collapse(heldFieldRefusedSql('e.id', 'ch.sync_log_id')));
-    // The flag is the World Heritage membership's (#2068), whatever its state:
-    // a delisted site's stored flag still has to agree with its tag.
+    // The flag is the World Heritage membership's open stay on the Danger List
+    // (#2068, #2127), whatever the membership's state: a delisted site's stored
+    // stay still has to agree with its tag. A stay that ended is no flag.
     expect(sql).toContain('LEFT JOIN source_records wh ON wh.experience_id = e.id AND wh.kind_id = 1');
-    expect(sql).toContain("wh.facts->'inDanger' = 'true'::jsonb");
+    expect(sql).toContain('LEFT JOIN record_danger_periods stay ON stay.record_id = wh.id AND NOT stay.ended');
+    expect(sql).not.toContain('facts');
   });
 
   it('catches the disagreement whichever half is missing', () => {
@@ -86,21 +88,12 @@ describe('the danger flag against its tag', () => {
     // catalogue clean while a traveller is told a place is in peril.
     expect(sql).toMatch(/<>/);
     expect(assertion.describe({
-      experience_id: 21, experience_name: 'Ancient City of Aleppo',
-      tagged: true, flagged: false, listing: 'Y 2013',
-    })).toBe('Ancient City of Aleppo: tagged as in danger since 2013, with no badge on it '
-      + '(experience 21)');
+      experience_id: 21, experience_name: 'Ancient City of Aleppo', tagged: true, flagged: false,
+    })).toBe('Ancient City of Aleppo: tagged as in danger, with no badge on it (experience 21)');
     expect(assertion.describe({
-      experience_id: 764, experience_name: 'Belize Barrier Reef Reserve System',
-      tagged: false, flagged: true, listing: null,
+      experience_id: 764, experience_name: 'Belize Barrier Reef Reserve System', tagged: false, flagged: true,
     })).toBe('Belize Barrier Reef Reserve System: badged as in danger with nothing in the '
       + 'catalogue listing it (experience 764)');
-  });
-
-  it('says the year only where the listing carries one', () => {
-    expect(assertion.describe({
-      experience_id: 1, experience_name: 'A site', tagged: true, flagged: false, listing: null,
-    })).toBe('A site: tagged as in danger, with no badge on it (experience 1)');
   });
 });
 

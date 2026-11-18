@@ -31,6 +31,8 @@
 import { CURATOR_REFUSAL_REASON } from '@tyr/shared/lifecycle';
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
+import { splitInscriptionFacts } from '../../db/inscription.js';
+import { writeInscription } from '../../db/inscriptionWriter.js';
 import {
   CURATOR_SOURCE_ID, MEMBERSHIPS, componentRecordSql, membershipAdmittedSql, partRecordSql, partRecordUnreadSql,
 } from '../../db/membership.js';
@@ -723,18 +725,31 @@ export async function publishTypeOnMembership(
 /**
  * A held proposal's facts of the kind, published onto the membership being
  * published (ADR-0153, #2068), for the reason the type is: the run whose
- * proposal it was is that membership's source.
+ * proposal it was is that membership's source. A World Heritage inscription's
+ * facts, the danger flag and the year among them, go to their typed tables
+ * (`writeInscription`, #2127), and the rest to `facts`. A curator who takes
+ * the danger flag off ends the open stay as their own (`decidedBy`), and the
+ * membership claims `danger`, so the next UNESCO run keeps it ended.
  */
 export async function publishFactsOnMembership(
   client: PoolClient,
   lock: LockedExperience,
   membershipId: number,
   held: { value: Record<string, unknown> } | undefined,
+  decidedBy: number,
 ): Promise<void> {
   if (!held) return;
+  const { inscription, rest } = splitInscriptionFacts(held.value);
   await client.query(
     `UPDATE ${MEMBERSHIPS} SET facts = $3::jsonb, updated_at = NOW() WHERE id = $2 AND experience_id = $1`,
-    [lock.id, membershipId, JSON.stringify(held.value)],
+    [lock.id, membershipId, JSON.stringify(rest)],
+  );
+  if (inscription === null || !(await writeInscription(client, lock, membershipId, inscription, decidedBy))) return;
+  await client.query(
+    `UPDATE ${MEMBERSHIPS}
+        SET curated_fields = curated_fields || '["danger"]'::jsonb, updated_at = NOW()
+      WHERE id = $2 AND experience_id = $1 AND NOT curated_fields ? 'danger'`,
+    [lock.id, membershipId],
   );
 }
 

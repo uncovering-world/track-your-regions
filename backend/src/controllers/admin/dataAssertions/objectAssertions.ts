@@ -16,7 +16,6 @@ import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
 import {
   MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, membershipAdmittedSql, kindRecordSql,
 } from '../../../db/membership.js';
-import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { WORLD_HERITAGE_KIND_ID } from '../../../db/inscription.js';
 import {
   BURIAL_CLASSES, COMMEMORATIVE_FLOOR, KILL_CLASSES, LOST_CLASSES, MEMORIAL_LIFTED_KILLS, SCULPTURE_GARDEN, VETO_CLASSES,
@@ -34,8 +33,9 @@ import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredi
  * One fact, stored twice, asked whether the two copies still agree.
  *
  * A World Heritage site in danger is written as the place's `in_danger` tag
- * and as the `inDanger` flag the badge keys on, which the site's World Heritage
- * membership holds among its facts (`db/inscription.ts`, #2068). They came from
+ * and as the open stay on the Danger List the badge keys on, which the site's
+ * World Heritage membership holds (`record_danger_periods`, `db/inscription.ts`,
+ * #2068, #2127). They came from
  * different halves of the source and disagreed on every row for four years: the
  * tag was right on 58 sites, the flag was false on all 1272, and the badge three
  * surfaces draw off the flag appeared for nobody (#600). Every sync run reported
@@ -102,12 +102,11 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                COALESCE(e.tags ? 'in_danger', FALSE) AS tagged,
-               COALESCE(wh.facts->'inDanger' = 'true'::jsonb, FALSE) AS flagged,
-               wh.facts->>'dangerList' AS listing
+               stay.record_id IS NOT NULL AS flagged
           FROM experiences e
           LEFT JOIN ${MEMBERSHIPS} wh ON wh.experience_id = e.id AND wh.kind_id = ${WORLD_HERITAGE_KIND_ID}
-         WHERE COALESCE(e.tags ? 'in_danger', FALSE)
-               <> COALESCE(wh.facts->'inDanger' = 'true'::jsonb, FALSE)
+          LEFT JOIN record_danger_periods stay ON stay.record_id = wh.id AND NOT stay.ended
+         WHERE COALESCE(e.tags ? 'in_danger', FALSE) <> (stay.record_id IS NOT NULL)
            -- Not while a curator holds the flag itself: the tag moved ahead of
            -- it by design (#570), and the badge follows the flag. The pointed-at
            -- changeset is asked, not the pointer: any held field sets the
@@ -126,10 +125,8 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
                 AND f->>'field' = 'metadata.inDanger')
          ORDER BY e.name`,
   describe: row => {
-    const since = parseDangerListing(row.listing)?.since;
-    const dated = since ? ` since ${since}` : '';
     const state = row.tagged === true
-      ? `tagged as in danger${dated}, with no badge on it`
+      ? 'tagged as in danger, with no badge on it'
       : 'badged as in danger with nothing in the catalogue listing it';
     return `${text(row, 'experience_name')}: ${state} `
       + `(experience ${count(row, 'experience_id')})`;

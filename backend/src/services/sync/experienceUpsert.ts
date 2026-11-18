@@ -99,6 +99,8 @@ import {
 } from './lifetimeWrites.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts.js';
+import { inscriptionFactsOfRecordSql, splitInscriptionFacts } from '../../db/inscription.js';
+import { writeInscription } from '../../db/inscriptionWriter.js';
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
 import { catalogueName, type NamedRecord } from './nameTwins.js';
 import { withChosenCoordinate } from './itemCoordinate.js';
@@ -302,11 +304,12 @@ function proposedBy(stored: Record<string, unknown> | null, changeSet: ChangeSet
  * joins by its identifier (ADR-0143 decision 3) has none yet, and is read as
  * the place another source's run left it, the state the run's second visit
  * would find after a merge. The kind's facts are the membership's too
- * (`kindFacts.ts`, ADR-0153).
+ * (`kindFacts.ts`, ADR-0153), a World Heritage inscription's read back from its
+ * typed tables under the record's keys (`inscriptionFactsOfRecordSql`, #2127).
  */
 function storedPlaceSql(place: string, externalId: string): string {
   return `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
-         ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT}, sm.facts AS own_facts,
+         ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT}, sm.facts || COALESCE(${inscriptionFactsOfRecordSql('sm')}, '{}'::jsonb) AS own_facts,
          (${admissionPinnedSql('sm')} AND ${membershipAdmittedSql('sm')}) AS kept_by_pin,
          (SELECT requires_curation FROM experience_sources WHERE id = $1) AS gated,
          ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
@@ -754,6 +757,25 @@ async function writeOwnLifetime(
 }
 
 /**
+ * A World Heritage inscription, as the gate let it through (`metadataToWrite`),
+ * to its typed tables on the membership the statement wrote (#2127); nothing
+ * where the run's record names none. A place the statement just created is
+ * locked here, as the lifetime's write locks it.
+ */
+async function writeOwnInscription(
+  client: PoolClient,
+  locked: LockedExperience | null,
+  row: Record<string, unknown>,
+  params: ExperienceUpsertParams,
+  inscription: Record<string, unknown> | null,
+): Promise<void> {
+  if (inscription === null) return;
+  const lock = locked ?? (await lockExperience(client, row.id as number))?.lock;
+  if (!lock) throw new Error(`The place of ${params.externalId} is not where its upsert wrote it`);
+  await writeInscription(client, lock, row.membership_id as number, inscription);
+}
+
+/**
  * Upsert an experience record and its membership with curated_fields-aware
  * conflict handling, returning both the prior and resulting state.
  *
@@ -844,16 +866,26 @@ interface HeldMetadata {
  * keys whose rewrite passes the gate are read over the place's metadata and
  * the membership's facts together, as the diff files them. `held` is the
  * stored place when the gate holds it, null otherwise.
+ *
+ * A World Heritage inscription's facts are kept the same way and then leave
+ * the `facts` column for their typed tables (`inscription`, written by
+ * `writeInscription`, #2127): null where the run's record names none.
  */
 function metadataToWrite(written: ExperienceUpsertParams, held: HeldMetadata | null) {
-  const { place, facts } = splitKindFacts(written.metadata);
-  if (held === null) return { place, facts, factsKept: facts, passing: [] as string[] };
+  const { place, facts: all } = splitKindFacts(written.metadata);
+  const passing = held === null ? [] : passingOf(written, held, place, all);
+  const sent = splitInscriptionFacts(all);
+  const kept = splitInscriptionFacts(held === null ? all : heldFacts(held.own_facts ?? null, all, passing));
+  return { place, facts: sent.rest, factsKept: kept.rest, inscription: sent.inscription && kept.inscription, passing };
+}
+
+/** The keys of the run's metadata whose rewrite passes the gate on a held place. */
+function passingOf(written: ExperienceUpsertParams, held: HeldMetadata, place: Record<string, unknown>, facts: Record<string, unknown>): string[] {
   const storedFacts = held.own_facts ?? null;
-  const passing = passingMetadataKeys(
+  return passingMetadataKeys(
     withOwnFacts(held.metadata, storedFacts), withOwnFacts(place, facts),
     held.curated_fields ?? [], held.image_url === written.imageUrl,
   );
-  return { place, facts, factsKept: heldFacts(storedFacts, facts, passing), passing };
 }
 
 async function writeUnderLock(
@@ -902,7 +934,7 @@ async function writeUnderLock(
     ), stored), stored);
 
   const shortMove = stored !== null && await shortMovePasses(client, stored.id as number, stored, written, held);
-  const { place: placeMetadata, facts, factsKept, passing } = metadataToWrite(written, held ? stored : null);
+  const { place: placeMetadata, facts, factsKept, inscription, passing } = metadataToWrite(written, held ? stored : null);
 
   const result = await client.query(
     `WITH gate AS (
@@ -1142,9 +1174,9 @@ async function writeUnderLock(
         facts = $38::jsonb,
         wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
-      RETURNING pending_change_sync_log_id
+      RETURNING id, pending_change_sync_log_id
     )
-    SELECT ins.*, membership.pending_change_sync_log_id
+    SELECT ins.*, membership.pending_change_sync_log_id, membership.id AS membership_id
     FROM ins, membership`,
     [
       params.sourceId,
@@ -1206,6 +1238,7 @@ async function writeUnderLock(
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
   const incoming = snapshotFromParams(written, await incomingOutline(client, params, stored ?? null), shortMove);
   const dates = await writeOwnLifetime(client, locked, row, params, lifetime, held);
+  await writeOwnInscription(client, locked, row, params, inscription);
   const changeSet = withDates(
     proposedBy(stored, computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held)), dates,
   );

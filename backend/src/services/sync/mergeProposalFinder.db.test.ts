@@ -45,12 +45,12 @@ interface Place {
   lon: number;
   state?: 'auto' | 'pending';
   admission?: 'admitted' | 'refused';
-  /** The kind's own facts, on its membership: a World Heritage Site's inscribed area (#2068). */
-  facts?: Record<string, unknown>;
+  /** A World Heritage Site's inscribed area, on its membership's inscription (#2068, #2127). */
+  areaHa?: number;
   reportedName?: string;
 }
 
-async function place({ id, name, source, lon, state = 'auto', admission = 'admitted', facts = {}, reportedName }: Place): Promise<number> {
+async function place({ id, name, source, lon, state = 'auto', admission = 'admitted', areaHa, reportedName }: Place): Promise<number> {
   // The id the source knows the place by, in its scheme: a World Heritage site's number, else an item.
   const key = source === 'UNESCO World Heritage Sites' ? String(id) : `Q${id}001`;
   await pool.query(
@@ -61,11 +61,17 @@ async function place({ id, name, source, lon, state = 'auto', admission = 'admit
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO source_records
-            (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, admission, facts)
-     SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4, $6, $7::jsonb
+            (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, admission)
+     SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4, $6
        FROM experience_sources s WHERE s.name = $5 RETURNING id`,
-    [id, key, state, reportedName ?? null, source, admission, JSON.stringify(facts)],
+    [id, key, state, reportedName ?? null, source, admission],
   );
+  if (areaHa !== undefined) {
+    await pool.query(
+      'INSERT INTO record_heritage_inscriptions (record_id, area_ha, transboundary) VALUES ($1, $2, false)',
+      [membership.rows[0].id, areaHa],
+    );
+  }
   const point = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
      VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), $6::text) RETURNING id`,
@@ -99,7 +105,7 @@ beforeAll(async () => {
   await place({ id: P.chapelA, name: 'Fixture Chapel', source: 'Places of worship', lon: east(3000) });
   await place({ id: P.chapelB, name: 'Fixture Chapel', source: 'Places of worship', lon: east(3020) });
   // 700 ha: a radius of 1 493 m, so a twin 900 m off is within reach.
-  await place({ id: P.property, name: 'Fixture Mining Landscape', source: 'UNESCO World Heritage Sites', lon: east(10000), facts: { areaHectares: 700 } });
+  await place({ id: P.property, name: 'Fixture Mining Landscape', source: 'UNESCO World Heritage Sites', lon: east(10000), areaHa: 700 });
   await place({ id: P.propertyTwin, name: 'Mining landscape of Fixture', source: 'Archaeology', lon: east(10900) });
   await place({ id: P.whole, name: 'Fixture Monuments', source: 'UNESCO World Heritage Sites', lon: east(20000) });
   await place({ id: P.part, name: 'Fixture Temple', source: 'UNESCO World Heritage Sites', lon: east(20050) });

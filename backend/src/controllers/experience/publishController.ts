@@ -36,6 +36,7 @@ import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
 import type { PublishResult, AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { inscriptionFactsOfRecordSql } from '../../db/inscription.js';
 import { MEMBERSHIPS, membershipToAnswerSql, withTypeClaim } from '../../db/membership.js';
 import { shownByPartsSql } from '../../db/readerPredicates.js';
 import type { CheckValue } from '../../db/schema.generated.js';
@@ -552,7 +553,8 @@ export async function publishUnderLock(
       // map over the five languages nobody answered.
       //
       // `m.facts` for the same reason: a held fact of the kind, the danger flag
-      // say, merges onto the facts the membership holds (#2068).
+      // say, merges onto the facts the membership holds (#2068), a World
+      // Heritage inscription's read back from its typed tables (#2127).
       //
       // The state, the verdict and the pointer are the membership's (#822),
       // read beside the place in the statement after the place's lock — the
@@ -562,7 +564,8 @@ export async function publishUnderLock(
       // none.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url, ${shownByPartsSql('e')} AS shown_by_parts,
               m.id AS membership_id, m.kind_id, m.first_seen_sync_log_id,
-              m.curation_state, m.admission, m.facts AS membership_facts,
+              m.curation_state, m.admission,
+              m.facts || COALESCE(${inscriptionFactsOfRecordSql('m')}, '{}'::jsonb) AS membership_facts,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
@@ -655,7 +658,7 @@ export async function publishUnderLock(
       // `write.params` binds the id as `$1`; the writer binds it itself.
       await updateExperienceColumns(client, locked.lock, write.assignments, write.params.slice(1));
       await publishTypeOnMembership(client, locked.lock, membershipId, write.membershipType);
-      await publishFactsOnMembership(client, locked.lock, membershipId, write.membershipFacts);
+      await publishFactsOnMembership(client, locked.lock, membershipId, write.membershipFacts, userId);
       await publishMembership(client, locked.lock, membershipId, publicationAssignments(before, heldLeftOpen));
 
       // The parts, after the object and in the same transaction: a held

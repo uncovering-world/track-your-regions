@@ -61,9 +61,9 @@ export function placeOfObjectSql(alias: string): string {
  */
 export function objectContextSelectSql(alias = 'e'): string {
   return `${alias}.image_url,
-          -- The danger listing, raw, through the same fragment the reader-facing
-          -- reads use, so withDangerFields can turn it into "since 2003" for
-          -- the card exactly as it does for the badge. A card proposing
+          -- The open stay on the Danger List, through the same fragment the
+          -- reader-facing reads use, so withDangerFields turns it into "since
+          -- 2003" for the card exactly as it does for the badge. A card proposing
           -- inDanger false -> true on Bamiyan is about a site listed since
           -- 2003; without the year it reads as this year's news (#570).
           ${dangerSelectSql(alias)},

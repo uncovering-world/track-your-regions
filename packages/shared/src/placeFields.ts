@@ -11,7 +11,8 @@
  * not Archaeology's. A kind's field lives on that kind's membership
  * (`source_records.facts`) and the place's on the place, so two
  * kinds of one place never write over each other. UNESCO's facts about an
- * inscription are the World Heritage kind's, on its membership (#2068), and
+ * inscription are the World Heritage kind's, on its membership (#2068) in the
+ * inscription's typed tables (#2127), and
  * UNESCO's page about a site is the place's, like a website (ADR-0138).
  *
  * **Shown.** A gated source may not overwrite what a reader can already see
@@ -30,7 +31,7 @@
  * (`HoverPreviewCard`, `DiscoverHoverCard`), the point card (`PointCard`), the
  * place's links (`PlaceLinks`), the picture's credit (`ImageCreditLine`), the
  * extent (`ExtentLine`), and what the server derives for them from the stored
- * row (`danger_since` from `dangerList`, `experienceDanger.ts`). A field none
+ * row (`danger_since` from the open Danger List stay, `experienceDanger.ts`). A field none
  * of them reads, directly or through the server, is `unseen`.
  *
  * Keyed by the name a run's change record gives the field: a column as
