@@ -13,6 +13,7 @@ import type { OsmReaderName } from '../osm/types.js';
 import type { SiteCandidate, SiteRefusal } from './sites.js';
 import type { SiteRefusalGroup } from './siteTest.js';
 import type { FilteredEntity } from '../syncContract.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 const LOG_PREFIX = '[Archaeology Sync]';
 
@@ -59,6 +60,8 @@ export interface CollectedArchaeologySite {
    * tier measured it; the museum row's key, read by the card already.
    */
   admissionNote?: string;
+  /** The same as figures (#2184): the tier, what decided, the site's figures and what they were measured against. */
+  admission: AdmissionRecord;
   /** The tier that admitted it, where it is not the world's (ADR-0171, ADR-0179). */
   tier?: 'surroundings';
 }
@@ -85,6 +88,7 @@ export function siteItemOf(qid: string, site: SiteCandidate, tier?: 'surrounding
     osm: site.osm,
     extentWkt: site.extentWkt,
     ...(site.note ? { admissionNote: site.note } : {}),
+    admission: site.admission,
     ...(tier ? { tier } : {}),
   };
 }

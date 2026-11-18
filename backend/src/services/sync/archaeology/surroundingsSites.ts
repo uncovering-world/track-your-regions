@@ -42,6 +42,7 @@ import { SURROUNDINGS_CUT, type SurroundingsCut } from '../places/surroundingsCu
 import type { SurroundingsPool } from '../places/surroundingsPool.js';
 import type { WorldMemory } from '../places/worldBars.js';
 import { ARCHAEOLOGY_SURROUNDINGS_REGISTER } from '../places/admissionRegister.js';
+import { recordNaming } from '../admissionRecord.js';
 import { heldPartsOf } from '../subset/heldParts.js';
 import { namedRuinsNear, type NamedRuin, type NamedRuins, type PlaceAt } from '../osm/namedRuinsNear.js';
 import { OSM_KEEP_WKT, type ArchaeologyTrees } from './classes.js';
@@ -117,7 +118,6 @@ export const UNMAPPED_REASON = 'no OpenStreetMap object carrying its item maps a
 export function namedRuinNote(ruin: NamedRuin): string {
   return `OpenStreetMap maps no object carrying its item, and maps ${ruin.name} (${ruin.ref}) nearby under its name (ADR-0188).`;
 }
-
 /** Why a listed surroundings-tier site with a part the kind holds is refused (ADR-0185). */
 export function heldPartReason(part: string): string {
   return `the World Heritage listing of a place whose part ${part} Archaeology holds: no ruin on the map is its own, `
@@ -295,11 +295,15 @@ export async function collectSurroundingsSites(input: SurroundingsSitesInput): P
   };
   const arrivals = await surroundingsArrivals(
     input.run, input.sparql, surroundings, input.trees, input.admitted,
-    (entity, classes, _verdict, note) => {
+    (entity, classes, _verdict, note, admission) => {
       const answer = decided.get(entity.qid);
       if (!answer?.pass || !answer.judged.verdict.pass) throw new Error(`A surroundings-tier site the rule did not pass reached the writer: ${entity.qid}`);
       const shown = answer.namedRuin ? `${note} ${namedRuinNote(answer.namedRuin)}` : note;
-      return siteCandidateOf(entity, answer.judged.verdict, { classes, objects: answer.judged.objects, readAt: input.read.readAt, note: shown });
+      const ruin = answer.namedRuin;
+      const named = ruin ? recordNaming(admission, { namedRuin: { name: ruin.name, element: ruin.ref } }) : admission;
+      return siteCandidateOf(entity, answer.judged.verdict, {
+        classes, objects: answer.judged.objects, readAt: input.read.readAt, note: shown, admission: named,
+      });
     },
     input.pool, input.held, input.cut ?? SURROUNDINGS_CUT, input.memory,
   );

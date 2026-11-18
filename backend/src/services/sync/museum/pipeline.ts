@@ -37,7 +37,7 @@ import type { ClosureOptions } from '../classClosure.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { CollectedMuseum } from '../types.js';
-import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
+import { admittingWork, doorNote, doorRecord, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 import type { ArticleHoldingsReader } from './articleHoldings.js';
 
 const LOG_PREFIX = '[Museum Sync]';
@@ -183,7 +183,10 @@ function buildItems(
       qid: venue,
       label: row.label,
       admittedFor: admitting ? { qid: admitting.work.qid, label: admitting.work.label } : undefined,
-      ...(admitting?.read && door ? { readershipNote: doorNote(admitting.work.label, admitting.read, door) } : {}),
+      ...(admitting?.read && door ? {
+        readershipNote: doorNote(admitting.work.label, admitting.read, door),
+        admission: doorRecord(admitting.work, admitting.read, door, row.sitelinks),
+      } : {}),
       artworks: works.map((work) => readContent(work, door)),
       details: {
         museumQid: venue,

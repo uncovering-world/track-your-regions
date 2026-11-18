@@ -358,12 +358,18 @@ describe('what the worship run writes', () => {
     };
     const note = 'Admitted for Mary, Untier of Knots, below the sitelinks line. Can a visitor see it there now?';
 
-    await (await afterFetch()).processItem(place({ readershipNote: note }), progress(), context);
+    const admission = {
+      tier: 'world', decided: 'work', place: { editions: 12 }, reference: null,
+      work: { qid: 'Q1', label: 'Mary, Untier of Knots', editions: 15, readers: 150_000, burst: false, needed: { readers: 133_366 } },
+    } as const;
+    await (await afterFetch()).processItem(place({ readershipNote: note, admission }), progress(), context);
 
     // On the run's membership (`kindFacts.ts`, ADR-0153): a place Archaeology
     // also holds keeps Archaeology's question on Archaeology's (ADR-0056).
-    const { metadata } = mockedUpsert.mock.calls[0][0];
+    const { metadata, admissionEvidence } = mockedUpsert.mock.calls[0][0];
     expect(metadata.admissionNote).toBe(note);
+    // The same as figures, on the membership's admission evidence (#2184).
+    expect(admissionEvidence).toEqual(admission);
     expect(metadata).not.toHaveProperty('worshipReadershipNote');
   });
 

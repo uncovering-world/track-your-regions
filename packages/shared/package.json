@@ -6,6 +6,7 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./admissionEvidence": "./src/admissionEvidence.ts",
     "./approximateDates": "./src/approximateDates.ts",
     "./auth": "./src/auth.ts",
     "./catalogue": "./src/catalogue.ts",

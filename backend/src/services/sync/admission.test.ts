@@ -123,6 +123,8 @@ describe('markRefused', () => {
     ], false);
 
     expect(lastSql()).toContain("SET admission = 'refused', admission_reason = v.reason");
+    // The record of why a run admitted it goes with the admission (#2184).
+    expect(lastSql()).toContain('admission_evidence = NULL');
     expect(lastParams()).toEqual([
       2,
       ['Q6373', 'Q313746'],
@@ -223,6 +225,7 @@ describe('markNotAdmitted', () => {
     // keeps its specific reason instead of this generic one.
     expect(lastSql()).toContain("m.admission = 'admitted'");
     expect(lastSql()).toContain('m.external_id <> ALL($2::text[])');
+    expect(lastSql()).toContain('admission_evidence = NULL');
   });
 
   it('never sweeps a curator-created row out of the source', async () => {

@@ -30,6 +30,7 @@ import {
 import type { FindFacts } from './finds.js';
 import type { ArchaeologyTrees } from './classes.js';
 import { lineStanding, type LinePair, type SourceLine } from '../sourceLine.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
 
@@ -57,6 +58,8 @@ export interface CollectedArchaeologyMuseum {
   natureWhy: string;
   /** Present on a held row: the question the card shows a curator. */
   admissionNote: string | null;
+  /** Why it is in, as figures (#2184): its editions against the line, or the find that carried it and its figure. */
+  admission: AdmissionRecord;
   /** What it holds that the world knows, with where each was dug up. */
   treasures: ProcessedContent[];
   /**
@@ -181,13 +184,14 @@ function itemOf(input: {
   facts: MuseumFacts;
   nature: AdmittedNature;
   note: string | null;
+  admission: AdmissionRecord;
   finds: PoolWork[];
   findsAboveLine: number;
   admittedFor: PoolWork | undefined;
   findFacts: Map<string, FindFacts>;
   findsDoor: ReadershipDoor | null;
 }): CollectedArchaeologyMuseum {
-  const { qid, row, at, facts, nature, note, finds, findsAboveLine, admittedFor, findFacts, findsDoor } = input;
+  const { qid, row, at, facts, nature, note, admission, finds, findsAboveLine, admittedFor, findFacts, findsDoor } = input;
   return {
     qid,
     label: row.label,
@@ -206,6 +210,7 @@ function itemOf(input: {
     nature: nature.nature,
     natureWhy: nature.why,
     admissionNote: note,
+    admission,
     treasures: finds.map((find) => treasureOf(find, findFacts, findsDoor)),
     findsAboveLine,
     admittedFor: admittedFor ? { qid: admittedFor.qid, label: admittedFor.label } : undefined,
@@ -222,6 +227,36 @@ function admissionNoteOf(held: string | null, admittedFor: PoolWork | undefined,
     ? ctx.findsDoor?.opened.get(admittedFor.qid) : undefined;
   const read = opened && admittedFor && ctx.findsDoor ? doorNote(admittedFor.label, opened, ctx.findsDoor) : null;
   return [held, read].filter((part) => part !== null).join(' ') || null;
+}
+
+/**
+ * The record of a museum the kind admits (#2184). One its own editions carry
+ * is measured against the place line, a museum the kind held under the line
+ * to enter against the line to stay. One a find carried, or a find no other
+ * kind shows held, names the find with the figure that counted: its year
+ * against the finds door's bar where its readers opened the door (ADR-0164),
+ * its editions against the finds' line otherwise.
+ */
+export function museumRecord(
+  sitelinks: number, admittedFor: PoolWork | undefined, ctx: Pick<MuseumJudging, 'line' | 'findLine' | 'findsDoor'>, held: boolean,
+): AdmissionRecord {
+  const place = { editions: sitelinks };
+  if (!admittedFor) {
+    const stayed = sitelinks < ctx.line.enterSitelinks;
+    return {
+      tier: 'world', decided: 'editions', ...(stayed ? { stayed: true } : {}), place,
+      reference: { kind: 'needed', editions: ctx.line.enterSitelinks, ...(stayed ? { toStay: { editions: ctx.line.staySitelinks } } : {}) },
+    };
+  }
+  const opened = admittedFor.sitelinks < ctx.findLine.enterSitelinks ? ctx.findsDoor?.opened.get(admittedFor.qid) : undefined;
+  const findLine = held ? ctx.findLine.staySitelinks : ctx.findLine.enterSitelinks;
+  const figure = opened && ctx.findsDoor
+    ? { readers: Math.round(opened.views), burst: opened.burst, needed: { readers: Math.round(ctx.findsDoor.bar) } }
+    : { needed: { editions: findLine } };
+  return {
+    tier: 'world', decided: 'find', place, reference: null,
+    work: { qid: admittedFor.qid, label: admittedFor.label, editions: admittedFor.sitelinks, ...figure },
+  };
 }
 
 /**
@@ -319,6 +354,7 @@ function judgeOne(
   if (admittedNature === null) return null;
   const admittedFor = admittedForOf(byFind, row.sitelinks >= ctx.line.enterSitelinks, famous[0], unshown[0]);
   const note = admissionNoteOf(verdict.held ? verdict.note : null, admittedFor, ctx);
+  const admission = museumRecord(row.sitelinks, admittedFor, ctx, ctx.admitted.has(qid));
 
   return {
     item: itemOf({
@@ -328,6 +364,7 @@ function judgeOne(
       facts,
       nature: admittedNature,
       note,
+      admission,
       finds,
       // The badge's count, not the door's: the verdict above was taken on the
       // hysteretic one, and this is the one the treasure writer will read of

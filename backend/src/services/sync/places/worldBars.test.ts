@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../publicArt/streetArtQueries.js', () => ({ fetchStreetArtMarks: vi.fn(async () => new Map()) }));
 
 import {
-  barsLine, barsToAdmitBy, belowWorldBars, quantile, reachesABar, readAtlas, worldBars, worldStanding,
+  barsLine, barsToAdmitBy, belowWorldBars, quantile, reachesABar, readAtlas, worldBars, worldRecord, worldStanding,
   type WorldBars, type WorldMemory, type WorldRead,
 } from './worldBars.js';
 import { WORLD_FRAME, WORLD_REGISTER } from './admissionRegister.js';
@@ -108,15 +108,64 @@ describe('worldStanding', () => {
   it('never drops a held place for what the run could not read', () => {
     // No pool read: nothing enters, the held stay.
     expect(worldStanding(COLOGNE, read({}), null, false)).toBe('out');
-    expect(worldStanding(VILLAGE, read({}), null, true)).toEqual({ kept: 'no pool was read to set the bars this run' });
+    expect(worldStanding(VILLAGE, read({}), null, true)).toEqual({ kept: 'no pool was read to set the bars this run', unread: 'pool' });
     // No year of readers: the editions bar still admits, and a held place under it keeps its place.
     const noYear = { ...WORSHIP, readers: null, guidedReaders: null };
     expect(worldStanding(COLOGNE, read(null), noYear, false)).toEqual({ by: 'editions' });
-    expect(worldStanding(VILLAGE, read(null), noYear, true)).toEqual({ kept: 'no year of readers is read' });
+    expect(worldStanding(VILLAGE, read(null), noYear, true)).toEqual({ kept: 'no year of readers is read', unread: 'readers' });
     // No usage build: a held place read over the third bar's stay is kept, one read under it falls.
     expect(worldStanding({ qid: 'Q6', editions: 5 }, read({ Q6: 9_000 }, null), WORSHIP, true))
-      .toEqual({ kept: 'no Wikivoyage usage is built to read whether a guide uses it' });
+      .toEqual({ kept: 'no Wikivoyage usage is built to read whether a guide uses it', unread: 'guides' });
     expect('fell' in (worldStanding({ qid: 'Q6', editions: 5 }, read({ Q6: 2_000 }, null), WORSHIP, true) as object)).toBe(true);
+  });
+});
+
+describe('worldRecord (#2184)', () => {
+  // Bridges & engineering marvels' bars as the review read them.
+  const BRIDGES: WorldBars = { editions: 17, readers: 56_955, guidedReaders: 13_757, pool: 41_000 };
+
+  it('records the editions bar that let in the Lötschberg Base Tunnel, its figures and the bars, with no mark', () => {
+    const tunnel = { qid: 'Q1', editions: 26 };
+    const signals = read({ Q1: 30_000 });
+    const stands = worldStanding(tunnel, signals, BRIDGES, false);
+    expect(stands).toEqual({ by: 'editions' });
+    expect(worldRecord(tunnel, signals, BRIDGES, stands as { by: 'editions' })).toEqual({
+      tier: 'world', decided: 'editions', place: { editions: 26, readers: 30_000 },
+      reference: { kind: 'needed', editions: 17, readers: 56_955 },
+    });
+  });
+
+  it('records the guided readers bar that let in the Tirana Clock Tower, with the guide\'s mark and that bar', () => {
+    // Towers' editions bar and its bar for a marked place, as the card read them; Tirana is far under the readers bar.
+    const TOWERS: WorldBars = { editions: 22, readers: 50_000, guidedReaders: 12_863, pool: 9_000 };
+    const tower = { qid: 'Q2', editions: 18 };
+    const signals = read({ Q2: 12_935 }, ['Q2']);
+    const stands = worldStanding(tower, signals, TOWERS, false);
+    expect(stands).toEqual({ by: 'guided' });
+    expect(worldRecord(tower, signals, TOWERS, stands as { by: 'guided' })).toEqual({
+      tier: 'world', decided: 'guided', place: { editions: 18, readers: 12_935 },
+      reference: { kind: 'needed', editions: 22, readers: 50_000, guidedReaders: 12_863 }, marks: ['guide'],
+    });
+  });
+
+  it('records a held place in at the stay share with what it needed to stay, in whole counts', () => {
+    // 13 editions is 0.8 of 16, which asks for 12.8: a count reaches it at 13.
+    const signals = read({ Q4: 1_000 });
+    const record = worldRecord({ qid: 'Q4', editions: 13 }, signals, WORSHIP, { by: 'editions' });
+    expect(record).toMatchObject({ decided: 'editions', stayed: true });
+    expect(record.reference).toEqual({ kind: 'needed', editions: 16, readers: 49_634, toStay: { editions: 13, readers: 39_708 } });
+  });
+
+  it('records what a held place was kept for, and no reference where no bar was read', () => {
+    const stands = worldStanding(VILLAGE, read({}), null, true);
+    expect(worldRecord(VILLAGE, read({}), null, stands as { kept: string; unread: 'pool' })).toEqual({
+      tier: 'world', decided: 'kept', unread: 'pool', place: { editions: 4, readers: 0 }, reference: null,
+    });
+  });
+
+  it('names a World Heritage listing and an Atlas Obscura listing among the marks', () => {
+    const listed: WorldRead = { ...read({ Q3: 12_000 }, [], ['Q3']), listed: new Set(['Q3']) };
+    expect(worldRecord({ qid: 'Q3', editions: 9 }, listed, WORSHIP, { by: 'guided' }).marks).toEqual(['atlas-obscura', 'world-heritage']);
   });
 });
 
@@ -190,7 +239,7 @@ describe('what a run cannot read (ADR-0175 decision 6)', () => {
     expect(worldStanding(VILLAGE, noYear(), bars, true))
       .toEqual({ fell: expect.stringContaining('4 Wikipedia editions and 400 readers a year as last read') });
     // A held place no year was ever read for is kept: unknown is not zero.
-    expect(worldStanding({ qid: 'Q9', editions: 4 }, noYear(), bars, true)).toEqual({ kept: 'no year of readers is read' });
+    expect(worldStanding({ qid: 'Q9', editions: 4 }, noYear(), bars, true)).toEqual({ kept: 'no year of readers is read', unread: 'readers' });
     expect(worldStanding({ qid: 'Q9', editions: 4 }, noYear(), bars, false)).toBe('out');
   });
 
@@ -206,7 +255,7 @@ describe('what a run cannot read (ADR-0175 decision 6)', () => {
     expect(worldStanding(KRAMER, noBuild(new Map()), BRIDGES, false)).toBe('out');
     const read20k: WorldRead = { readers: new Map([['Q9', 20_000]]), guided: null, atlas: new Set(), memory: memory({ guided: new Map() }) };
     expect(worldStanding({ qid: 'Q9', editions: 5 }, read20k, BRIDGES, true))
-      .toEqual({ kept: 'no Wikivoyage usage is built to read whether a guide uses it' });
+      .toEqual({ kept: 'no Wikivoyage usage is built to read whether a guide uses it', unread: 'guides' });
   });
 
   it('asks Atlas Obscura of the places whose readers as last read could clear the third bar', async () => {

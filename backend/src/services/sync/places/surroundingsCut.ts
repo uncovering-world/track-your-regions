@@ -52,6 +52,9 @@
  */
 
 import { SURROUNDINGS_REGISTER } from './admissionRegister.js';
+import type {
+  AdmissionDecider, AdmissionFigures, AdmissionRecord, AdmissionReference, AdmissionUnread,
+} from '@tyr/shared/admissionEvidence';
 
 /**
  * Whose places a candidate is measured among within the radius: every place
@@ -237,8 +240,19 @@ export interface SurroundingsReferences {
 }
 
 export type SurroundingsVerdict =
-  | { in: true; note: string; reference: SurroundingsReferences }
+  | { in: true; note: string; reference: SurroundingsReferences; admission: AdmissionRecord }
   | { in: false; reason: string };
+
+/** A test of the cut, as a record names the one that decided. */
+type SurroundingsTest = Extract<AdmissionDecider, 'editions' | 'readers' | 'guides' | 'venues'>;
+
+/** Each test as a note names it. */
+const TEST_WORDS: Record<SurroundingsTest, string> = {
+  editions: 'its editions', readers: 'its readers', guides: 'the guides', venues: VENUES_DOOR,
+};
+
+/** The shares each test was read at: to enter, or to stay for a place the tier holds. */
+interface TestShares { editionsShare: number; readersShare: number; venueShare: number }
 
 /** The median of a list of counts, highest first or not; null for none. */
 export function medianOf(values: readonly number[]): number | null {
@@ -253,26 +267,73 @@ const fmt = (n: number) => n.toLocaleString('en', { maximumFractionDigits: 1 });
 /** The tests a candidate passes against its references, the editions, readers and venue tests read at the shares given. */
 function doorsOf(
   candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut,
-  { editionsShare, readersShare, venueShare }: { editionsShare: number; readersShare: number; venueShare: number },
-): string[] {
-  const doors: string[] = [];
+  { editionsShare, readersShare, venueShare }: TestShares,
+): SurroundingsTest[] {
+  const doors: SurroundingsTest[] = [];
   if (around.groupSize >= cut.editionsGroupFloor && reference.editions !== null
-    && candidate.editions >= editionsShare * reference.editions) doors.push('its editions');
+    && candidate.editions >= editionsShare * reference.editions) doors.push('editions');
   if (around.groupSize >= cut.readersGroupFloor && reference.readers !== null && candidate.readers > 0
-    && candidate.readers >= readersShare * reference.readers) doors.push('its readers');
+    && candidate.readers >= readersShare * reference.readers) doors.push('readers');
   if (around.groupSize >= cut.guideGroupFloor && reference.guide !== null && candidate.guideEditions !== null
-    && candidate.guideEditions > 0 && candidate.guideEditions >= cut.guideShare * reference.guide) doors.push('the guides');
+    && candidate.guideEditions > 0 && candidate.guideEditions >= cut.guideShare * reference.guide) doors.push('guides');
   // An artery is driven through, and the venues along it say nothing of a street walked for its life (ADR-0194).
   if ((around.venues?.groupSize ?? 0) >= cut.venueGroupFloor && typeof reference.venues === 'number' && typeof candidate.venues === 'number'
     && candidate.artery !== true
-    && candidate.venues > 0 && candidate.venues >= venueShare * reference.venues) doors.push(VENUES_DOOR);
+    && candidate.venues > 0 && candidate.venues >= venueShare * reference.venues) doors.push('venues');
   return doors;
 }
 
 /** The tests in words: "by its editions", "by its editions and by the guides", "by its editions, by its readers and by the guides". */
-function doorsInWords(doors: readonly string[]): string {
-  const by = doors.map((door) => `by ${door}`);
+function doorsInWords(doors: readonly SurroundingsTest[]): string {
+  const by = doors.map((door) => `by ${TEST_WORDS[door]}`);
   return by.length > 1 ? `${by.slice(0, -1).join(', ')} and ${by[by.length - 1]}` : by[0];
+}
+
+/**
+ * The record of a place the surroundings tier admits (#2184): the test that
+ * decided, every test it passed where more than one did, its own figures, and
+ * the medians of the best places around it with the share of each a test
+ * asks where that is not the whole. A figure the run did not read, and a
+ * median no place around carries, is absent.
+ */
+function surroundingsRecord(
+  candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut,
+  decided: { tests: readonly SurroundingsTest[]; shares: TestShares; stayed: boolean } | { unread: AdmissionUnread },
+): AdmissionRecord {
+  const venuesKey = candidate.venuesAlong ? 'venuesPer100m' : 'venues';
+  const place: AdmissionFigures = {
+    editions: candidate.editions,
+    readers: candidate.readers,
+    ...(candidate.guideEditions === null ? {} : { guides: candidate.guideEditions }),
+    ...(typeof candidate.venues === 'number' ? { [venuesKey]: candidate.venues } : {}),
+  };
+  const shares = 'shares' in decided ? decided.shares : { editionsShare: cut.editionsShare, readersShare: cut.readersShare, venueShare: cut.venueShare };
+  // A share as the register states it: a stay share times a test's share is a float's 1.2000000000000002.
+  const partial = (share: number) => (share === 1 ? undefined : Math.round(share * 1_000) / 1_000);
+  const asked = {
+    editions: partial(shares.editionsShare), readers: partial(shares.readersShare), guides: partial(cut.guideShare),
+    ...(candidate.venues === undefined ? {} : { venues: partial(shares.venueShare) }),
+  };
+  const given = Object.fromEntries(Object.entries(asked).filter(([, share]) => share !== undefined));
+  const typical: AdmissionReference = {
+    kind: 'typical',
+    ...(reference.editions === null ? {} : { editions: reference.editions }),
+    ...(reference.readers === null ? {} : { readers: reference.readers }),
+    ...(reference.guide === null ? {} : { guides: reference.guide }),
+    ...(typeof reference.venues === 'number' ? { [venuesKey]: reference.venues } : {}),
+    ...(Object.keys(given).length ? { shares: given } : {}),
+    radiusKm: cut.radiusKm,
+    best: cut.best,
+    around: around.groupSize,
+  };
+  const how: Pick<AdmissionRecord, 'decided' | 'cleared' | 'stayed' | 'unread'> = 'unread' in decided
+    ? { decided: 'kept', unread: decided.unread }
+    : {
+      decided: decided.tests[0],
+      ...(decided.tests.length > 1 ? { cleared: [...decided.tests] } : {}),
+      ...(decided.stayed ? { stayed: true } : {}),
+    };
+  return { tier: 'surroundings', ...how, place, reference: typical };
 }
 
 /**
@@ -299,10 +360,16 @@ export function surroundingsVerdict(
   }
   const reference = referencesOf(candidate, around, cut);
   const within = surroundingsInWords(candidate, around, reference, cut, held);
-  const enters = doorsOf(candidate, around, reference, cut, { editionsShare: cut.editionsShare, readersShare: cut.readersShare, venueShare: cut.venueShare });
+  const shares: TestShares = { editionsShare: cut.editionsShare, readersShare: cut.readersShare, venueShare: cut.venueShare };
+  const enters = doorsOf(candidate, around, reference, cut, shares);
   // A held place under the new-place floor is kept by the stay alone, and its note says so.
   const underFloor = candidate.readers < cut.minReaders;
-  if (enters.length && !underFloor) return { in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175, ADR-0181)` };
+  if (enters.length && !underFloor) {
+    return {
+      in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175, ADR-0181)`,
+      admission: surroundingsRecord(candidate, around, reference, cut, { tests: enters, shares, stayed: false }),
+    };
+  }
   return (held ? heldVerdict(candidate, around, reference, cut, within) : null)
     ?? { in: false, reason: `below the surroundings tier's cut: ${within}` };
 }
@@ -327,7 +394,7 @@ function venuesDecide(candidate: SurroundingsCandidate, around: Surroundings, cu
 function heldVerdict(
   candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut, within: string,
 ): SurroundingsVerdict | null {
-  const stay = {
+  const stay: TestShares = {
     editionsShare: cut.stayEditionsShare * cut.editionsShare, readersShare: cut.stayReadersShare * cut.readersShare,
     venueShare: cut.stayEditionsShare * cut.venueShare,
   };
@@ -336,7 +403,8 @@ function heldVerdict(
     const venueStay = candidate.venues === undefined ? '' : ` and the venue test at ${fmt(stay.venueShare)}`;
     return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, the readers test read at `
       + `${fmt(stay.readersShare)} times the reference and the editions test at ${fmt(stay.editionsShare)}${venueStay} for a place it holds: `
-      + `${within} (ADR-0175, ADR-0181)` };
+      + `${within} (ADR-0175, ADR-0181)`,
+    admission: surroundingsRecord(candidate, around, reference, cut, { tests: stays, shares: stay, stayed: true }) };
   }
   // The venue test is the one the run could not read: a held place that last
   // stood by it keeps its place until a layer that keeps the venues is in;
@@ -345,13 +413,15 @@ function heldVerdict(
   // the guides' is kept apart (`membership_fame`), so a street kept by its
   // guide's note would lose its venue mark at the next run.
   if (candidate.venues === null && candidate.venuedAsLastRead === true) {
-    return { in: true, reference, note: `${VENUES_UNREAD_NOTE}: ${within} (ADR-0175 decision 6, ADR-0192)` };
+    return { in: true, reference, note: `${VENUES_UNREAD_NOTE}: ${within} (ADR-0175 decision 6, ADR-0192)`,
+      admission: surroundingsRecord(candidate, around, reference, cut, { unread: 'venues' }) };
   }
   // The guides' test is the one the run could not read: a held place a guide
   // used when last read, or that no build was ever read for, keeps its place
   // where the test reads its area; one no guide used when last read falls.
   if (candidate.guideEditions === null && candidate.guidedAsLastRead !== false && around.groupSize >= cut.guideGroupFloor) {
-    return { in: true, reference, note: `Kept in the surroundings tier, the guides' test unread: ${within} (ADR-0175 decision 6, ADR-0181)` };
+    return { in: true, reference, note: `Kept in the surroundings tier, the guides' test unread: ${within} (ADR-0175 decision 6, ADR-0181)`,
+      admission: surroundingsRecord(candidate, around, reference, cut, { unread: 'guides' }) };
   }
   return null;
 }

@@ -16,6 +16,7 @@ import { mergeSurroundings, surroundingsGroupKey, surroundingsGroups, surroundin
 import { SURROUNDINGS_CUT } from './surroundingsCut.js';
 import type { SurroundingsPool } from './surroundingsPool.js';
 import type { PoolEntity } from '../publicArt/queries.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 const TOWER = 'Q12518';
 const CHURCH = 'Q16970';
@@ -449,14 +450,30 @@ describe('merging the surroundings tier into the run', () => {
 });
 
 describe('a landmark of the surroundings tier', () => {
+  const BY_GUIDES: AdmissionRecord = {
+    tier: 'surroundings', decided: 'guides', place: { editions: 4, readers: 9_000, guides: 2 },
+    reference: { kind: 'typical', editions: 30, readers: 120_000, guides: 3, radiusKm: 150, best: 10, around: 40 },
+  };
+
   it('carries what the kind\'s rule answered beside its type — the artwork answer and the makers — and the tier', () => {
     const row = surroundingsLandmark(entity('Q7', 'Fontana della Terrina', 4), ['Q483453'],
-      { pass: true, type: 'fountain', artwork: true, creators: ['Q1'] }, 'In the surroundings tier by the guides: …');
-    expect(row).toMatchObject({ qid: 'Q7', type: 'fountain', artwork: true, creators: ['Q1'], tier: 'surroundings', readershipNote: 'In the surroundings tier by the guides: …' });
+      { pass: true, type: 'fountain', artwork: true, creators: ['Q1'] }, 'In the surroundings tier by the guides: …', BY_GUIDES);
+    expect(row).toMatchObject({
+      qid: 'Q7', type: 'fountain', artwork: true, creators: ['Q1'], tier: 'surroundings',
+      readershipNote: 'In the surroundings tier by the guides: …', admission: BY_GUIDES,
+    });
   });
 
   it('keeps the place\'s defaults where the rule answers a type alone', () => {
-    const row = surroundingsLandmark(entity('Q8', 'Torre Prendiparte', 3), [TOWER], { pass: true, type: 'tower' }, 'note');
+    const row = surroundingsLandmark(entity('Q8', 'Torre Prendiparte', 3), [TOWER], { pass: true, type: 'tower' }, 'note', BY_GUIDES);
     expect(row).toMatchObject({ artwork: false, creators: [], tier: 'surroundings' });
+  });
+
+  it('names on its record the monuments categories that named it, beside the test that admitted it (#2184)', () => {
+    // Mount Rushmore is typed a mountain: English Wikipedia's category names it a monument (#2171).
+    const categories = ['Monuments and memorials in South Dakota'];
+    const row = surroundingsLandmark(entity('Q83497', 'Mount Rushmore', 4), ['Q8502'],
+      { pass: true, type: 'monument', note: 'Named by English Wikipedia\'s …', wikipediaCategories: categories }, 'In the surroundings tier …', BY_GUIDES);
+    expect(row.admission).toEqual({ ...BY_GUIDES, categories });
   });
 });

@@ -172,6 +172,7 @@ import { TOWERS_CLASSIFIER, TOWERS_KIND } from './towers/kind.js';
 import { BRIDGES_KIND } from './bridges/kind.js';
 import { SQUARES_KIND } from './squares/kind.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
 const mockedGather = gatherPlaces as unknown as ReturnType<typeof vi.fn>;
@@ -504,14 +505,21 @@ describe('public art in the place pass', () => {
     };
     const note = 'Admitted below the sitelinks line, read 193,801 times this year in every counted edition, '
       + "over the readership door's bar of 115,121. Can a visitor see it there now?";
-    const kelpies = landmark({ qid: 'Q16988858', label: 'The Kelpies', sitelinks: 17, readershipNote: note });
+    const admission: AdmissionRecord = {
+      tier: 'world', decided: 'guided', place: { editions: 17, readers: 193_801 },
+      reference: { kind: 'needed', editions: 18, readers: 400_000, guidedReaders: 115_121 }, marks: ['guide'],
+    };
+    const kelpies = landmark({ qid: 'Q16988858', label: 'The Kelpies', sitelinks: 17, readershipNote: note, admission });
 
     await (await configOf()).processItem(kelpies, progress(), context);
     expect(mockedUpsert.mock.calls[0][0].metadata.admissionNote).toBe(note);
+    // The same as figures, on the membership's admission evidence (#2184).
+    expect(mockedUpsert.mock.calls[0][0].admissionEvidence).toEqual(admission);
     // Absent where the line admitted the work: the kind's facts are written
     // whole (`kindFacts.ts`), so a question answered once does not linger.
     await (await configOf()).processItem(landmark(), progress(), context);
     expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('admissionNote');
+    expect(mockedUpsert.mock.calls[1][0].admissionEvidence).toBeNull();
     // A Monuments & memorials item the line admits carries no door's question
     // (the third bar asks one only under the line, ADR-0175 decision 1); and what it
     // writes lands on its own membership, never on Public art's, so it could

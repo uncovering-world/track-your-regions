@@ -20,6 +20,7 @@ import { readershipYear, readWorks, type ReadershipYear } from '../../dumps/read
 import { latestUsage, usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { fetchStreetArtMarks } from '../publicArt/streetArtQueries.js';
 import { WORLD_FRAME, type WorldFrame } from './admissionRegister.js';
+import type { AdmissionMark, AdmissionRecord, AdmissionReference, AdmissionUnread } from '@tyr/shared/admissionEvidence';
 
 /**
  * A kind's three bars this run, and the pool they were read on. The readers'
@@ -118,9 +119,14 @@ export type WorldBar = 'editions' | 'readers' | 'guided';
 
 /**
  * Where a candidate stands: in by a bar (or kept where a held place's bar cannot
- * be read this run, with the note why), out, or fallen with the reason.
+ * be read this run, with the note why and what was not read), out, or fallen
+ * with the reason.
  */
-export type WorldStanding = { by: WorldBar; kept?: undefined } | { kept: string; by?: undefined } | 'out' | { fell: string };
+export type WorldStanding =
+  | { by: WorldBar; kept?: undefined }
+  | { kept: string; unread: AdmissionUnread; by?: undefined }
+  | 'out'
+  | { fell: string };
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en');
 
@@ -185,7 +191,7 @@ function clears(c: WorldCandidate, read: WorldRead, bars: WorldBars, share: numb
 export function worldStanding(
   c: WorldCandidate, read: WorldRead, bars: WorldBars | null, held: boolean, frame: WorldFrame = WORLD_FRAME,
 ): WorldStanding {
-  if (!bars) return held ? { kept: 'no pool was read to set the bars this run' } : 'out';
+  if (!bars) return held ? { kept: 'no pool was read to set the bars this run', unread: 'pool' } : 'out';
   const enters = clears(c, read, bars, 1);
   if (enters) return { by: enters };
   if (!held) return 'out';
@@ -193,9 +199,9 @@ export function worldStanding(
   if (stays) return { by: stays };
   const { readers, guide, atlas } = signalsOf(c, read);
   // Unknown readers, or no readers' bar to hold them to: never a fall.
-  if (readers === null || bars.readers === null) return { kept: 'no year of readers is read' };
+  if (readers === null || bars.readers === null) return { kept: 'no year of readers is read', unread: 'readers' };
   if (guide === null && !atlas && bars.guidedReaders !== null && readers >= frame.stayShare * bars.guidedReaders) {
-    return { kept: 'no Wikivoyage usage is built to read whether a guide uses it' };
+    return { kept: 'no Wikivoyage usage is built to read whether a guide uses it', unread: 'guides' };
   }
   return { fell: belowWorldBars(c, read, bars, frame) };
 }
@@ -242,6 +248,55 @@ export function guidedBarNote(c: WorldCandidate, read: WorldRead, bars: WorldBar
 /** The note on a held place kept because the run could not read what would decide it. */
 export function keptNote(c: WorldCandidate, because: string): string {
   return `Kept in the world tier (${c.editions} Wikipedia editions): ${because}`;
+}
+
+/** The marks a candidate carries, as a record names them. */
+function marksOf(c: WorldCandidate, read: WorldRead): AdmissionMark[] {
+  const { guide, atlas, listed } = signalsOf(c, read);
+  const marks: AdmissionMark[] = [];
+  if (guide) marks.push('guide');
+  if (atlas) marks.push('atlas-obscura');
+  if (listed) marks.push('world-heritage');
+  return marks;
+}
+
+/**
+ * The record of a candidate the world tier admits (#2184): the bar that let it
+ * in, its editions and readers, and the bars it was read against, the third
+ * among them where the place carries a mark. A held place under every bar to
+ * enter stayed at the stay share of one, which the reference names; one kept
+ * because the run could not read what would decide it says what was not read,
+ * with the bars where any were read.
+ */
+export function worldRecord(
+  c: WorldCandidate, read: WorldRead, bars: WorldBars | null, stands: Exclude<WorldStanding, 'out' | { fell: string }>,
+  frame: WorldFrame = WORLD_FRAME,
+): AdmissionRecord {
+  const { readers } = signalsOf(c, read);
+  const marks = marksOf(c, read);
+  const stayed = stands.by !== undefined && bars !== null && clears(c, read, bars, 1) === null;
+  const guided = bars?.guidedReaders != null && (marks.length > 0 || stands.by === 'guided');
+  // A count reaches a share of a bar at the whole number at or over it; the
+  // tolerance keeps a float's 12.000000000000002 from asking for 13.
+  const atLeast = (bar: number, share: number) => Math.ceil(share * bar - 1e-9);
+  const needed = (share: number) => bars && {
+    editions: atLeast(bars.editions, share),
+    ...(bars.readers === null ? {} : { readers: atLeast(bars.readers, share) }),
+    ...(guided ? { guidedReaders: atLeast(bars.guidedReaders!, share) } : {}),
+  };
+  const reference: AdmissionReference | null = bars && {
+    kind: 'needed',
+    ...needed(1),
+    ...(stayed ? { toStay: needed(frame.stayShare)! } : {}),
+  };
+  return {
+    tier: 'world',
+    ...(stands.by === undefined ? { decided: 'kept', unread: stands.unread } : { decided: stands.by }),
+    ...(stayed ? { stayed: true } : {}),
+    place: { editions: c.editions, ...(readers === null ? {} : { readers }) },
+    reference,
+    ...(marks.length ? { marks } : {}),
+  };
 }
 
 /**

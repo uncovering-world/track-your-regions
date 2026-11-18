@@ -48,6 +48,11 @@ describe('the finds readership door (ADR-0164)', () => {
     expect(delphi?.treasures.find((t) => t.externalId === 'Q1230882')?.readIconic).toBe(true);
     expect(delphi?.admissionNote).toContain('read 61,204 times this year');
     expect(delphi?.admissionNote).toContain('the readership door\'s bar is 26,222');
+    // The same as figures (#2184): the Charioteer's year against the finds door's bar.
+    expect(delphi?.admission).toMatchObject({
+      tier: 'world', decided: 'find', reference: null,
+      work: { qid: 'Q1230882', label: 'Charioteer of Delphi', readers: 61_204, needed: { readers: 26_222 } },
+    });
   });
 });
 

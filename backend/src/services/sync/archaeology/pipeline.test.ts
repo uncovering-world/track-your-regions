@@ -340,6 +340,8 @@ describe('collectArchaeology', () => {
     });
     expect(hermitage?.admissionNote).toContain('an antiquities department');
     expect(hermitage?.admissionNote).toContain('is the exposition substantially archaeology?');
+    // Its own editions carried it over the place line: the record says so (#2184).
+    expect(hermitage?.admission).toMatchObject({ tier: 'world', decided: 'editions', place: { editions: 86 }, reference: { kind: 'needed' } });
     // Held is admitted: it arrives with the find it holds, for the curator to
     // read beside the question.
     expect(treasuresOf(out, 'Q132783')).toEqual(['Q2513086']);
@@ -380,6 +382,10 @@ describe('collectArchaeology', () => {
       admissionNote: expect.stringContaining('no other kind shows; take it for that find?'),
     });
     expect(item(out, 'Q51252')?.admittedFor).toEqual({ qid: 'Q774967', label: "Venus de' Medici" });
+    // The record names the find, with its editions against the finds' line (#2184).
+    expect(item(out, 'Q51252')?.admission).toMatchObject({
+      tier: 'world', decided: 'find', reference: null, work: { qid: 'Q774967', label: "Venus de' Medici", needed: { editions: expect.any(Number) } },
+    });
     expect(reason(out, 'Q51252')).toBeUndefined();
   });
 
@@ -1322,6 +1328,8 @@ describe('the site pool\'s second entrance, through the whole run', () => {
       'no class of a site on Wikidata; OpenStreetMap maps an archaeological site here '
       + '(historic=archaeological_site on way/115567314)',
     );
+    // Its record names the object that stood in for a class of a site (#2184).
+    expect(ajanta?.admission?.osm).toEqual({ tag: 'historic=archaeological_site', element: 'way/115567314' });
     // Pompeii, admitted by class, carries no such question.
     const pompeii = items.find((item) => item.qid === 'Q43332');
     expect(pompeii && 'admissionNote' in pompeii ? pompeii.admissionNote : undefined).toBeUndefined();

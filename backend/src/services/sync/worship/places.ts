@@ -22,6 +22,7 @@ import { inPool, namesRefusal, openWorldTier, type WorldOptions } from '../place
 import { WORLD_FRAME } from '../places/admissionRegister.js';
 import type { WorldCandidate } from '../places/worldBars.js';
 import type { FilteredEntity } from '../syncContract.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -33,6 +34,8 @@ export interface PlaceCandidate {
   type: WorshipType | null;
   /** The curator's note, where the bars ask one: in by a guide's mark, or kept while a bar could not be read. */
   note?: string;
+  /** Why the bars let it in, as figures (#2184). */
+  admission: AdmissionRecord;
 }
 
 export interface PlacesByFame {
@@ -139,7 +142,9 @@ export async function classifyPlacesByFame(
       continue;
     }
     const note = tier.noteOf(c, stands);
-    places.set(entity.qid, { entity, classes: classesOf.get(entity.qid) ?? [], type: verdict.type, ...(note ? { note } : {}) });
+    places.set(entity.qid, {
+      entity, classes: classesOf.get(entity.qid) ?? [], type: verdict.type, ...(note ? { note } : {}), admission: tier.recordOf(c, stands),
+    });
   }
   return { places, filtered, classesOf };
 }

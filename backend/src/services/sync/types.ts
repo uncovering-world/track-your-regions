@@ -6,6 +6,7 @@ import type { PlaceTypeOf, TypedKindSlug } from '@tyr/shared/placeTypes';
 import type { Commemorates, Depicts } from '@tyr/shared/commemorates';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 /**
  * Progress tracking for background sync operations
@@ -305,6 +306,8 @@ export interface CollectedMuseum {
    * (ADR-0056): the work, its year, the bar and its burst flag.
    */
   readershipNote?: string;
+  /** The same as figures (#2184): the work and its readers against the door's bar. */
+  admission?: AdmissionRecord;
 }
 
 // =============================================================================
@@ -388,6 +391,11 @@ export interface WikidataLandmark {
    * Absent on a row the line admits.
    */
   readershipNote?: string;
+  /**
+   * Why the row is in, as figures (#2184): the tier, the bar or test that
+   * decided, the place's figures and what they were measured against.
+   */
+  admission?: AdmissionRecord;
   /**
    * The English Wikipedia categories that named the place where no class of
    * the kind does (#2171): Monuments & memorials' monuments categories.

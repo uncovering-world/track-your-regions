@@ -749,6 +749,11 @@ describe('the monuments English Wikipedia files and Wikidata types as something 
       [PATUXAI, 'monument', true,
         'Named by English Wikipedia\'s "Monuments and memorials in Laos"; no class of Wikidata names it a monument or memorial.'],
     ]);
+    // Mount Rushmore's record names the bar that admitted it and the category that named it (#2184).
+    expect(items.find((i) => i.qid === MOUNT_RUSHMORE)?.admission).toMatchObject({
+      tier: 'world', decided: 'editions', place: { editions: 96 }, categories: ['Monuments and memorials in South Dakota'],
+    });
+    expect(items.find((i) => i.qid === 'Q2171002')?.admission).not.toHaveProperty('categories');
     // The category's long tail under every bar is out quietly; a refusal by the rule is named, since the category filed it.
     expect(filtered).toEqual([{
       externalId: KHACHKAR, name: 'khachkar',

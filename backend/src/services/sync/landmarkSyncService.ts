@@ -380,6 +380,8 @@ async function upsertLandmarkExperience(
     imageUrl,
     itemPictures: landmark.itemPictures,
     metadata,
+    // Why it is in, as figures for the card's table (#2184).
+    admissionEvidence: landmark.admission ?? null,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   let contents: ContentsByKind | undefined;

@@ -29,6 +29,8 @@ import { placeLandmark } from './candidates.js';
 import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, yearCut, type Surroundings, type SurroundingsCandidate, type SurroundingsCut } from './surroundingsCut.js';
 import type { SurroundingsGroup, SurroundingsPool, SurroundingsPoolRow } from './surroundingsPool.js';
 import type { WorldMemory } from './worldBars.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
+import { recordNaming } from '../admissionRecord.js';
 
 /**
  * The kind's verdict on a survivor of the cut. Where the kind's rule answers
@@ -95,21 +97,26 @@ export interface SurroundingsArrivals<T = WikidataLandmark> {
   skipped?: string;
 }
 
-/** A row of the kind's own shape from a survivor: the entity, the classes its rule read, the rule's verdict, the cut's note. */
-export type SurroundingsBuilder<T> = (entity: PoolEntity, classes: string[], verdict: SurroundingsPass, note: string) => T;
+/**
+ * A row of the kind's own shape from a survivor: the entity, the classes its
+ * rule read, the rule's verdict, the cut's note and its record (#2184).
+ */
+export type SurroundingsBuilder<T> = (entity: PoolEntity, classes: string[], verdict: SurroundingsPass, note: string, admission: AdmissionRecord) => T;
 
 /**
  * A landmark of the surroundings tier, as the place sources write one, with
  * what the kind's rule answered beside its type, and the rule's own note before
- * the cut's where it has one (the category that named it, #2171).
+ * the cut's where it has one (the category that named it, #2171), its
+ * categories on the cut's record.
  */
-export const surroundingsLandmark: SurroundingsBuilder<WikidataLandmark> = (entity, classes, verdict, note) => ({
+export const surroundingsLandmark: SurroundingsBuilder<WikidataLandmark> = (entity, classes, verdict, note, admission) => ({
   ...placeLandmark(entity, classes, verdict.type as WikidataLandmark['type']),
   ...(verdict.artwork === undefined ? {} : { artwork: verdict.artwork }),
   ...(verdict.creators === undefined ? {} : { creators: verdict.creators }),
   ...(verdict.wikipediaCategories === undefined ? {} : { wikipediaCategories: verdict.wikipediaCategories }),
   tier: 'surroundings',
   readershipNote: verdict.note ? `${verdict.note} ${note}` : note,
+  admission: recordNaming(admission, { categories: verdict.wikipediaCategories }),
 });
 
 /** The surroundings tier as a classifier carries it: the kind's part, with its trees read off the pass's gather. */
@@ -263,10 +270,10 @@ function guidesClause(pool: SurroundingsPool, venues: boolean): string {
 function survivorsOf<Trees>(
   surroundings: SurroundingsKind<Trees, unknown>, trees: Trees, worldAdmitted: ReadonlySet<string>, pool: SurroundingsPool,
   held: ReadonlySet<string>, cut: SurroundingsCut, memory?: WorldMemory, named: ReadonlySet<string> = new Set(),
-): { survivors: string[]; notes: Map<string, string>; fell: Map<string, string>; candidates: number } {
+): { survivors: string[]; notes: Map<string, { note: string; admission: AdmissionRecord }>; fell: Map<string, string>; candidates: number } {
   const classes = surroundings.classesOf(trees);
   const survivors: string[] = [];
-  const notes = new Map<string, string>();
+  const notes = new Map<string, { note: string; admission: AdmissionRecord }>();
   const fell = new Map<string, string>();
   let candidates = 0;
   for (const row of pool.rows.values()) {
@@ -283,7 +290,7 @@ function survivorsOf<Trees>(
     const signals = candidateOf(row, pool, held.has(row.qid), memory);
     const { candidate, around } = surroundings.venues ? withVenues(row.qid, signals, near, pool, held.has(row.qid), memory) : { candidate: signals, around: near };
     const verdict = surroundingsVerdict(candidate, around, cut, held.has(row.qid));
-    if (verdict.in) { survivors.push(row.qid); notes.set(row.qid, verdict.note); }
+    if (verdict.in) { survivors.push(row.qid); notes.set(row.qid, { note: verdict.note, admission: verdict.admission }); }
     // A row this tier admitted before that no longer clears the cut falls with
     // the cut's own reason, rather than the sweep's generic one.
     else if (held.has(row.qid)) fell.set(row.qid, verdict.reason);
@@ -397,7 +404,11 @@ export async function surroundingsArrivals<Trees, Context, T>(
   }
   const { kept, refused } = await guidedOnly(passed, pool, held, yearly, memory);
   filtered.push(...refused);
-  for (const { qid, entity, verdict } of kept) items.push(build(entity, share.facts.get(qid)?.classes ?? [], verdict, notes.get(qid) ?? ''));
+  for (const { qid, entity, verdict } of kept) {
+    // Every survivor carries the cut's note and record (`survivorsOf`).
+    const cleared = notes.get(qid)!;
+    items.push(build(entity, share.facts.get(qid)?.classes ?? [], verdict, cleared.note, cleared.admission));
+  }
   for (const [qid, reason] of fell) {
     filtered.push({ externalId: qid, name: share.pool.get(qid)?.label ?? qid, reason });
   }
