@@ -13,7 +13,9 @@ import {
   hasPinSql,
   hideLostSql,
   lifecycleSelectSql,
+  lostByVerdictSql,
   offeredLocationSql,
+  pointNotLostSql,
   offeredLinkSql,
   linkedForReaderSql,
   experienceOfferedToReaderSql,
@@ -72,6 +74,20 @@ describe('hideLostSql', () => {
 
   it('qualifies the column, so it can join a query with more than one table', () => {
     expect(hideLostSql('ex')).toContain("ex.existence <> 'lost'");
+  });
+
+  it('hides a place whose periods say it does not stand today (#1719)', () => {
+    expect(hideLostSql('e')).toBe("e.existence <> 'lost' AND e.stands_today");
+  });
+
+  it('reveals with "show what is gone" only what the verdict hid, never a place that does not stand', () => {
+    expect(lostByVerdictSql('e')).toBe("e.existence = 'lost' AND e.stands_today");
+  });
+
+  it('keeps a point\'s own verdict apart from its place\'s standing', () => {
+    expect(pointNotLostSql('el')).toBe("el.existence <> 'lost'");
+    expect(offeredLocationSql('el')).toContain(pointNotLostSql('el'));
+    expect(offeredLocationSql('el')).not.toContain('stands_today');
   });
 
   it('comes bare, since some callers push it into a conditions array', () => {

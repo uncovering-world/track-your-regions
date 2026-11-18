@@ -107,8 +107,8 @@ const ROUTE_REGISTRY_RULES = [
  * to the join that already asks it.
  */
 const READER_PREDICATE = 'A reader predicate is composed, not spelled: use publishedContentSql / experienceOfferedToReaderSql / hideLostSql / '
-  + 'offeredLocationSql (src/db/readerPredicates.ts) or membershipVisibleSql (src/db/membership.ts) (#791).';
-const READER_PREDICATE_TEXT = "/curation_state\\s*<>\\s*'pending'|existence\\s*<>\\s*'lost'/";
+  + 'offeredLocationSql (src/db/readerPredicates.ts) or membershipVisibleSql / membershipStandsSql (src/db/membership.ts) (#791).';
+const READER_PREDICATE_TEXT = "/curation_state\\s*<>\\s*'pending'|existence\\s*<>\\s*'lost'|\\bstands_today\\b/";
 const RECORD_SHAPE = 'A record\'s shape is composed, not spelled: use shownByPartsSql / hasPinSql (src/db/readerPredicates.ts), '
   + 'never a test of location being NULL or of shape against a word (ADR-0218).';
 const RECORD_SHAPE_TEXT = "/(?<!\\w)location\\s+IS\\s+(NOT\\s+)?NULL|(?<!\\w)(?<!\\bSET\\s+)shape\\s*(=|<>|!=|(NOT\\s+)?IN\\s*\\(|IS\\s+(NOT\\s+)?DISTINCT\\s+FROM)\\s*\\(?'/i";

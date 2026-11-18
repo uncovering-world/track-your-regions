@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { placeOfferedSql, placeShownSql } from './membership.js';
+import { lostByVerdictSql } from './readerPredicates.js';
 
 const WORSHIP = 4;
 const BASE = 9_201_000;
@@ -130,6 +131,45 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     await pool.query("UPDATE experiences SET existence = 'extant' WHERE id = $1", [BASE + 2]);
     await pool.query('UPDATE experiences SET location = ST_SetSRID(ST_MakePoint(13.5, 42.5), 4326) WHERE id = $1', [BASE + 3]);
     expect(await crowded()).toEqual([BASE + 12]);
+  });
+
+  it('counts no place that does not stand today and no membership whose standing ended (#1719)', async () => {
+    // Church 1's standing as a place of worship ended in 2020, the building standing (a
+    // church turned museum); church 12, the least known, was pulled down in 2021.
+    const endStanding = (id: number, kind: number | null, year: number) => pool.query(
+      `INSERT INTO place_periods (experience_id, kind_id, says, ordinal, from_year, from_first, ended, until_year, until_last, source_id)
+       VALUES ($1, $2, 'stood', 1, 1600, date_first(1600, NULL, NULL, NULL), true, $3::int,
+               date_last($3::int, NULL, NULL, NULL), 4)`, [id, kind, year]);
+    await endStanding(BASE + 1, WORSHIP, 2020);
+    // Church 11 now has nine better known within 10 km, church 12 ten.
+    expect(await crowded()).toEqual([BASE + 12]);
+    await endStanding(BASE + 12, null, 2021);
+    expect(await crowded()).toEqual([]);
+    // A full refresh scores neither and crowds out neither.
+    await pool.query('SELECT refresh_crowding()');
+    expect(await crowded()).toEqual([]);
+    const scores = await pool.query<{ experience_id: number }>(
+      `SELECT m.experience_id FROM membership_fame f JOIN source_records m ON m.id = f.membership_id
+        WHERE m.experience_id = ANY($1::int[]) AND f.score IS NOT NULL`, [[BASE + 1, BASE + 12]]);
+    expect(scores.rows).toEqual([]);
+    await pool.query('DELETE FROM place_periods WHERE experience_id = ANY($1::int[])', [[BASE + 1, BASE + 12]]);
+    // Standing again, both wait unscored for the next refresh, as a new arrival
+    // does: shown, and outranking none.
+    expect(await crowded()).toEqual([]);
+    await pool.query('SELECT refresh_crowding()');
+    expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
+  });
+
+  it('offers to show a lost place only where the list would then show it (#1719)', async () => {
+    // Churches 1 and 2 judged lost; church 2's only membership no longer stands as a place of worship.
+    await pool.query("UPDATE experiences SET existence = 'lost' WHERE id = ANY($1::int[])", [[BASE + 1, BASE + 2]]);
+    await pool.query(
+      `INSERT INTO place_periods (experience_id, kind_id, says, ordinal, ended, source_id)
+       VALUES ($1, $2, 'stood', 1, true, 4)`, [BASE + 2, WORSHIP]);
+    const offered = await pool.query<{ id: number }>(
+      `SELECT e.id FROM experiences e WHERE e.id >= $1 AND e.id < $2 AND ${lostByVerdictSql('e')} AND ${placeShownSql('e')}
+        ORDER BY e.id`, [BASE, BASE + 1000]);
+    expect(offered.rows.map(row => row.id)).toEqual([BASE + 1]);
   });
 
   it('hides nothing a membership measured since the last refresh adds', async () => {

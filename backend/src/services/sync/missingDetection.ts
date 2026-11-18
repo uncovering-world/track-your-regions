@@ -19,7 +19,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK, placeLockOrderSql } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipAdmittedSql, sourcePlacesSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
-import { hideLostSql } from '../../db/readerPredicates.js';
+import { placeNotJudgedLostSql } from '../../db/readerPredicates.js';
 
 /**
  * The places a run is expected to see again, as `e` with the run's membership
@@ -42,12 +42,17 @@ import { hideLostSql } from '../../db/readerPredicates.js';
  * way out would be to answer a different question — and leaving it in the
  * denominator counts a row that can never be seen against the coverage guard,
  * dragging the source toward the 90 % floor that disables detection.
+ *
+ * Only the verdict excuses a row (`placeNotJudgedLostSql`), not the periods
+ * (`stands_today`): nobody has answered for a place whose opening day is still
+ * ahead, so a source that drops it before it opens marks it missing, as it
+ * would any other.
  */
 const EXPECTED = `sm.source_id = $1
        AND sm.source_membership = 'present'
        AND sm.missing_since IS NULL
        AND e.is_manual = FALSE
-       AND ${hideLostSql('e')}
+       AND ${placeNotJudgedLostSql('e')}
        AND ${membershipAdmittedSql('sm')}`;
 
 export type SourceCompleteness = 'authoritative' | 'ranked';

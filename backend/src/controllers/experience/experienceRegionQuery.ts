@@ -12,9 +12,9 @@
 import { canCurateExperienceSql } from '../../middleware/auth.js';
 import {
   hideLostSql,
-  experienceOfferedToReaderSql,
   experienceShownToReaderSql,
   lifecycleSelectSql,
+  lostByVerdictSql,
   offeredLinkSql,
   offeredLocationSql,
   publishedContentSql,
@@ -203,8 +203,11 @@ export function buildRegionQueries(opts: {
   // revealing would not bring back a row the other predicate still hides.
   // Pending rows are excluded for the same reason: showing lost rows again
   // would not un-hide one that is also unread, so it must not be counted as
-  // something the toggle would reveal.
-  const lostHiddenPredicate = `e.existence = 'lost' AND ${experienceOfferedToReaderSql()}`;
+  // something the toggle would reveal. Nor is one crowded out, or one whose
+  // only membership no longer stands in its kind: the toggle drops
+  // `hideLostSql` and keeps `experienceShownToReaderSql`, so it counts what
+  // that keeps.
+  const lostHiddenPredicate = `${lostByVerdictSql()} AND ${experienceShownToReaderSql()}`;
   // What puts an object in this region: a point a reader may see, as its row
   // says (#521, ADR-0197) — `readerRegionMembershipSql` says why a row alone
   // is not enough without that mark. It goes on the WHERE of all four

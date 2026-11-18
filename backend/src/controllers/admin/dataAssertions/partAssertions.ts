@@ -9,7 +9,9 @@
 import {
   MEMBERSHIPS, membershipAdmittedSql, partRecordSql, partRecordUnreadSql, partRecordWithdrawnSql, placeOfferedSql,
 } from '../../../db/membership.js';
-import { hideLostSql, offeredLocationSql, partRecordShownSql, publishedContentSql, shownByPartsSql } from '../../../db/readerPredicates.js';
+import {
+  hideLostSql, offeredLocationSql, partRecordShownSql, pointNotLostSql, publishedContentSql, shownByPartsSql,
+} from '../../../db/readerPredicates.js';
 import { MOST_LEVELS } from '../../experience/partRecordController.js';
 import { withdrawnPointOpenSql } from '../../experience/reviewQueuePredicates.js';
 import { unreadPointSql } from '../../experience/waitingCounts.js';
@@ -29,7 +31,7 @@ const FAR_APART_M = 1000;
 const standingPointSql = (part: string) => `EXISTS (
   SELECT 1 FROM experience_locations el
    WHERE el.experience_id = ${part}.id AND el.merged_into_id IS NULL
-     AND ${hideLostSql('el')} AND el.refused_at IS NULL)`;
+     AND ${pointNotLostSql('el')} AND el.refused_at IS NULL)`;
 
 /**
  * Two parts of one whole under one reference, standing at one spot.

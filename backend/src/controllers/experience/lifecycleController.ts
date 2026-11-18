@@ -154,7 +154,7 @@ export async function answerStateUnderLock(
     // unlocked read, a verdict on one axis silently reverts a verdict on the
     // other, and the log would then assert `former` beside a column saying
     // `present`. Reverting `lost` costs more still: it puts the row back inside
-    // missing detection's `hideLostSql` predicate, so the next clean
+    // missing detection's `placeNotJudgedLostSql` predicate, so the next clean
     // run re-flags it and the item returns to the queue for good.
     const locked = await lockExperience<typeof before>(
       client, experienceId, 'source_membership, existence, missing_since',

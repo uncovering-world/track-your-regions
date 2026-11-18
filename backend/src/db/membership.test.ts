@@ -11,6 +11,8 @@ import {
   iconicPinnedSql,
   membershipAdmittedSql,
   membershipOfferedSql,
+  membershipShownSql,
+  membershipStandsSql,
   membershipVisibleSql,
   placeAdmittedSql,
   placeOfferedSql,
@@ -27,6 +29,13 @@ describe('the membership-level predicates', () => {
     expect(membershipAdmittedSql('x')).toBe("x.admission <> 'refused'");
     expect(membershipVisibleSql()).toBe("m.curation_state <> 'pending'");
     expect(membershipVisibleSql('x')).toBe("x.curation_state <> 'pending'");
+  });
+
+  it('show a membership only while it stands in its kind, and still offer it (#1719)', () => {
+    // Frick Madison's Art Museums membership ended in 2024: out of the kind's lists and counts, its card still open.
+    expect(membershipStandsSql('x')).toBe('x.stands_today');
+    expect(membershipShownSql('x')).toContain(membershipStandsSql('x'));
+    expect(membershipOfferedSql('x')).not.toContain('stands_today');
   });
 
   it('compose the offered one from the two, on the same alias, in a kind', () => {

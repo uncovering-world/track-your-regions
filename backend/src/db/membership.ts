@@ -182,6 +182,23 @@ export function placeHoldsKindSql(place: string): string {
                    WHERE held_kind.experience_id = ${place} AND ${kindRecordSql('held_kind')})`;
 }
 
+/**
+ * The membership stands today in its kind (ADR-0217 decision 5): its place
+ * stands, and the kind's own standing periods say the same. Frick Madison's
+ * Art Museums membership ended on 3 March 2024 while the building stands, so
+ * it is not among Art Museums today. Derived from `place_periods` into
+ * `source_records.stands_today`; a record in a whole always stands, its part
+ * answering for itself. `alias` is the membership alias.
+ *
+ * Composed into what a list, the map and a count hold (`membershipShownSql`,
+ * `placeShownSql`), and not into `membershipOfferedSql`: a reader's claim
+ * about the place, its card and search keep it, as they keep a place
+ * crowded out.
+ */
+export function membershipStandsSql(alias = 'm'): string {
+  return `${alias}.stands_today`;
+}
+
 /** Both of the above, of the same membership, in a kind. */
 export function membershipOfferedSql(alias = 'm'): string {
   return `${membershipAdmittedSql(alias)} AND ${membershipVisibleSql(alias)} AND ${kindRecordSql(alias)}`;
@@ -201,12 +218,13 @@ export function membershipCrowdedSql(alias = 'm'): string {
 }
 
 /**
- * Offered and not crowded out: a membership a list, the map and a count hold.
- * A crowded-out one is still offered, so search finds it and its card opens,
- * but it is never counted (the maintainer, 2026-11-01).
+ * Offered, standing in its kind today and not crowded out: a membership a
+ * list, the map and a count hold. A crowded-out one is still offered, so
+ * search finds it and its card opens, but it is never counted (the
+ * maintainer, 2026-11-01); one whose standing in the kind ended likewise.
  */
 export function membershipShownSql(alias = 'm'): string {
-  return `${membershipOfferedSql(alias)} AND NOT ${membershipCrowdedSql(alias)}`;
+  return `${membershipOfferedSql(alias)} AND ${membershipStandsSql(alias)} AND NOT ${membershipCrowdedSql(alias)}`;
 }
 
 function someMembershipSql(experienceAlias: string, predicate: (alias: string) => string): string {
@@ -233,14 +251,14 @@ export function placeOfferedSql(alias = 'e'): string {
 }
 
 /**
- * Some membership of the place is offered and not crowded out
- * (`membershipShownSql`): the place is in a region's list, on the map and in
- * the counts. A church crowded out of Rome's places of worship and offered as
+ * Some membership of the place is offered, stands in its kind and is not
+ * crowded out (`membershipShownSql`): the place is in a region's list, on the
+ * map and in the counts. A church crowded out of Rome's places of worship and offered as
  * a tower is shown as a tower. `alias` is the `experiences` alias.
  */
 export function placeShownSql(alias = 'e'): string {
   return someMembershipSql(alias, inner =>
-    `${membershipAdmittedSql(inner)} AND ${membershipVisibleSql(inner)} AND NOT ${membershipCrowdedSql(inner)}`);
+    `${membershipAdmittedSql(inner)} AND ${membershipVisibleSql(inner)} AND ${membershipStandsSql(inner)} AND NOT ${membershipCrowdedSql(inner)}`);
 }
 
 /**
