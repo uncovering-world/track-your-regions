@@ -37,6 +37,7 @@ import {
 } from './unescoWikidata.js';
 import { pool } from '../../db/index.js';
 import { inscriptionFacts, inscriptionOf } from '../../db/inscription.js';
+import { fetchHeritageStatements, writeHeritageHistory, type HeritageStatements } from './heritageHistory.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { WaitBudget } from './sourceRetry.js';
@@ -633,6 +634,9 @@ export function syncUnescoSites(
   // Components are resolved to their items only from an index Wikidata
   // answered: one read back from the rows knows none (#1269).
   let factsAnswered = false;
+  // Wikidata's statements of the Danger List's stays and of the delistings,
+  // read beside the index and written once every site is (`heritageHistory.ts`).
+  let heritageStatements: HeritageStatements | null = null;
   const components = newComponentReport();
 
   return orchestrateSync<UnescoApiRecord>({
@@ -679,6 +683,8 @@ export function syncUnescoSites(
       if (answered) {
         facts = answered;
         credits = await creditsForNewPictures(records, facts, progress, budget);
+        progress.statusMessage = 'Asking Wikidata about the List of World Heritage in Danger...';
+        heritageStatements = await fetchHeritageStatements(progress, budget);
       } else {
         console.warn('[UNESCO Sync] Keeping the stored pictures and articles for this run');
         ({ facts, credits } = await indexOfWhatIsStored());
@@ -708,11 +714,18 @@ export function syncUnescoSites(
       }
       return result;
     },
-    afterItems: async (_progress, context) => {
+    afterItems: async (progress, context) => {
       // Written where anything was counted, the failures included: a run whose
       // every site failed to record is the one the failure count is for.
       if (!context.dryRun && context.syncLogId !== null && (components.total > 0 || components.failedSites > 0)) {
         await recordComponentItemsReport(context.syncLogId, finishComponentReport(components));
+      }
+      // The stays on the Danger List that ended, and the listings of the sites
+      // the list struck off, which no dataset record of this run reaches.
+      if (!context.dryRun) {
+        progress.statusMessage = 'Writing each site\'s history on the lists...';
+        const written = await writeHeritageHistory(factsAnswered ? facts : null, heritageStatements);
+        console.log(`[UNESCO Sync] Wrote the list history of ${written} sites`);
       }
     },
     // A site's lifetime from its one Wikidata item, the item its picture comes

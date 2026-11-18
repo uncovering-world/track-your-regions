@@ -220,7 +220,7 @@ function liveTime(value: SparqlBinding[string] | undefined, precision: SparqlBin
  * (`…/entity/statement/Q214944-899b…`): the item and the rest joined by `$`,
  * as Wikidata's JSON writes it.
  */
-const statementIdOf = (node: string): string => node.replace(/^.*\/statement\//, '').replace(/^([Qq]\d+)-/, '$1$$');
+export const statementIdOf = (node: string): string => node.replace(/^.*\/statement\//, '').replace(/^([Qq]\d+)-/, '$1$$');
 
 /** The lifetime property a row's statement was read under, or null. */
 const lifetimePropertyOf = (value: string | undefined): LifetimeProperty | null =>
