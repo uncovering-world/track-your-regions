@@ -73,7 +73,7 @@ export const ADDED_BY = `LEFT JOIN LATERAL (
 /**
  * Whether the membership `ADDED_BY` read is a curator's add that no run has
  * listed yet. Admitted, it answers no rule, so it is neither listed among the
- * pins against one nor handed back to a run: its way back is *Take out…*. The
+ * pins against one nor handed back to a run: its way back is *Take out*. The
  * add is keyed by the place's Wikidata item so that a run which comes to list
  * the place upserts this same membership; from then on its pin is a pin like
  * any other, and handing it back leaves the place to that run.

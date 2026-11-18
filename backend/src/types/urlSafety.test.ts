@@ -57,7 +57,8 @@ const MANUAL_BASE = {
   latitude: 20,
   regionId: 1,
   kindId: 1,
-};
+  reasonCode: 'missing-from-rule',
+} as const;
 
 describe('imageUrl a curator stores', () => {
   it('refuses every spelling of a script-bearing scheme', () => {

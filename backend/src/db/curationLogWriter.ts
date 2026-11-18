@@ -62,7 +62,12 @@ type OwnedKeys = 'membershipId' | 'kindId' | 'reasonCode' | 'bulk' | 'syncLogId'
 /** One act, as a caller states it. */
 export type CurationAct = ByWhom & {
   experienceId: number;
-  /** Where the curator was working; null or absent where no region applies. */
+  /**
+   * Where the curator was working: the region an act on a region names, else
+   * the region the curator had open when acting, else, for an act sent with
+   * none, the region the caller's scope check found; null or absent where no
+   * region applies.
+   */
   regionId?: number | null;
   /** Set on every act about a membership in a kind. */
   membership?: ActMembership;
@@ -88,11 +93,19 @@ function detailsOf(act: CurationAct): string | null {
   return Object.keys(details).length > 0 ? JSON.stringify(details) : null;
 }
 
+/**
+ * The act's region as the row records it: one that no longer exists is
+ * recorded as none, as the foreign key's `ON DELETE SET NULL` would have left
+ * it. The region a curator had open arrives from the web, and a region deleted
+ * while the page was open must not fail the act it only describes.
+ */
+const regionSql = (expr: string) => `(SELECT r.id FROM regions r WHERE r.id = ${expr})`;
+
 /** Record one act, in the caller's transaction. */
 export async function logCurationAct(client: PoolClient, act: CurationAct): Promise<{ id: number }> {
   const result = await client.query<{ id: number }>(
     `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-     VALUES ($1, $2, $3, $4, $5)
+     VALUES ($1, $2, $3, ${regionSql('$4::int')}, $5)
      RETURNING id`,
     [act.experienceId, act.curatorId, act.action, act.regionId ?? null, detailsOf(act)],
   );
@@ -111,7 +124,7 @@ export async function logCurationActs(
   if (acts.length === 0) return [];
   const result = await client.query<{ id: number; experience_id: number }>(
     `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-     SELECT t.experience_id, t.curator_id, t.action, t.region_id, t.details
+     SELECT t.experience_id, t.curator_id, t.action, ${regionSql('t.region_id')}, t.details
        FROM unnest($1::int[], $2::int[], $3::text[], $4::int[], $5::jsonb[])
             AS t(experience_id, curator_id, action, region_id, details)
      RETURNING id, experience_id`,

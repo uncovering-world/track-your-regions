@@ -30,7 +30,7 @@ export * from './reviewQueueMapNamesSchema.js';
 // Why a curator acted, and the region acts (#863).
 export * from './curatorActSchemas.js';
 import {
-  additionReasonSchema, answeredMembershipSchema, refusalReasonSchema, sourceAnswerReasonSchema,
+  additionReasonSchema, answeredMembershipSchema, openRegionSchema, refusalReasonSchema, sourceAnswerReasonSchema,
 } from './curatorActSchemas.js';
 
 // =============================================================================
@@ -397,6 +397,7 @@ export const createManualExperienceBodySchema = z.object({
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
   reasonCode: additionReasonSchema,
+  note: z.string().max(1000).optional().describe('The curator\'s words beside the reason, kept in the log entry.'),
 });
 
 export const idAndRegionIdParamSchema = z.object({
@@ -780,13 +781,17 @@ export const visitQuestionAnswerBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
-/** A place put into a kind no run offers it in, from its card (#2035): the kind, its type, the curator's words. */
+/**
+ * A place put into a kind no run offers it in, from its card (#2035): the
+ * kind, its type, why, the curator's words, and the region they have open.
+ */
 export const addToKindBodySchema = z.object({
   kindId: bodyRowIdSchema,
   type: z.string().max(COLUMN_WIDTHS.source_records.type).optional()
     .describe('The type within the kind, from its vocabulary; absent for a kind that has none.'),
   note: z.string().max(1000).optional(),
   reasonCode: additionReasonSchema,
+  regionId: openRegionSchema,
 });
 
 /**
@@ -867,11 +872,14 @@ export const reviewAnswerBodySchema = z.object({
 /**
  * An arrival answered with the kind it belongs in instead (#2213): the chosen
  * kind and its type, as the add takes them, and whether the place also stays
- * in the kind that brought it.
+ * in the kind that brought it. Answered on the review page, where no region is
+ * open, and its arrival's no is already `not-this-kind`, so the added kind's
+ * reason stays optional.
  */
-export const arrivalKindBodySchema = addToKindBodySchema.extend({
+export const arrivalKindBodySchema = addToKindBodySchema.omit({ regionId: true }).extend({
   membershipId: answeredMembershipSchema,
   stays: z.boolean().describe('Whether the place also stays in the kind that brought it: published there, else kept out of it.'),
+  reasonCode: additionReasonSchema.optional().describe('Why the curator acted, kept in the log entry the act writes.'),
 });
 
 /**

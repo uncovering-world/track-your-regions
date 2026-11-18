@@ -18,6 +18,7 @@ describe("a curator's description", () => {
   it('takes a created place\'s description of the same length', () => {
     expect(createManualExperienceBodySchema.safeParse({
       name: 'Colonies of Benevolence', description: paragraph, longitude: 6.18, latitude: 52.83, regionId: 1, kindId: 1,
+      reasonCode: 'missing-from-rule',
     }).success).toBe(true);
   });
 

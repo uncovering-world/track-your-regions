@@ -251,6 +251,37 @@ export async function checkCuratorScope(
   return regionResult.rows.length > 0;
 }
 
+/**
+ * The region a curator's act is logged under (#863): the one they had open,
+ * where the place lies in it or below it and the actor's own scope covers it,
+ * else the region their scope check found. A row's region decides which
+ * curators read it (`curator_scoped_regions`) and whether a curator may read
+ * the place's log at all (`resolveCurationLogScope`), so a region outside the
+ * actor's scope would hide the act from the curators of the region it happened
+ * in, and a region the place is not in would open its log to that region's
+ * curators.
+ */
+export async function loggedRegion(
+  caller: Express.User,
+  experienceId: number,
+  openRegionId: number | undefined,
+  logRegionId: number | null,
+): Promise<number | null> {
+  if (openRegionId === undefined || openRegionId === logRegionId) return logRegionId;
+  const placed = await pool.query<{ placed: boolean }>(
+    `WITH RECURSIVE below AS (
+       SELECT id FROM regions WHERE id = $2
+       UNION ALL
+       SELECT r.id FROM regions r JOIN below b ON r.parent_region_id = b.id
+     )
+     SELECT EXISTS (SELECT 1 FROM experience_regions er
+                     WHERE er.experience_id = $1 AND er.region_id IN (SELECT id FROM below)) AS placed`,
+    [experienceId, openRegionId],
+  );
+  if (!placed.rows[0]?.placed) return logRegionId;
+  return await checkCuratorScope(caller.id, caller.role, openRegionId) ? openRegionId : logRegionId;
+}
+
 // =============================================================================
 // Helper: Curator-Scoped Regions
 // =============================================================================

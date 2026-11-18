@@ -23,6 +23,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
+import { loggedRegion } from '../../middleware/auth.js';
 import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { contentsReached, publishContents, placeAfterRelease } from './publishContents.js';
@@ -342,7 +343,9 @@ export async function setExperienceAdmission(
   // Named field by field. A card's confirmation always claims `admission`
   // (ADR-0067); its put-back claims it unless the curator chose otherwise on the
   // card (`remember`, #1368), which is the only say a request has in the pin.
-  const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
+  // The log names the region the curator has open where their scope covers it (#863).
+  const regionId = await loggedRegion(caller, experienceId, body.regionId, logRegionId);
+  const outcome = await answerAdmissionUnderLock(experienceId, userId, regionId, {
     decision: body.decision, note: body.note, membershipId: body.membershipId,
     pin: body.decision === 'confirm' || body.remember !== false, reasonCode: body.reasonCode,
   });

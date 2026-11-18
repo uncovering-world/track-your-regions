@@ -16633,14 +16633,10 @@
               "description": "Why the curator acted, kept in the log entry the act writes.",
               "type": "string",
               "enum": [
-                "not-this-kind",
-                "not-worth-a-visit",
-                "not-one-place",
                 "wrong-place",
+                "not-worth-a-visit",
                 "duplicate",
                 "gone",
-                "source-text",
-                "missing-from-rule",
                 "other"
               ]
             },
@@ -16710,21 +16706,26 @@
             "in": "query",
             "name": "reasonCode",
             "schema": {
-              "description": "Why the curator acted, kept in the log entry the act writes.",
               "type": "string",
               "enum": [
-                "not-this-kind",
-                "not-worth-a-visit",
-                "not-one-place",
                 "wrong-place",
+                "not-worth-a-visit",
                 "duplicate",
                 "gone",
-                "source-text",
-                "missing-from-rule",
                 "other"
-              ]
+              ],
+              "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
             },
-            "description": "Why the curator acted, kept in the log entry the act writes."
+            "required": true,
+            "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
+          },
+          {
+            "in": "query",
+            "name": "note",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
           }
         ],
         "responses": {
@@ -18549,16 +18550,23 @@
             "maxLength": 1000
           },
           "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
             "type": "string",
             "enum": [
               "missing-from-rule",
               "other"
-            ]
+            ],
+            "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
+          },
+          "regionId": {
+            "description": "The region the curator had open when acting, recorded as where they were working; grants nothing.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         },
         "required": [
-          "kindId"
+          "kindId",
+          "reasonCode"
         ]
       },
       "AddTripsBody": {
@@ -19642,23 +19650,21 @@
             "maximum": 2147483647
           },
           "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
             "type": "string",
             "enum": [
-              "not-this-kind",
-              "not-worth-a-visit",
-              "not-one-place",
-              "wrong-place",
-              "duplicate",
-              "gone",
-              "source-text",
               "missing-from-rule",
               "other"
-            ]
+            ],
+            "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
           }
         },
         "required": [
-          "regionId"
+          "regionId",
+          "reasonCode"
         ]
       },
       "AssignedDivision": {
@@ -22721,12 +22727,17 @@
             "type": "string"
           },
           "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
             "type": "string",
             "enum": [
               "missing-from-rule",
               "other"
-            ]
+            ],
+            "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
+          },
+          "note": {
+            "description": "The curator's words beside the reason, kept in the log entry.",
+            "type": "string",
+            "maxLength": 1000
           }
         },
         "required": [
@@ -22734,7 +22745,8 @@
           "longitude",
           "latitude",
           "regionId",
-          "kindId"
+          "kindId",
+          "reasonCode"
         ]
       },
       "CreateRegionBody": {
@@ -26862,6 +26874,12 @@
                   "wrong-place",
                   "other"
                 ]
+              },
+              "regionId": {
+                "description": "The region the curator had open when acting, recorded as where they were working; grants nothing.",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
               }
             },
             "required": [
@@ -26880,6 +26898,12 @@
                 "maxLength": 1000
               },
               "membershipId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "regionId": {
+                "description": "The region the curator had open when acting, recorded as where they were working; grants nothing.",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 2147483647
@@ -30757,7 +30781,6 @@
             "maxLength": 1000
           },
           "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
             "type": "string",
             "enum": [
               "not-this-kind",
@@ -30767,11 +30790,19 @@
               "duplicate",
               "wrong-place",
               "other"
-            ]
+            ],
+            "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
+          },
+          "regionId": {
+            "description": "The region the curator had open when acting, recorded as where they were working; grants nothing.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         },
         "required": [
-          "membershipId"
+          "membershipId",
+          "reasonCode"
         ]
       },
       "KeptOutOfKind": {
@@ -38527,27 +38558,25 @@
             "maximum": 2147483647
           },
           "reason": {
+            "description": "The curator's words beside the reason, kept as the rejection's reason.",
             "type": "string",
             "maxLength": 1000
           },
           "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
             "type": "string",
             "enum": [
-              "not-this-kind",
-              "not-worth-a-visit",
-              "not-one-place",
               "wrong-place",
+              "not-worth-a-visit",
               "duplicate",
               "gone",
-              "source-text",
-              "missing-from-rule",
               "other"
-            ]
+            ],
+            "description": "Why the curator acted, kept in the log entry the act writes. Every screen that takes this act asks why."
           }
         },
         "required": [
-          "regionId"
+          "regionId",
+          "reasonCode"
         ]
       },
       "RemainingRejected": {
@@ -43427,21 +43456,6 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
-          },
-          "reasonCode": {
-            "description": "Why the curator acted, kept in the log entry the act writes.",
-            "type": "string",
-            "enum": [
-              "not-this-kind",
-              "not-worth-a-visit",
-              "not-one-place",
-              "wrong-place",
-              "duplicate",
-              "gone",
-              "source-text",
-              "missing-from-rule",
-              "other"
-            ]
           }
         },
         "required": [

@@ -543,6 +543,25 @@ describe('setExperienceAdmission', () => {
       .toMatchObject({ reasonCode: 'other', note: 'a chapel the rule read as a ruin' });
   });
 
+  it('names the region the curator has open as the log entry\'s, and the scope\'s where none is sent (#863)', async () => {
+    // The membership's source, then `loggedRegion` asking whether the place lies
+    // in the open region; an admin's scope covers it without a read.
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 5, source_id: 2 }] })
+      .mockResolvedValueOnce({ rows: [{ placed: true }] });
+    const opened = refusedClient();
+    mockedConnect.mockResolvedValue(opened.client);
+    await answerRoute(postAdmission,
+      { params: { id: '5' }, user: ADMIN, body: { ...PUT_BACK, regionId: 2481 } } as never, makeRes() as never);
+    expect(opened.queries.find(q => q.sql.includes('INSERT INTO experience_curation_log'))!.params[3]).toBe(2481);
+
+    poolAnswers();
+    const none = refusedClient();
+    mockedConnect.mockResolvedValue(none.client);
+    await answerRoute(postAdmission, { params: { id: '5' }, user: ADMIN, body: PUT_BACK } as never, makeRes() as never);
+    expect(none.queries.find(q => q.sql.includes('INSERT INTO experience_curation_log'))!.params[3]).toBeNull();
+  });
+
   it('refuses a put-back that gives no reason, or a refusal\'s, before anything is read', () => {
     // Every surface that puts a place back asks why; a request without one is
     // not an act the log can be tuned from.

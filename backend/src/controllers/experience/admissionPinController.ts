@@ -12,7 +12,7 @@
  * place in (`ADDED_BY_CURATOR`), which is not listed either while it stands,
  * however often it was taken out and put back: no rule turned the place down,
  * a run that never lists it would refuse it once the pin was gone, and its
- * way back is the Kinds row's *Take out…*.
+ * way back is the Kinds row's *Take out*.
  *
  * GET  /api/experiences/review/pins?experienceId=
  * POST /api/experiences/:id/admission-pin/hand-back   { membershipId, note? }

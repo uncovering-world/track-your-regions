@@ -474,7 +474,8 @@ describe("a place's regions (ADR-0197)", () => {
     const before = await rows(MUSEUM);
 
     await withLogRefusing('removed_from_region', () => removeExperienceFromRegion({
-      params: { id: MUSEUM, regionId: LEAF_A }, query: {}, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
+      params: { id: MUSEUM, regionId: LEAF_A }, query: { reasonCode: 'wrong-place' },
+      caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
     }));
 
     expect(await rows(MUSEUM)).toEqual(before);
@@ -490,10 +491,11 @@ describe("a place's regions (ADR-0197)", () => {
       'SELECT region_id FROM experience_rejections WHERE experience_id = $1', [MUSEUM],
     )).rows.map(row => row.region_id);
 
-    await withLogRefusing('rejected', () => rejectExperience({ params: { id: MUSEUM }, body: { regionId: LEAF_A }, caller }));
+    const body = { regionId: LEAF_A, reasonCode: 'wrong-place' } as const;
+    await withLogRefusing('rejected', () => rejectExperience({ params: { id: MUSEUM }, body, caller }));
     expect(await refusals()).toEqual([]);
 
-    await rejectExperience({ params: { id: MUSEUM }, body: { regionId: LEAF_A }, caller });
+    await rejectExperience({ params: { id: MUSEUM }, body, caller });
     await withLogRefusing('unrejected', () => unrejectExperience({ params: { id: MUSEUM }, body: { regionId: LEAF_A }, caller }));
     expect(await refusals()).toEqual([LEAF_A]);
     await pool.query('DELETE FROM experience_rejections WHERE experience_id = $1', [MUSEUM]);

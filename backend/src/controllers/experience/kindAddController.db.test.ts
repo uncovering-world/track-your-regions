@@ -74,7 +74,7 @@ afterAll(async () => {
 const admin = () => ({ id: adminId, role: 'admin' } as Express.User);
 const standings = (caller = admin()) => listPlaceKinds({ params: { id: GALLERY }, caller });
 const add = (body: { kindId: number; type?: string; note?: string }) =>
-  addUnderLock(GALLERY, adminId, null, publicArt.id, body);
+  addUnderLock(GALLERY, adminId, null, publicArt.id, { reasonCode: 'missing-from-rule', ...body });
 const streetArt = () => add({ kindId: publicArt.kind_id, type: 'street-art', note: 'A mile of murals on the Berlin Wall' });
 
 describe('the kinds a place may be added to', () => {
@@ -93,7 +93,7 @@ describe('the kinds a place may be added to', () => {
     );
     const caller = { id: curatorId, role: 'curator' } as Express.User;
     expect((await standings(caller)).addable).toEqual([]);
-    await expect(addPlaceToKind({ params: { id: GALLERY }, body: { kindId: publicArt.kind_id }, caller }))
+    await expect(addPlaceToKind({ params: { id: GALLERY }, body: { kindId: publicArt.kind_id, reasonCode: 'missing-from-rule' }, caller }))
       .rejects.toMatchObject({ statusCode: 403 });
   });
 });
@@ -119,7 +119,7 @@ describe('adding a place to a kind', () => {
     );
     expect(log.rows.map(r => r.details)).toEqual([{
       membershipId: result!.membershipId, kindId: publicArt.kind_id, kind: 'Public art', type: 'street-art',
-      note: 'A mile of murals on the Berlin Wall',
+      note: 'A mile of murals on the Berlin Wall', reasonCode: 'missing-from-rule',
     }]);
 
     expect((await standings()).kinds).toEqual(expect.arrayContaining([expect.objectContaining({
@@ -218,12 +218,12 @@ describe('what an add refuses, with nothing written', () => {
   });
 
   it('World Heritage Sites, which only an inscription makes', async () => {
-    await expect(addPlaceToKind({ params: { id: GALLERY }, body: { kindId: 1 }, caller: admin() }))
+    await expect(addPlaceToKind({ params: { id: GALLERY }, body: { kindId: 1, reasonCode: 'missing-from-rule' }, caller: admin() }))
       .rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('a place that does not exist', async () => {
-    expect((await addUnderLock(GALLERY + 100, adminId, null, publicArt.id, { kindId: publicArt.kind_id })).refusal)
+    expect((await addUnderLock(GALLERY + 100, adminId, null, publicArt.id, { kindId: publicArt.kind_id, reasonCode: 'missing-from-rule' })).refusal)
       .toMatchObject({ status: 404 });
   });
 });
