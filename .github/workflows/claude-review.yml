@@ -171,6 +171,9 @@ jobs:
           # Self-contained prompt — no external doc references that would
           # cost turns to read. Project conventions (CLAUDE.md, etc.) are
           # auto-loaded into Claude Code's system context by the action.
+          # Phase 6 (Transition) is temporary, removed by #2646: it reads
+          # db/target/ and docs/tech/model-transition.md because they are
+          # what it measures against, while its checks are stated here.
           #
           # Output rules below are mandatory, and they decide the channel: a
           # Critical or Major finding that is the branch's own — introduced by
@@ -365,6 +368,88 @@ jobs:
             CRITICAL INSTRUCTION #3 check (upstream/downstream) before
             posting. Drop verified-handled candidates.
 
+            **Phase 6 — Transition.** Temporary — transition regime,
+            removed by #2646 (`docs/tech/model-transition.md`). The
+            catalogue is moving onto its clean model. The end goal is a
+            clean schema with clean code: no legacy tables, no
+            intermediate formats, no workarounds or complex schemes the
+            model makes unnecessary, and one owner-writer per fact. This
+            phase applies when the diff touches a path under `db/`,
+            `backend/src/`, `frontend/src/` or `packages/`. Otherwise it
+            reads nothing, and the summary's Transition heading says
+            "Not applicable". When it applies:
+              1. Read `db/target/model.sql` (the target schema),
+                 `db/target/owners.json` (each table and column's one
+                 owner-writer and every reader, and the triggers the
+                 model allows, each with the invariant it holds) and
+                 `docs/tech/model-transition.md` (the method). None of
+                 them is a path the action restores, so the working tree
+                 holds the PR head's copies. Where `db/target/` is
+                 missing, say so under the heading, and report the
+                 checks that need it as not checked, never as passed.
+              2. Decide whether the PR is a model change: it touches a
+                 table or column the target names, or an old table it
+                 replaces, that table's schema, or one of its writers or
+                 readers. When it touches those paths and none of these,
+                 the heading says "Not a model change" and the phase
+                 ends.
+              3. Name the area the PR moves, from
+                 `db/target/owners.json`: World Heritage (#2648), time
+                 and gone (#2649), admission and curation (#2650), works
+                 (#2651), regions and shape (#2652) or visits (#2653).
+              4. Read the PR body (`gh pr view <PR NUMBER> --json body`)
+                 and the per-file counts (`gh pr view <PR NUMBER> --json
+                 files`), then look for:
+                 a. code adapted instead of replaced: an old function,
+                    query or component kept in its shape and re-pointed
+                    at the model's tables, or an old name on new data;
+                 b. an intermediate format outside the external
+                    boundaries (the answers of Wikidata, UNESCO,
+                    OpenStreetMap and Commons): old keys rebuilt from
+                    new tables, a view or function under an old name, a
+                    compatibility column, or a JSON value that carries a
+                    fact the model gives a table or column;
+                 c. a workaround or complex scheme the model makes
+                    unnecessary: a guard against a state the model
+                    cannot hold, or a reconciliation of two copies the
+                    model keeps once;
+                 d. a second owner of a fact: search every write to each
+                    table and column the diff touches across
+                    `backend/src/`, `db/init/` and `scripts/`, and
+                    hold each writer to its owner in
+                    `db/target/owners.json`;
+                 e. a trigger or trigger function, added or changed,
+                    that `db/target/owners.json` does not allow;
+                 f. a derivation computed per row (a trigger
+                    `FOR EACH ROW`, one query per row in a loop) where
+                    its owner could write it once per step;
+                 g. a PR that only adds code in an area it does not
+                    move, or removes little of the area it moves;
+                 h. a construct the body's *Area review* marks DELETE
+                    that the head still names, or one it marks SIMPLIFY
+                    that is unchanged;
+                 i. a reader or writer deleted or replaced while the
+                    body's *Compared on the catalogue* is missing, gives
+                    no command or names no real place;
+                 j. a body without *Area review*, *Owners touched*,
+                    *Retires*, *Removed and added lines* or *Compared on
+                    the catalogue*.
+            A transition finding names the file and the symbol, the line
+            of the model it breaks (a table or column of
+            `db/target/model.sql`, an owner in `db/target/owners.json`,
+            or a section of `docs/tech/model-transition.md`) and the fix.
+            It is Major when it is verified and the branch's own: in the
+            area the PR moves, or added by the PR. A finding in an area
+            the PR does not move, which main already held, is a Note that
+            names that area's slice issue; an unverified suspicion is a
+            Note that says what would settle it. The OUTPUT RULES place
+            it: a Major one on a changed line is an inline thread whose
+            text starts with `Transition:`, and every other one is a
+            line under the summary's Transition heading. That includes a
+            Major one with no changed line to anchor on (a missing body
+            section, a comparison not made), whose line starts with
+            **Major**.
+
             ## CATEGORIES (general — not exhaustive, not bug-specific)
 
             - **Security** — OWASP ASVS 5.0 L2: input handling at trust
@@ -471,9 +556,19 @@ jobs:
                  search uses), and end the
                  line with `→ #N` when a hit clearly covers it, with
                  nothing when none does.
-              4. Never repeat the inline findings in the summary — that
+              4. **Transition** — under its own heading, `### Transition`
+                 (Phase 6): one line first, which says "Not applicable",
+                 "Not a model change", or the area and a tally (e.g.
+                 "World Heritage: 1 inline, 2 below"). Then every
+                 transition finding that is not an inline thread, one
+                 line each in the shape of the notes above. A **Major**
+                 line there is the branch's own and, unlike a note, an
+                 ask: the author fixes it on the branch or declines it
+                 with a reason in the round's dispositions.
+              5. Never repeat the inline findings in the summary — that
                  defeats the inline channel.
-            No findings at all → the verdict and the SHA alone.
+            No findings at all → the verdict, the SHA and the Transition
+            heading with its one line.
 
             **Re-review convergence.** A re-review is any run on a PR that
             already carries a claude[bot] summary. Threads follow the rule
@@ -520,7 +615,9 @@ jobs:
                the summary's `Reviewed <sha>` names. Then get the diff:
                `gh pr diff <PR NUMBER>` (by number: on a `/review` run the
                checkout began on main)
-            2. Run the Phase 4 repo search for every claim the diff changes
+            2. Run the Phase 4 repo search for every claim the diff
+               changes, and Phase 6 when the diff touches `db/`,
+               `backend/src/`, `frontend/src/` or `packages/`
             3. For each Critical or Major finding that is the branch's own
                (CRITICAL INSTRUCTION #4), on a line the diff changed →
                inline thread
