@@ -192,6 +192,7 @@ function museum(overrides: Partial<CollectedArchaeologyMuseum> = {}): CollectedA
     nature: 'archaeological',
     natureWhy: 'category: Archaeological museums in London',
     admissionNote: null,
+    admission: { tier: 'world', decided: 'editions', place: { editions: 93 }, reference: { kind: 'needed', editions: 22 } },
     treasures: [rosetta()],
     // The Rosetta Stone is one find above the finds' line, which is what the
     // badge reads (ADR-0045 decision 5).
@@ -226,6 +227,7 @@ function site(overrides: Partial<CollectedArchaeologySite> = {}): CollectedArcha
       readAt: '2026-09-14T00:00:00.000Z',
     },
     extentWkt: 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))',
+    admission: { tier: 'world', decided: 'editions', place: { editions: 96 }, reference: { kind: 'needed', editions: 34 } },
     ...overrides,
   };
 }
@@ -848,6 +850,9 @@ describe('what the archaeology run writes', () => {
     // wrote is the question a curator answers (ADR-0058 decision 2).
     expect(mockedUpsert.mock.calls[0][0].metadata.admissionNote).toBe(note);
     expect(mockedUpsert.mock.calls[0][0].metadata.archaeologyNature).toBe('department');
+    // The record beside the question, on the membership's admission evidence (#2184).
+    expect(mockedUpsert.mock.calls[0][0].admissionEvidence).toEqual(museum().admission);
+    expect(mockedUpsert.mock.calls[0][0].metadata).not.toHaveProperty('admission');
   });
 
   it('names the find that admitted a museum below the line', async () => {

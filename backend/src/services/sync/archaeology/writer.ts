@@ -224,6 +224,8 @@ async function processMuseum(
     // museum holds, where a find is what carried it over the line. A museum
     // known in its own right is admitted for its own fame and names nothing.
     admittedFor: item.admittedFor ?? null,
+    // Why it is in, as figures for the card's table (#2184).
+    admissionEvidence: item.admission,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report — as
@@ -350,6 +352,8 @@ async function processSite(
     // A site enters on its own fame and is admitted for nothing else
     // (ADR-0058 decision 4).
     admittedFor: null,
+    // Why it is in, as figures for the card's table (#2184).
+    admissionEvidence: item.admission,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report.

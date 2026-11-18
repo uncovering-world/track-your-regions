@@ -102,6 +102,7 @@ import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
 import { catalogueName, type NamedRecord } from './nameTwins.js';
 import { withChosenCoordinate } from './itemCoordinate.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -159,6 +160,12 @@ export interface ExperienceUpsertParams {
    * rule is not a work.
    */
   admittedFor?: { qid: string; label: string } | null;
+  /**
+   * Why the run admitted the place, as figures (#2184): the membership's
+   * `admission_evidence` (ADR-0225), written every run like its listing and
+   * never proposed to a curator. Null where the run's path keeps none.
+   */
+  admissionEvidence?: AdmissionRecord | null;
   /**
    * The place's extent as WKT in EPSG:4326, or null for a place that has none.
    *
@@ -856,6 +863,11 @@ function metadataToWrite(written: ExperienceUpsertParams, held: HeldMetadata | n
   return { place, facts, factsKept: heldFacts(storedFacts, facts, passing), passing };
 }
 
+/** The membership's `admission_evidence` as the statement binds it: the run's record, or null where its path keeps none. */
+function evidenceToWrite(params: ExperienceUpsertParams): string | null {
+  return params.admissionEvidence ? JSON.stringify(params.admissionEvidence) : null;
+}
+
 async function writeUnderLock(
   client: PoolClient,
   sent: ExperienceUpsertParams,
@@ -1090,7 +1102,7 @@ async function writeUnderLock(
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
         reported_name, reported_subtitle, reported_image_url, reported_location, reported_image_credit,
-        reported_wikipedia_url, wikidata_items, reported_label, facts
+        reported_wikipedia_url, wikidata_items, reported_label, facts, admission_evidence
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -1102,7 +1114,7 @@ async function writeUnderLock(
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
              $15, $15, NOW(),
              $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[], $36::text,
-             $37::jsonb
+             $37::jsonb, $39::jsonb
         FROM ins
       ON CONFLICT (source_id, external_id) WHERE kind_id IS NOT NULL DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -1140,6 +1152,8 @@ async function writeUnderLock(
         reported_wikipedia_url = EXCLUDED.reported_wikipedia_url,
         reported_label = EXCLUDED.reported_label,
         facts = $38::jsonb,
+        -- Why this run admitted it (#2184): the run's own reading, every run.
+        admission_evidence = EXCLUDED.admission_evidence,
         wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
@@ -1199,6 +1213,7 @@ async function writeUnderLock(
       sent.name,
       JSON.stringify(facts),
       JSON.stringify(factsKept),
+      evidenceToWrite(params),
     ]
   );
 

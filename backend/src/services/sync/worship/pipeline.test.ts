@@ -643,6 +643,12 @@ describe('collectPlacesOfWorship', () => {
     });
     expect(worksOf(out, 'Q958699')).toEqual(['Q178331']);
     expect(item(out, 'Q958699')?.artworks[0]?.treasureType).toBe('relic associated with Jesus');
+    // It asks nothing, and its record names the Shroud's editions against the line (#2184).
+    expect(item(out, 'Q958699')?.readershipNote).toBeUndefined();
+    expect(item(out, 'Q958699')?.admission).toEqual({
+      tier: 'world', decided: 'work', place: { editions: 20 }, reference: null,
+      work: { qid: 'Q178331', label: 'Shroud of Turin', editions: 67, needed: { editions: 22 } },
+    });
   });
 
   it('admits Turin Cathedral through a relic below the line the world reads, and asks a curator (ADR-0056)', async () => {
@@ -655,6 +661,10 @@ describe('collectPlacesOfWorship', () => {
     const turin = item(out, 'Q958699');
     expect(turin).toMatchObject({ door: 'work', admittedFor: { qid: 'Q178331', label: 'Shroud of Turin' } });
     expect(turin?.readershipNote).toContain('its year is a burst');
+    expect(turin?.admission).toEqual({
+      tier: 'world', decided: 'work', place: { editions: 20 }, reference: null,
+      work: { qid: 'Q178331', label: 'Shroud of Turin', editions: 15, readers: 300_000, burst: true, needed: { readers: 133_366 } },
+    });
     expect(turin?.artworks[0]?.readIconic).toBe(true);
     // A place its own fame admits is asked nothing about a work.
     expect(item(out, 'Q12512')?.readershipNote).toBeUndefined();

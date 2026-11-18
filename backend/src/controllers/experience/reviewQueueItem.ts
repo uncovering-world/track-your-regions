@@ -16,7 +16,9 @@ import type {
   VisitQuestion, WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
 import type { ImageCredit } from '../../api/responses/experiences.js';
+import type { AdmissionRecord, GuideLink } from '../../api/responses/admission.js';
 import type { CheckValue } from '../../db/schema.generated.js';
+import { editionLanguage, wikivoyageArticleUrl } from '../../services/dumps/wikivoyage/articleUrl.js';
 import type { QueueItemKind } from './reviewQueueVocabulary.js';
 import type { TextSource } from '@tyr/shared/textCredits';
 
@@ -63,6 +65,13 @@ export interface QueueRow {
   /** The serial site the object is a component of (#2158). */
   part_of?: PartOf | null;
   admission_note?: string | null;
+  /** An arrival's kind's record of why it admitted the place (#2184), null where its run wrote none. */
+  admission?: AdmissionRecord | null;
+  /**
+   * The Wikivoyage articles that use an arrival's item, one per edition, the English edition's first; null where the copy
+   * in place keeps no article (`admissionEvidenceSelectSql`).
+   */
+  guide_articles?: { site: string; title: string }[] | null;
   in_danger?: boolean;
   danger_since?: number | null;
   admission_reason?: string | null;
@@ -176,6 +185,11 @@ function iso(value: Date | null | undefined): string | null | undefined {
   return value == null ? value : value.toISOString();
 }
 
+/** A kept Wikivoyage article as the card links it: its title, its address on its edition's host, the edition's language. */
+function guideLinkOf(article: { site: string; title: string }): GuideLink {
+  return { title: article.title, url: wikivoyageArticleUrl(article.site, article.title), lang: editionLanguage(article.site) };
+}
+
 export function queueItemOf(row: QueueRow): ReviewQueueItem {
   return {
     id: row.id,
@@ -203,6 +217,8 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     top_region_names: row.top_region_names,
     part_of: row.part_of,
     admission_note: row.admission_note,
+    admission: row.admission,
+    guides: row.guide_articles === null ? null : row.guide_articles?.map(guideLinkOf),
     seen_in: row.seen_in,
     kept_as_former: row.kept_as_former,
     in_danger: row.in_danger,

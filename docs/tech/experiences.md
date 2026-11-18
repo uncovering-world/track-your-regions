@@ -9993,6 +9993,45 @@ already see the place in (`seen_in`, every other offered membership's kind) and 
 — "Readers already see this place under Art Museums", answered *Keep* —
 rather than that readers see nothing at its address. A place in one kind reads exactly as before.
 
+**An arrival carries why its kind admitted the place, as figures** (#2184, #2179). Beside the
+sentence a run writes for the curator (`admissionNote`), every path that writes one keeps the same
+admission as a record on the kind's membership, `source_records.admission_evidence`
+(`AdmissionRecord`, typed once in `@tyr/shared/admissionEvidence` and built in
+`services/sync/admissionRecord.ts`, ADR-0225), and so do the world tier's editions and readers
+bars, which write no sentence. It is no kind fact: the run's upsert writes it every run
+(`admissionEvidence`), null where the run's path keeps none. The column holds the evidence beside
+the membership's current code, admission or refusal; a refusal's own evidence lands with the reason
+codes, and until then the admission step clears the column where the run refuses the place
+(`markRefused`, `markNotAdmitted`), so no admission's evidence stands beside a refusal. The record
+names the tier (`world` or `surroundings`) and what decided (`decided`, a field of its own): the
+world tier's editions, readers or marked-place readers bar (`worldRecord` in
+`places/worldBars.ts`, read off `WorldStanding.by`), the surroundings test of the editions, the
+readers, the guides or the venues (`surroundingsRecord` in `places/surroundingsCut.ts`, every test
+passed in `cleared` where more than one did), a famous work or find over the readership door's bar
+(`doorRecord` in `readershipDoor.ts`, `museumRecord` in `archaeology/museumVerdict.ts`) or over the
+line (`lineRecord`, Turin Cathedral for the Shroud of Turin's editions against Places of worship's
+line; `museumRecord` for a find over the finds' line), or `kept`
+with what the run could not read (`unread`: the pool, the readers, the guides or the venues). It
+holds the place's own figures (`place`: editions, readers a year, the Wikivoyage editions that use
+it, its cafés and bars around its point or per 100 m along its line), each where the run read it,
+and what they were measured against (`reference`): the world tier's bars as `needed`, the guided
+readers bar among them where the place carries a mark, with what a held place needed to stay
+(`toStay`) where it stayed rather than entered; or the medians of the best places around it as
+`typical`, with the radius, how many set each median, how many places of its density are around it
+and the share of a median each test asks where it is not the whole. What a path names beside the
+figures travels with them: the guide's marks the world tier read (`marks`), the monuments
+categories that named the place (`categories`, Mount Rushmore's *Monuments and memorials in South
+Dakota*), the work or find and its figure against its bar (`work`), the OpenStreetMap object that
+stood in for a class of a site (`osm`) and the ruin mapped under the place's name (`namedRuin`).
+The arrival's card reads the record off the membership it asks about, so a place two kinds ask
+about carries each kind's own (`admission`, `admissionEvidenceSelectSql` in
+`reviewQueueContext.ts`), and with it the Wikivoyage articles that use the membership's item, one
+per edition, its first by title, the English edition's first, each linked on its edition's host
+(`guides`, read off the local copy the usage build keeps, as the guide articles read does). The list
+is empty where no guide uses the item, and null where the copy in place keeps no article at all,
+which says nothing of a guide, as that read's `articlesKept` does. A record is written by its kind's next run; a membership written before it reads null. The card does
+not draw the record yet.
+
 **A fact two kinds' runs propose alike is asked once** (#1599). Most of what a run holds is a fact
 of the place or of one of its parts, which no kind owns (ADR-0084): on the development catalogue on
 2026-10-19, 82 places held proposals from two kinds, and 24 of them had 40 facts both runs proposed

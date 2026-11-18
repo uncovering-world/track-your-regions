@@ -429,6 +429,11 @@ export async function markRefused(
                 -- new question (ADR-0067); one that stands is still answered.
                 admission_answered_at = CASE WHEN m.admission = 'admitted'
                   THEN NULL ELSE m.admission_answered_at END,
+                -- The evidence beside the membership's current code (ADR-0225):
+                -- a refusal's own lands with the reason codes; until then the
+                -- column is cleared, so no admission's evidence stands beside a
+                -- refusal (#2184).
+                admission_evidence = NULL,
                 ${CLEAR_ICONIC},
                 updated_at = NOW()
            FROM experiences e, ${named}
@@ -581,6 +586,11 @@ export async function markNotAdmitted(
                 -- Every row here was admitted: its refusal is a new question
                 -- (ADR-0067).
                 admission_answered_at = NULL,
+                -- The evidence beside the membership's current code (ADR-0225):
+                -- a refusal's own lands with the reason codes; until then the
+                -- column is cleared, so no admission's evidence stands beside a
+                -- refusal (#2184).
+                admission_evidence = NULL,
                 ${CLEAR_ICONIC},
                 updated_at = NOW()
            FROM experiences e

@@ -261,11 +261,11 @@ async function fetchWorshipItems(
   const { gathered, run, surroundings: surroundingsPool } = await gather(progress);
   const surroundingsHeld = await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'surroundings');
   const surroundings = await surroundingsArrivals(run, sparql, WORSHIP_SURROUNDINGS, shareOf(gathered, WORSHIP_KIND).trees, new Set(items.map((p) => p.qid)),
-    (entity, classes, { type }, note): CollectedPlaceOfWorship => ({
+    (entity, classes, { type }, note, admission): CollectedPlaceOfWorship => ({
       qid: entity.qid, label: entity.label, description: entity.description, lat: entity.lat!, lon: entity.lon!,
       imageUrl: entity.imageUrl, itemPictures: entity.itemPictures, sitelinks: entity.sitelinks, countryLabel: entity.countryLabel,
       articleUrl: entity.articleUrl, website: entity.website, type: (type || null) as CollectedPlaceOfWorship['type'], classes,
-      artworks: [], door: 'place', readershipNote: note, tier: 'surroundings',
+      artworks: [], door: 'place', readershipNote: note, admission, tier: 'surroundings',
     }), await surroundingsPool(), surroundingsHeld, undefined, history.memory);
   mergeSurroundings(items, filtered, surroundings, (place) => place.qid, surroundingsHeld);
   // Not read this run (`surroundings.skipped`): its rows stay as they are.
@@ -389,6 +389,8 @@ async function processPlace(
     // place holds, where a treasure is what admitted it. A place through door
     // one is admitted for its own fame and names nothing.
     admittedFor: place.admittedFor ?? null,
+    // Why it is in, as figures for the card's table (#2184).
+    admissionEvidence: place.admission ?? null,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report — as

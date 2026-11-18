@@ -39,6 +39,8 @@ import type { FilteredEntity } from '../syncContract.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
 import { ARCHAEOLOGY_WORLD_REGISTER, WORLD_FRAME } from '../places/admissionRegister.js';
 import type { WorldCandidate } from '../places/worldBars.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
+import { recordNaming } from '../admissionRecord.js';
 
 const LOG_PREFIX = '[Archaeology Sync]';
 
@@ -124,6 +126,11 @@ export interface SiteCandidate {
    * measured it. Absent where none speaks.
    */
   note?: string;
+  /**
+   * Why the tier admitted it, as figures (#2184), with the OpenStreetMap object
+   * that stood in for a class of a site where one did (#895).
+   */
+  admission: AdmissionRecord;
 }
 
 /**
@@ -444,21 +451,29 @@ export function judgeSite(
   });
 }
 
-/** The row the run would write of a candidate the rule passed, with the card's note. */
+/**
+ * The row the run would write of a candidate the rule passed, with the card's
+ * note and the tier's record. A row the map's word carried in (the verdict's
+ * note, #895) names on the record the object and the tag that stood in for a
+ * class of a site.
+ */
 export function siteCandidateOf(
   entity: PoolEntity,
   verdict: Extract<SiteVerdict, { pass: true }>,
-  input: { classes: string[]; objects: OsmObject[]; readAt: string; note?: string },
+  input: { classes: string[]; objects: OsmObject[]; readAt: string; note?: string; admission: AdmissionRecord },
 ): SiteCandidate {
   const { objects, readAt } = input;
   const extent = siteExtent(objects);
   const note = [verdict.note, input.note].filter(Boolean).join(' ');
+  const { object, tag } = verdict.osm;
+  const osm = verdict.note && object && tag ? { tag, element: object } : undefined;
   return {
     entity,
     classes: input.classes,
     osm: { ...verdict.osm, ...provenanceOf(objects, verdict.osm.object, readAt), ...extentProvenanceOf(objects, verdict.osm, readAt) },
     extentWkt: extent ? extent.wkt : null,
     ...(note ? { note } : {}),
+    admission: recordNaming(input.admission, { osm }),
   };
 }
 
@@ -494,7 +509,7 @@ function settle(
   const stands = tier.standing(c, held);
   if (stands === 'out') return null;
   if ('fell' in stands) return { externalId: entity.qid, name: entity.label, reason: stands.fell, group: 'under-the-bars' };
-  return siteCandidateOf(entity, verdict, { ...input, note: tier.noteOf(c, stands) });
+  return siteCandidateOf(entity, verdict, { ...input, note: tier.noteOf(c, stands), admission: tier.recordOf(c, stands) });
 }
 
 /** The refusal of a retyped row (`retypedOf`), where the frame names one. */

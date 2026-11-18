@@ -47,6 +47,7 @@ import { chainOf, ownersOf, type Containment } from '../places/containment.js';
 import type { SubjectFacts } from './subjects.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
+import { recordNaming } from '../admissionRecord.js';
 
 /**
  * The four classes broad enough to need bands: `monument` and `memorial` in
@@ -391,6 +392,8 @@ function kindDecision(
       ...landmarkOf(entity, entity.lat, entity.lon, known, verdict),
       ...(note ? { readershipNote: note } : {}),
       ...(filed ? { wikipediaCategories: filed.categories } : {}),
+      // The bar that admitted it, and the categories that named it where they did.
+      admission: recordNaming(tier.recordOf(c, stands), { categories: filed?.categories }),
     },
     ...admitted,
   };

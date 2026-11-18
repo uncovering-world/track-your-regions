@@ -52,6 +52,40 @@ describe('queueItemOf', () => {
     expect(ReviewQueueItem.safeParse(JSON.parse(JSON.stringify(card))).success).toBe(true);
   });
 
+  it('carries an arrival\'s record of its admission and links its guides on their editions\' hosts (#2184)', () => {
+    // The Temple of Eshmun, in Archaeology by the guides around Sidon.
+    const admission = {
+      tier: 'surroundings', decided: 'guides', place: { editions: 21, readers: 13_733, guides: 3 },
+      reference: { kind: 'typical', editions: 57, readers: 332_715, guides: 8, shares: { readers: 1.5, guides: 0.25 }, radiusKm: 150, best: 10, around: 312 },
+    };
+    const card = queueItemOf(conflictRow({
+      kind: 'arrival', proposed: null, curation_state: 'pending', admission,
+      guide_articles: [{ site: 'enwikivoyage', title: 'Sidon' }, { site: 'dewikivoyage', title: 'Sidon' }, { site: 'frwikivoyage', title: 'Saïda' }],
+    }));
+    expect(card.admission).toEqual(admission);
+    expect(card.guides).toEqual([
+      { title: 'Sidon', url: 'https://en.wikivoyage.org/wiki/Sidon', lang: 'en' },
+      { title: 'Sidon', url: 'https://de.wikivoyage.org/wiki/Sidon', lang: 'de' },
+      { title: 'Saïda', url: 'https://fr.wikivoyage.org/wiki/Sa%C3%AFda', lang: 'fr' },
+    ]);
+    expect(ReviewQueueItem.safeParse(JSON.parse(JSON.stringify(card))).success).toBe(true);
+  });
+
+  it('answers null for an arrival written before the record, and leaves both keys off every other card', () => {
+    const arrival = queueItemOf(conflictRow({ kind: 'arrival', proposed: null, admission: null, guide_articles: [] }));
+    expect(arrival.admission).toBeNull();
+    expect(arrival.guides).toEqual([]);
+    const conflict = JSON.parse(JSON.stringify(queueItemOf(conflictRow())));
+    expect(conflict).not.toHaveProperty('admission');
+    expect(conflict).not.toHaveProperty('guides');
+  });
+
+  it('answers no guides at all, rather than none, where the Wikivoyage copy keeps no article', () => {
+    const card = queueItemOf(conflictRow({ kind: 'arrival', proposed: null, admission: null, guide_articles: null }));
+    expect(card.guides).toBeNull();
+    expect(ReviewQueueItem.safeParse(JSON.parse(JSON.stringify(card))).success).toBe(true);
+  });
+
   it("carries a held work's stored article to the card (#1777)", () => {
     const card = queueItemOf(conflictRow({
       kind: 'held',

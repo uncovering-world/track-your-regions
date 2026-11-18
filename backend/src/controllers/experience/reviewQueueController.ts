@@ -22,7 +22,7 @@ import type { reviewQueueMapQuerySchema, reviewQueueQuerySchema } from '../../ty
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql, placeGoneSql } from '../../db/readerPredicates.js';
 import {
-  objectContextSelectSql, countedWorksSelectSql,
+  admissionEvidenceSelectSql, objectContextSelectSql, countedWorksSelectSql,
 } from './reviewQueueContext.js';
 import {
   heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
@@ -496,7 +496,7 @@ export async function getReviewQueue(
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
            m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
-           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()}, ${admissionEvidenceSelectSql('m')},
            'arrival' AS kind, NULL::jsonb AS proposed, ${seenInSql()} AS seen_in
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id

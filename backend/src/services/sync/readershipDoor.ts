@@ -25,6 +25,7 @@ import { toContent } from './museum/worksCollector.js';
 import type { PoolWork } from './museum/queries.js';
 import { worksShownByOtherSources } from './shownElsewhere.js';
 import type { ProcessedContent } from './types.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 /** ADR-0056 decision 3: the bar is the tier's median. */
 export const DOOR_ENTER_PERCENTILE = 0.5;
@@ -229,4 +230,41 @@ export function doorNote(label: string, work: OpenedWork, door: ReadershipDoor):
   return `Admitted for ${label}, below the sitelinks line but read ${roundViews(work.views)} times this year `
     + `in every counted edition (the readership door's bar is ${roundViews(door.bar)})${work.burst ? BURST_CLAUSE : ''}. `
     + 'Can a visitor see it there now?';
+}
+
+/**
+ * The record of a venue the door alone admitted (#2184): the work, its
+ * editions and its year against the door's bar, and the venue's own editions,
+ * which no bar of the place's admitted it. `decided` is `find` for an
+ * archaeology museum's find (ADR-0164), `work` for every other venue's work.
+ */
+export function doorRecord(
+  work: Pick<PoolWork, 'qid' | 'label' | 'sitelinks'>, read: OpenedWork, door: ReadershipDoor, venueEditions: number,
+  decided: 'work' | 'find' = 'work',
+): AdmissionRecord {
+  return {
+    tier: 'world',
+    decided,
+    place: { editions: venueEditions },
+    reference: null,
+    work: {
+      qid: work.qid, label: work.label, editions: work.sitelinks, readers: Math.round(read.views), burst: read.burst,
+      needed: { readers: Math.round(door.bar) },
+    },
+  };
+}
+
+/**
+ * The record of a venue a work at or over the line admitted (#2184, ADR-0023):
+ * the work and its editions against the line, and the venue's own editions,
+ * which no bar of the place's admitted it.
+ */
+export function lineRecord(work: Pick<PoolWork, 'qid' | 'label' | 'sitelinks'>, venueEditions: number, line: number): AdmissionRecord {
+  return {
+    tier: 'world',
+    decided: 'work',
+    place: { editions: venueEditions },
+    reference: null,
+    work: { qid: work.qid, label: work.label, editions: work.sitelinks, needed: { editions: line } },
+  };
 }

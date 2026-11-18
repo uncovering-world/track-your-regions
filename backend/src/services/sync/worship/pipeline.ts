@@ -62,7 +62,8 @@ import type { ClosureOptions } from '../classClosure.js';
 import { unique, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
-import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
+import { admittingWork, doorNote, doorRecord, lineRecord, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
 import type { WorldOptions } from '../places/worldTier.js';
 
@@ -98,6 +99,12 @@ export interface CollectedPlaceOfWorship {
    * by a guide's mark (ADR-0175), the mark and its readers.
    */
   readershipNote?: string;
+  /**
+   * Why it is in, as figures (#2184): the bars or the surroundings it was
+   * measured against, or the work that admitted it, with its editions against
+   * the line or its readers against the door's bar.
+   */
+  admission?: AdmissionRecord;
   /** The tier that admitted it where it is not the world's: ADR-0171's surroundings tier (#2178). */
   tier?: 'surroundings';
 }
@@ -297,6 +304,7 @@ function itemOf(
   works: PoolWork[],
   pool: Map<string, PoolWork>,
   readership: ReadershipDoor | null,
+  line: SourceLine,
 ): CollectedPlaceOfWorship | undefined {
   const row = byFame?.entity ?? graph.details.get(qid);
   if (!row || row.lat === null || row.lon === null) return undefined;
@@ -324,8 +332,14 @@ function itemOf(
     // A place its own fame admits needs no question about a work; one a
     // guide's mark admitted carries the bars' note instead.
     ...(byFame?.note ? { readershipNote: byFame.note } : {}),
-    ...(admitting?.read && readership && !byFame
-      ? { readershipNote: doorNote(admitting.work.label, admitting.read, readership) } : {}),
+    ...(byFame ? { admission: byFame.admission } : {}),
+    // A place a work over the line admitted asks nothing, and its record says
+    // which work and its editions against the line.
+    ...(admitting && !admitting.read && !byFame ? { admission: lineRecord(admitting.work, row.sitelinks, line.enterSitelinks) } : {}),
+    ...(admitting?.read && readership && !byFame ? {
+      readershipNote: doorNote(admitting.work.label, admitting.read, readership),
+      admission: doorRecord(admitting.work, admitting.read, readership, row.sitelinks),
+    } : {}),
   };
 }
 
@@ -429,7 +443,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   const items: CollectedPlaceOfWorship[] = [];
   for (const qid of admitted) {
     const item = itemOf(
-      qid, byFame.places.get(qid), venues.get(qid), works.graph, held.get(qid) ?? [], works.pool, readership,
+      qid, byFame.places.get(qid), venues.get(qid), works.graph, held.get(qid) ?? [], works.pool, readership, deps.line,
     );
     if (item) items.push(item);
   }

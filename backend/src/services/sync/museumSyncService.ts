@@ -432,6 +432,8 @@ async function upsertMuseumExperience(
     // the museum holds. On the membership rather than in metadata since #822 —
     // it is what the kind says about the place, not the place.
     admittedFor: museum.admittedFor ?? null,
+    // The same as figures, for the card's table (#2184); null beside a null note.
+    admissionEvidence: museum.admission ?? null,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId, lifetimes: context.lifetimes });
 
   // Undefined on a preview, which writes no point and so has none to report — as

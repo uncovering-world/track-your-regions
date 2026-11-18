@@ -162,6 +162,32 @@ export function objectContextSelectSql(alias = 'e'): string {
 }
 
 /**
+ * Why an arrival's kind admitted the place, as figures (#2184): the record its
+ * run keeps on the membership the card asks about (`admission_evidence`), so a
+ * place two kinds ask about shows each kind's own on each kind's card, and
+ * the Wikivoyage articles that use the membership's item, which the record's
+ * guides are counted from: one per edition, its first by title, the English
+ * edition's first. The articles are the local copy the usage build keeps
+ * (`wikivoyage_articles`), read by its key, as the guide articles read does
+ * (`guideArticlesController.ts`). Where the copy keeps no article at all, a
+ * copy built before the articles were kept or none in place, the list is
+ * null rather than empty, as that read's `articlesKept` says: an empty list
+ * would read as no guide using the place. A row written before the record has
+ * none, and reads null.
+ */
+export function admissionEvidenceSelectSql(membership: string): string {
+  return `${membership}.admission_evidence AS admission,
+          CASE WHEN EXISTS (SELECT 1 FROM wikivoyage_articles)
+               THEN COALESCE((SELECT jsonb_agg(jsonb_build_object('site', g.site, 'title', g.title)
+                                               ORDER BY g.site <> 'enwikivoyage', g.site)
+                                FROM (SELECT DISTINCT ON (wa.site) wa.site, wa.title
+                                        FROM wikivoyage_articles wa
+                                       WHERE wa.item = ${membership}.external_id
+                                       ORDER BY wa.site, wa.title, wa.page_id) g), '[]'::jsonb)
+          END AS guide_articles`;
+}
+
+/**
  * The famous works a refusal counted, named — and, below, how many there are in all.
  *
  * A refusal reads "0 of 5 famous works are paintings" and a curator's first question is

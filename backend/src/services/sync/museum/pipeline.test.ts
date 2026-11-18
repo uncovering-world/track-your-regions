@@ -229,10 +229,16 @@ describe('collectTier1Museums', () => {
     const almost = out.items.find((i) => i.qid === 'Q900311')!;
     expect(almost.admittedFor).toEqual({ qid: 'Q900402', label: 'Work Below the Threshold' });
     expect(almost.readershipNote).toContain('read 276,677 times this year');
+    // The same as figures (#2184): the work's year against the door's bar.
+    expect(almost.admission).toMatchObject({
+      tier: 'world', decided: 'work', reference: null,
+      work: { qid: 'Q900402', label: 'Work Below the Threshold', editions: 20, readers: 276_677, burst: false, needed: { readers: 133_366 } },
+    });
     expect(almost.artworks.find((a) => a.externalId === 'Q900402')?.readIconic).toBe(true);
     // A museum the line admits is asked nothing, and its works are badged by the line.
     const louvre = out.items.find((i) => i.qid === 'Q19675')!;
     expect(louvre.readershipNote).toBeUndefined();
+    expect(louvre.admission).toBeUndefined();
     expect(louvre.artworks[0].readIconic).toBeUndefined();
   });
 

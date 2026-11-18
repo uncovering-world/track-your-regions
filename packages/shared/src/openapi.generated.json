@@ -18848,6 +18848,291 @@
         "additionalProperties": false,
         "description": "The admission pins in a curator's scope (#1369)."
       },
+      "AdmissionRecord": {
+        "type": "object",
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": [
+              "world",
+              "surroundings"
+            ]
+          },
+          "decided": {
+            "type": "string",
+            "enum": [
+              "editions",
+              "readers",
+              "guided",
+              "guides",
+              "venues",
+              "kept",
+              "work",
+              "find"
+            ],
+            "description": "What admitted the place: its editions, its readers, its readers over the bar for a place a guide marks (`guided`), the guides that use it, the cafés and bars around it, a famous work or find it holds, or `kept` where a held place was kept because the run could not read what decides it."
+          },
+          "cleared": {
+            "description": "Every test the place passed, the deciding one first, where it passed more than one.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "editions",
+                "readers",
+                "guided",
+                "guides",
+                "venues",
+                "kept",
+                "work",
+                "find"
+              ]
+            }
+          },
+          "stayed": {
+            "description": "Whether a place the tier held stayed by the stay share of a bar or test rather than entering.",
+            "type": "boolean"
+          },
+          "unread": {
+            "description": "What the run could not read, where `decided` is `kept`.",
+            "type": "string",
+            "enum": [
+              "pool",
+              "readers",
+              "guides",
+              "venues"
+            ]
+          },
+          "place": {
+            "type": "object",
+            "properties": {
+              "editions": {
+                "description": "Wikipedia editions.",
+                "type": "number"
+              },
+              "readers": {
+                "description": "Readers a year, in every counted edition (ADR-0055).",
+                "type": "number"
+              },
+              "guides": {
+                "description": "The Wikivoyage editions that use the place, where the tier counts them (the surroundings tier).",
+                "type": "number"
+              },
+              "venues": {
+                "description": "Cafés, restaurants and bars within the venue radius of the point (ADR-0192).",
+                "type": "number"
+              },
+              "venuesPer100m": {
+                "description": "Cafés, restaurants and bars per 100 m along the street's line (ADR-0194).",
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "description": "A place's figures, each where the run read it: absent where it read none, never zero for unread."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "needed",
+                      "typical"
+                    ],
+                    "description": "`needed`: the bars of the world tier, what a place needs to get in. `typical`: the medians of the best places around it."
+                  },
+                  "editions": {
+                    "description": "Wikipedia editions.",
+                    "type": "number"
+                  },
+                  "readers": {
+                    "description": "Readers a year, in every counted edition (ADR-0055).",
+                    "type": "number"
+                  },
+                  "guides": {
+                    "description": "The Wikivoyage editions that use the place, where the tier counts them (the surroundings tier).",
+                    "type": "number"
+                  },
+                  "venues": {
+                    "description": "Cafés, restaurants and bars within the venue radius of the point (ADR-0192).",
+                    "type": "number"
+                  },
+                  "venuesPer100m": {
+                    "description": "Cafés, restaurants and bars per 100 m along the street's line (ADR-0194).",
+                    "type": "number"
+                  },
+                  "guidedReaders": {
+                    "description": "The world tier's readers bar for a place a guide marks, where the place carries a mark.",
+                    "type": "number"
+                  },
+                  "toStay": {
+                    "description": "What a place the world tier held needed to stay, where it stayed rather than entered (ADR-0175 decision 2).",
+                    "type": "object",
+                    "properties": {
+                      "editions": {
+                        "type": "number"
+                      },
+                      "readers": {
+                        "type": "number"
+                      },
+                      "guidedReaders": {
+                        "type": "number"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "shares": {
+                    "description": "The share of each median a surroundings test asks, where it is not the whole: 1.5 times the readers, a quarter of the guides.",
+                    "type": "object",
+                    "properties": {
+                      "editions": {
+                        "type": "number"
+                      },
+                      "readers": {
+                        "type": "number"
+                      },
+                      "guides": {
+                        "type": "number"
+                      },
+                      "venues": {
+                        "type": "number"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "radiusKm": {
+                    "description": "How far around the place its surroundings reach.",
+                    "type": "number"
+                  },
+                  "best": {
+                    "description": "How many of the best places around set each median.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "around": {
+                    "description": "How many places of its density lie within the radius.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "description": "What the place's figures were measured against."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "marks": {
+            "description": "The guide's marks the world tier read of the place.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "guide",
+                "atlas-obscura",
+                "world-heritage"
+              ]
+            }
+          },
+          "categories": {
+            "description": "English Wikipedia's monuments categories that named the place (#2171).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "work": {
+            "type": "object",
+            "properties": {
+              "qid": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "editions": {
+                "type": "number"
+              },
+              "readers": {
+                "type": "number"
+              },
+              "burst": {
+                "description": "Whether its year is a burst: a quarter in one week, or months that swing.",
+                "type": "boolean"
+              },
+              "needed": {
+                "description": "The bar its figure cleared.",
+                "type": "object",
+                "properties": {
+                  "editions": {
+                    "type": "number"
+                  },
+                  "readers": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "qid",
+              "label"
+            ],
+            "additionalProperties": false,
+            "description": "The famous work or find whose figures admitted the place that holds it (ADR-0056, ADR-0164)."
+          },
+          "osm": {
+            "description": "The OpenStreetMap object that stood in for a class of a site: the tag and the element (#895).",
+            "type": "object",
+            "properties": {
+              "tag": {
+                "type": "string"
+              },
+              "element": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag",
+              "element"
+            ],
+            "additionalProperties": false
+          },
+          "namedRuin": {
+            "description": "The ruin OpenStreetMap maps near the place under its name, where no object carries its item (ADR-0188).",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "element": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "element"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "tier",
+          "decided",
+          "place",
+          "reference"
+        ],
+        "additionalProperties": false,
+        "description": "Why the run admitted the place to the kind, as figures (#2184)."
+      },
       "AdmissionResult": {
         "type": "object",
         "properties": {
@@ -29560,6 +29845,30 @@
         ],
         "additionalProperties": false
       },
+      "GuideLink": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The article's title as a reader reads it."
+          },
+          "url": {
+            "type": "string",
+            "description": "The article on its edition's own host."
+          },
+          "lang": {
+            "type": "string",
+            "description": "The edition's language, as its host names it: en for en.wikivoyage.org."
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "lang"
+        ],
+        "additionalProperties": false,
+        "description": "A Wikivoyage article that uses the place."
+      },
       "HandBackPinBody": {
         "type": "object",
         "properties": {
@@ -39812,6 +40121,31 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "admission": {
+            "description": "On an arrival: why the run of the kind this card asks about admitted the place, as figures (#2184), read off that kind's membership, so a place two kinds ask about carries each kind's own. Null where its run has written none yet; absent on every other card.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdmissionRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guides": {
+            "description": "On an arrival: the Wikivoyage articles that use the place's item, one per edition, the English edition's first (#2184). Empty where none does; null where the Wikivoyage copy in place keeps no article, built before the articles were kept or none in place, so nothing is known of the guides; absent on every other card.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GuideLink"
+                }
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "in_danger": {

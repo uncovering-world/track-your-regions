@@ -143,6 +143,7 @@ describe('Archaeology\'s sites in the frame (ADR-0179)', () => {
     expect(tipon?.tier).toBe('surroundings');
     expect(tipon?.osm.tag).toBe('historic=archaeological_site');
     expect(tipon?.admissionNote).toContain('In the surroundings tier by');
+    expect(tipon?.admission).toMatchObject({ tier: 'surroundings', reference: { kind: 'typical', radiusKm: 150 } });
     expect(out.surroundingsSkipped).toBeUndefined();
   });
 
@@ -224,6 +225,7 @@ describe('Archaeology\'s sites in the frame (ADR-0179)', () => {
     const site = siteOf(out.items, ABELLINUM);
     expect(site?.tier).toBe('surroundings');
     expect(site?.admissionNote).toContain(namedRuinNote(ruin));
+    expect(site?.admission?.namedRuin).toEqual({ name: ruin.name, element: ruin.ref });
   });
 
   it('shows no archaeology museum by a ruin of its name: the Museum of Paestum stays out beside Paestum (ADR-0188)', async () => {

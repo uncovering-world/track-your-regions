@@ -15,10 +15,11 @@ import type { KindShare } from './gather.js';
 import { placeLandmark } from './candidates.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import {
-  barsLine, barsToAdmitBy, guidedBarNote, keptNote, reachesABar, readAtlas, readWorld, worldBars, worldStanding,
+  barsLine, barsToAdmitBy, guidedBarNote, keptNote, reachesABar, readAtlas, readWorld, worldBars, worldRecord, worldStanding,
   type WorldBars, type WorldCandidate, type WorldRead, type WorldStanding,
 } from './worldBars.js';
 import type { WorldHistory } from './worldMemory.js';
+import type { AdmissionRecord } from '@tyr/shared/admissionEvidence';
 
 /** The bars a kind opened this run, and how a candidate stands against them. */
 export interface WorldTier {
@@ -30,6 +31,8 @@ export interface WorldTier {
   reaches(c: WorldCandidate): boolean;
   /** The note a row in by `standing` carries, where one is asked: the guide's mark, or why a held place was kept. */
   noteOf(c: WorldCandidate, standing: Exclude<WorldStanding, 'out' | { fell: string }>): string | undefined;
+  /** The record a row in by `standing` carries (#2184): the bar that decided, its figures and the bars. */
+  recordOf(c: WorldCandidate, standing: Exclude<WorldStanding, 'out' | { fell: string }>): AdmissionRecord;
 }
 
 /**
@@ -102,6 +105,7 @@ export async function openWorldTier(
       if (stands.kept) return keptNote(c, stands.kept);
       return stands.by === 'guided' && bars ? guidedBarNote(c, signals, bars) : undefined;
     },
+    recordOf: (c, stands) => worldRecord(c, signals, bars, stands),
   };
 }
 
@@ -162,7 +166,7 @@ export async function classifyByWorldBars<Trees, Type extends WikidataLandmark['
       continue;
     }
     const note = tier.noteOf(c, stands);
-    items.push({ ...placeLandmark(entity, classes, verdict.type), ...(note ? { readershipNote: note } : {}) });
+    items.push({ ...placeLandmark(entity, classes, verdict.type), ...(note ? { readershipNote: note } : {}), admission: tier.recordOf(c, stands) });
   }
   console.log(`${kind.logPrefix} Pool of ${pool.size}: ${items.length} admitted, ${filtered.length} refused`);
   return { items, fetched: pool.size, filtered };

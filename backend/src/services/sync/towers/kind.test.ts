@@ -103,6 +103,28 @@ describe('classifyTowers', () => {
     expect(note(GALATA.qid)).toBeUndefined();
   });
 
+  it('records on every tower the bar that let it in, its figures and the bars, the editions and readers bars too (#2184)', async () => {
+    const { items } = await classifyTowers(share(), held, sparql, signals());
+    const record = (qid: string) => items.find((item) => item.qid === qid)?.admission;
+    const needed = { kind: 'needed', editions: 40, readers: 51_000 };
+    expect(record(GALATA.qid)).toEqual({ tier: 'world', decided: 'editions', place: { editions: 56, readers: 509_000 }, reference: needed });
+    expect(record(ASINELLI.qid)).toEqual({
+      tier: 'world', decided: 'readers', place: { editions: 9, readers: 51_000 }, reference: { ...needed, guidedReaders: 20_000 }, marks: ['guide'],
+    });
+    expect(record(TORRAZZO.qid)).toEqual({
+      tier: 'world', decided: 'guided', place: { editions: 14, readers: 39_000 }, reference: { ...needed, guidedReaders: 20_000 }, marks: ['guide'],
+    });
+    // The held tower in 32 editions stayed at 0.8 of the editions bar.
+    expect(record(KEPT.qid)).toMatchObject({ decided: 'editions', stayed: true, reference: { toStay: { editions: 32, readers: 40_800 } } });
+  });
+
+  it('records what a held tower was kept for where the run read no year', async () => {
+    const { items } = await classifyTowers(share(), held, sparql, signals(null));
+    expect(items.find((item) => item.qid === FALLEN.qid)?.admission).toEqual({
+      tier: 'world', decided: 'kept', unread: 'readers', place: { editions: 20 }, reference: { kind: 'needed', editions: 40 },
+    });
+  });
+
   it('names a held tower under every stay bar with its signals, and the rule\'s refusals worth naming', async () => {
     const { filtered } = await classifyTowers(share(), held, sparql, signals());
     expect(filtered).toEqual([

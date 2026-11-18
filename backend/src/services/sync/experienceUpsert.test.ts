@@ -691,9 +691,10 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // whether the source reads extents, unsaid (ADR-0146), and the article the
     // run reports, its view's (#1975), and the label it sent, before a twin's
     // suffix (#1967), and the kind's own facts for its membership (ADR-0153),
-    // whole for a new one and as a held one keeps them (#2068).
-    expect(params).toHaveLength(38);
-    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, FACTS, FACTS]);
+    // whole for a new one and as a held one keeps them (#2068), and why the run
+    // admitted it, none here (#2184, ADR-0225).
+    expect(params).toHaveLength(39);
+    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, FACTS, FACTS, null]);
     expect(sql).not.toContain("'artworkCount'");
   });
 

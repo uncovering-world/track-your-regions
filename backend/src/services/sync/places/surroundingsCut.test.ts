@@ -250,6 +250,13 @@ describe('the cut where no Wikivoyage usage is built (ADR-0175 decision 6)', () 
       note: 'In the surroundings tier by the guides: within 150 km, 1,089 places of its density: the 10 best are read in 16 '
         + 'Wikipedia editions at the median, this place in 5; the best have 33,117.5 readers a year at the median, this place 5,320; '
         + 'the best are used by 3 Wikivoyage editions at the median, this place by 1 (ADR-0171, ADR-0175, ADR-0181)',
+      admission: {
+        tier: 'surroundings', decided: 'guides', place: { editions: 5, readers: 5_320, guides: 1 },
+        reference: {
+          kind: 'typical', editions: 16, readers: 33_117.5, guides: 3, shares: { readers: 1.5, guides: 0.25 },
+          radiusKm: 150, best: 10, around: 1_089,
+        },
+      },
     });
     const dam = surroundingsVerdict({ ...eschbachDam, guideEditions: 2 }, eschbach, SURROUNDINGS_CUT, true);
     expect(dam.in && dam.note).toMatch(/^In the surroundings tier by the guides: within 150 km, 28,467 places .* the best are used by 3\.5 Wikivoyage editions at the median, this place by 2 /);
@@ -262,6 +269,10 @@ describe('the cut where no Wikivoyage usage is built (ADR-0175 decision 6)', () 
       note: 'Kept in the surroundings tier, the guides\' test unread: within 150 km, 1,089 places of its density: the 10 best are read in 16 '
         + 'Wikipedia editions at the median, this place in 5; the best have 33,117.5 readers a year at the median, this place 5,320; '
         + 'no Wikivoyage usage is built, so no guide\'s use is read; a Wikivoyage edition used this place when last read (ADR-0175 decision 6, ADR-0181)',
+      admission: {
+        tier: 'surroundings', decided: 'kept', unread: 'guides', place: { editions: 5, readers: 5_320 },
+        reference: { kind: 'typical', editions: 16, readers: 33_117.5, shares: { readers: 1.5, guides: 0.25 }, radiusKm: 150, best: 10, around: 1_089 },
+      },
     });
     const dam = surroundingsVerdict({ ...eschbachDam, guideEditions: null, guidedAsLastRead: true }, eschbach, SURROUNDINGS_CUT, true);
     expect(dam.in && dam.note).toMatch(/^Kept in the surroundings tier, the guides' test unread: /);
@@ -447,6 +458,62 @@ describe('the venue test of a kind that reads the venues around its places (ADR-
     const v = surroundingsVerdict({ editions: 4, guideEditions: 3, readers: 7_617 }, bangkokNoi);
     expect(v.in && v.reference).toEqual({ editions: 25.5, guide: 4, readers: 118_481 });
     expect(v.in && v.note).not.toMatch(/café/);
+  });
+});
+
+describe('the record of a place the surroundings tier admits (#2184)', () => {
+  const recordOf = (v: ReturnType<typeof surroundingsVerdict>) => (v.in ? v.admission : null);
+
+  it('records the guides that let in the Temple of Eshmun, against the medians of the best around it', () => {
+    // Its neighbourhood schematic, with the medians its card read: 57 editions, 332,715 readers, 8 guides.
+    const sidon: Surroundings = {
+      groupSize: 312,
+      topEditions: [90, 80, 70, 60, 58, 56, 50, 45, 40, 35],
+      topGuideEditions: [12, 11, 10, 9, 8, 8, 7, 6, 5, 4],
+      topReaders: [900_000, 700_000, 500_000, 400_000, 335_430, 330_000, 250_000, 200_000, 150_000, 100_000],
+    };
+    expect(recordOf(surroundingsVerdict({ editions: 21, guideEditions: 3, readers: 13_733 }, sidon))).toEqual({
+      tier: 'surroundings', decided: 'guides', place: { editions: 21, readers: 13_733, guides: 3 },
+      reference: {
+        kind: 'typical', editions: 57, readers: 332_715, guides: 8, shares: { readers: 1.5, guides: 0.25 }, radiusKm: 150, best: 10, around: 312,
+      },
+    });
+  });
+
+  it('records the cafés and bars along Dizengoff Street, per 100 m, against the streets around it read the same way', () => {
+    // Its card's figures: 14 editions against 58, 11,279 readers against 206,875, no guide against 5, 1.7 venues per 100 m against 2.
+    const telAviv: Surroundings = {
+      groupSize: 640,
+      topEditions: [80, 75, 70, 65, 60, 56, 50, 45, 40, 35],
+      topGuideEditions: [9, 8, 7, 6, 5, 5, 4, 3, 2, 2],
+      topReaders: [600_000, 500_000, 400_000, 300_000, 210_000, 203_750, 180_000, 150_000, 120_000, 100_000],
+      venues: { groupSize: 90, topVenues: [4, 3.5, 3, 2.5, 2, 2, 1.8, 1.6, 1.4, 1.2], along: true },
+    };
+    const dizengoff = { editions: 14, guideEditions: 0, readers: 11_279, venues: 1.7, venuesAlong: { metres: 3_100 } };
+    expect(recordOf(surroundingsVerdict(dizengoff, telAviv))).toEqual({
+      tier: 'surroundings', decided: 'venues', place: { editions: 14, readers: 11_279, guides: 0, venuesPer100m: 1.7 },
+      reference: {
+        kind: 'typical', editions: 58, readers: 206_875, guides: 5, venuesPer100m: 2, shares: { readers: 1.5, guides: 0.25, venues: 0.5 },
+        radiusKm: 150, best: 10, around: 640,
+      },
+    });
+  });
+
+  it('records every test a place passed, the first as the one that decided', () => {
+    const v = surroundingsVerdict({ editions: 40, guideEditions: 2, readers: read }, kyoto);
+    expect(recordOf(v)).toMatchObject({ decided: 'editions', cleared: ['editions', 'guides'] });
+  });
+
+  it('records a held place that stayed, with the shares it stayed at', () => {
+    // The tower read 26,000 times in Ottawa's neighbourhood, held: 1.2 times the readers median and 0.8 of the editions.
+    const held = recordOf(surroundingsVerdict({ editions: 6, guideEditions: 0, readers: 26_000 }, ottawa, SURROUNDINGS_CUT, true));
+    expect(held).toMatchObject({ decided: 'readers', stayed: true, reference: { shares: { editions: 0.8, readers: 1.2, guides: 0.25 } } });
+  });
+
+  it('records the venue test a held street was kept for, where the layer kept no venue', () => {
+    const kept = recordOf(surroundingsVerdict({ ...bauman, venues: null, venuedAsLastRead: true }, kazan, SURROUNDINGS_CUT, true));
+    expect(kept).toMatchObject({ decided: 'kept', unread: 'venues', place: { editions: 8, readers: 16_086, guides: 0 } });
+    expect(kept?.place).not.toHaveProperty('venues');
   });
 });
 
