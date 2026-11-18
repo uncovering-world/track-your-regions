@@ -543,8 +543,7 @@ each site's reference on that site's record: the writer that names a part for it
 point's reference on the record in the whole whose list placed the point, and only a reference of a
 component's shape (`followTheirPoints`), and a point reads the record under its own reference,
 compared as the run compares it, case aside (`823-001B`), before the earliest whole's
-(`pointRecordSql`). Migration 232 turned each part's membership of the virtual kind World Heritage components,
-which ADR-0156 had keyed by the relation, into its relation's record, and deleted the kind. The
+(`pointRecordSql`). The
 record carries its part's gate (ADR-0213, #2123): `curation_state` says whether a curator has
 read the part, `admission` whether one turned it down (the shape of a curator's no to an arrival,
 "kept out by a curator"), `missing_since` and `source_membership` whether the list still gives
@@ -6903,7 +6902,8 @@ Maggiore, and crowds out 51 more of its churches.
 - **The schema recounts between runs.** `crowding_follows_membership()` and
   `crowding_follows_place()` call `recount_crowding(near)` within the radius of a place. They fire
   when a membership's admission, type, kind, place or standing today changes, when the membership is deleted, and
-  when a place's existence or point changes or the place is deleted. `crowding_follows_link()` and
+  when a place's point moves or the place is deleted (a place that stops standing, or stands again,
+  recounts through its memberships' standing). `crowding_follows_link()` and
   `crowding_follows_work()` recount around a place when what it holds changes: a link written,
   deleted, no longer placed, read or moved, or a work read. They go through
   `crowding_recount_place(place)`, which does nothing for a place in no kind with the rule, so a
@@ -7251,12 +7251,12 @@ query, and the rule is deliberately asymmetric because the reasons are:
 | ordinary | shown | shown | nothing |
 | flagged `missing_since` only | shown | shown | **nothing** |
 | `former` | shown | shown | `Former` chip |
-| `lost` | hidden | **shown** | `Lost` chip |
+| gone: no standing period open, as its run read them or a curator's *lost* closed them | hidden | **shown** | `Lost` chip |
 | the membership's `admission = 'refused'` | hidden | **shown** | not reachable, except `GET /:id`, `/:id/locations` and `/:id/treasures` for a curator/admin whose scope reaches the experience (ADR-0222) |
 | the membership's `curation_state = 'pending'` | hidden | **hidden** | not reachable, except `GET /:id`, `/:id/locations` and `/:id/treasures` for a curator/admin whose scope reaches the experience |
 
 `former` is a claim about the source's catalogue, not about the world: the place still stands
-and you can still go, so nothing about who sees it changes. `lost` is a claim about the world,
+and you can still go, so nothing about who sees it changes. Being gone is a claim about the world,
 and offering somewhere demolished as somewhere to go is the one thing this data can get
 actively wrong — so it leaves every read that offers a *set* to go through: the lists, the map,
 search and the counts. It does **not** leave a visit: someone who saw Palmyra before 2015 saw
@@ -7266,9 +7266,9 @@ counts elsewhere shrink without erasing anything. The fourth is kept out at the 
 `markVisited` refuses a row this reader was never offered (`experienceOfferedToReaderSql`), so an
 unread row never gets a visit to hide.
 
-**A by-id read is the documented exception, and it is `lost` only.** `getExperience` and its
-siblings hide a row the kind refused from a reader (a curator in scope reads it, ADR-0222) but leave a `lost` one reachable, so an object judged
-lost still answers at its own address rather than 404ing there. That gap predates the admission
+**A by-id read is the documented exception, and it is gone only.** `getExperience` and its
+siblings hide a row the kind refused from a reader (a curator in scope reads it, ADR-0222) but leave a gone one reachable, so a gone object
+still answers at its own address rather than 404ing there. That gap predates the admission
 axis and closing it is a separate decision about a different question — recorded here because
 the code says so only in comments, at `getExperience` and `getExperienceLocations`, and this file is where a reader looks first. (The `Lost` chip
 is a list-surface control, rendered by `ExperienceListItem` and Discover's `ExperienceCard`, so
@@ -7571,8 +7571,8 @@ Every call the web makes here lives in `frontend/src/api/visited.ts`, and its an
 
 **A visit is one row on the place ticked, and a whole is read through its parts** (#2120,
 [ADR-0199](../decisions/0199-a-visit-is-one-row-on-the-place-ticked-and-a-whole-is-read-through-its-parts.md)).
-`user_visited_experiences` is the one table of a traveller's visits (migration 235 folded the point
-visits of `user_visited_locations` into it and dropped that table, and removed the rows the old
+`user_visited_experiences` is the one table of a traveller's visits (migration 235 folded a traveller's
+ticks on points into it, and removed the rows the old
 cascade had written on a whole beside the traveller's visit on one of its parts that the whole
 reads, unless a note or a rating was written on them or the traveller had ticked a point of the
 whole's own: a row on a whole now means the whole was ticked itself). A tick on a point is a visit to

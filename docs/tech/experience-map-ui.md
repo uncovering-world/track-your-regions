@@ -173,8 +173,9 @@ it is read out once when the line opens or changes; every choice is a button, he
 
 ### Lifecycle and what the map draws
 
-Experiences a curator recorded as `lost` are absent from the markers, because the batch above
-filters them exactly as the list does — offering somewhere demolished as somewhere to go is
+A place that is gone, whose standing periods have all ended, as its run read them or a
+curator's *lost* closed them, is absent from the markers, because the batch above
+filters it exactly as the list does — offering somewhere demolished as somewhere to go is
 the one thing this data can get actively wrong. `former` is untouched: the place still stands,
 so it keeps its pins and its card carries the chip instead.
 

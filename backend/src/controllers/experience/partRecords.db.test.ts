@@ -333,7 +333,7 @@ describe('the real shapes of a list (ADR-0198)', () => {
       [false, ALCAZAR.externalRef, ALCAZAR.name],
       [false, ARCHIVO.externalRef, ARCHIVO.name],
     ]);
-    // Still a place of worship of its own, as before the record left the virtual kind.
+    // Still a place of worship of its own: a record in a whole leaves the place's kinds as they were.
     const kinded = await pool.query<{ kinded: boolean }>(`SELECT ${placeHoldsKindSql('$1::int')} AS kinded`, [SEVILLE_CATHEDRAL_OF_WORSHIP]);
     expect(kinded.rows[0].kinded).toBe(true);
   });
