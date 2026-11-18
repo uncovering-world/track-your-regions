@@ -66,7 +66,7 @@ export function gateKey({ gate, hashes, belongs, runtime }) {
  * opened.
  *
  * An untracked file's hash carries a `?` in front. Some gates read only what
- * git tracks (`lint:shell`, `lint:docker` and `lint:pointers` take their list
+ * git tracks (`lint:shell`, `lint:docker`, `lint:pointers` and `lint:retired` take their list
  * from `git ls-files`), so the same bytes before and after `git add` are two
  * different inputs to them, and the key has to move when the file is staged.
  */

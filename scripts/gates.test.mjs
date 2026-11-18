@@ -49,7 +49,7 @@ function outputs(paths) {
 
 describe('what a change asks for', () => {
   it('asks only the docs gates and the secrets scan for a change of prose', () => {
-    expect(applying(['docs/tech/x.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'lint:shrunk']);
+    expect(applying(['docs/tech/x.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'lint:retired', 'lint:shrunk']);
 
     // This is the case #783 was filed for: a Markdown-only pull request asks
     // for the docs gates and the secrets scan, which reads every file. The check job still runs — it is
@@ -94,6 +94,7 @@ describe('what a change asks for', () => {
       'lint:circular',
       'security:secrets',
       'lint:pointers',
+      'lint:retired',
       'lint:allowance',
       'lint:shrunk',
       'test:backend',
@@ -125,6 +126,7 @@ describe('what a change asks for', () => {
       'security:secrets',
       'api:client',
       'lint:pointers',
+      'lint:retired',
       'lint:allowance',
       'lint:shrunk',
       'test:backend',
@@ -331,7 +333,7 @@ describe('what a change asks for', () => {
     expect(scan).not.toContain('test:e2e:smoke');
     expect(applying(['scripts/require-py-tools.sh'])).toEqual(expect.arrayContaining(['check:py', 'test:py']));
     // The map's own document: the docs gates, and the spec that pins its tables.
-    expect(applying(['docs/tech/gates.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'lint:shrunk', 'test:backend']);
+    expect(applying(['docs/tech/gates.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'lint:retired', 'lint:shrunk', 'test:backend']);
   });
 
   it('asks a changed npm script of the root manifest for the gates that run it', () => {

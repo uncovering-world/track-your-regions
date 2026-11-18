@@ -786,6 +786,8 @@ What such a change supersedes is one of five kinds:
 
 **Coexistence is a dated exception, not a state.** When a guard cannot go yet — a consumer still reads the old copy, a route still bypasses the registry — the pull request links the follow-up issue that owns the removal and names the dependency that blocks it now. "Remove later" with no issue, or an issue with no stated dependency, does not qualify.
 
+**A model retired in slices is held by a ledger.** When a decision retires a set of names across many slices, as ADR-0225 does for the catalogue's model, the names are entries of `scripts/retired-model.json`, each with the slice that retires it, and `lint:retired` refuses a retired one wherever living text holds it: a slice flips its entries to retired in the pull request that deletes them, and a pending entry's remaining mentions are printed as that slice's debt (`docs/tech/gates.md` § The retired model).
+
 **What is rejected.** An abstraction added beside independent representations that stay authoritative indefinitely is a new layer, not a home, and is not accepted as a migration: a shared module both sides *may* import while each keeps its own copy, a registry some routes join while the rest keep their hand-written middleware and the lint rule that polices them. A slice that deletes nothing has not moved the rule; it has added one more place that states it.
 
 ## A field a reader is shown is a field a curator corrects

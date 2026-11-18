@@ -35,9 +35,9 @@ import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
  */
 const TOOL_SCRIPTS = [
   'adr-issues.sh', 'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'check-screen-allowance.mjs', 'check-shrunk-files.mjs', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
-  'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'gates-base.mjs', 'gates-run.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
+  'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'gates-base.mjs', 'gates-run.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs', 'lint-retired-model.mjs',
   'match-snapshot.sh', 'migrate-on-rows.mjs', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
-  'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'scan-secrets.sh', 'setup.sh',
+  'require-python-312.sh', 'retired-model.json', 'review-surface.mjs', 'scan-image.sh', 'scan-secrets.sh', 'setup.sh',
   'setup-integrations.sh', 'test-db-migrate.sh', 'test-migrate-on-rows.sh',
 ].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
@@ -368,6 +368,13 @@ export const GATES = [
   // root install CI's check job runs unconditionally — so a prose-only change
   // still installs no package.
   { id: 'lint:pointers', tier: 'check', inputs: ['prose'], command: ['node', 'scripts/lint-line-pointers.mjs'], job: 'check', setup: 'docs' },
+  // A name the catalogue model has retired, refused wherever living text holds
+  // it once its slice has merged (#2131, ADR-0225); a pending one is printed as
+  // its slice's debt. The ledger is scripts/retired-model.json. Its inputs are
+  // what it reads: the source, the fresh schema (db/init, in `schema`; no
+  // migration), the scripts and the living docs. `docs` setup, as the pointer
+  // pass's: the runtime and nothing installed.
+  { id: 'lint:retired', tier: 'check', inputs: ['backend', 'web', 'shared', 'schema', 'scripts', 'docs'], command: ['node', 'scripts/lint-retired-model.mjs'], job: 'check', setup: 'docs' },
   // A screen-text allowance only goes down unless a commit names why (#2433):
   // the lint holds a file to its count, and nothing else holds the count.
   { id: 'lint:allowance', tier: 'check', inputs: ['backend', 'web'], command: ['node', 'scripts/check-screen-allowance.mjs'], job: 'check', setup: 'docs', uncached: BASE_ALLOWANCES, config: ['scripts/check-screen-allowance.mjs'] },

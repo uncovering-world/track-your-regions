@@ -1,0 +1,387 @@
+{
+  "$comment": [
+    "The ledger of what the catalogue model of ADR-0225 retires, read by scripts/lint-retired-model.mjs (lint:retired, docs/tech/gates.md § The retired model).",
+    "An entry names what goes, by `names` (each matched as a whole identifier) and, where a name alone cannot say it, by `pattern` (a JavaScript regular expression, tested line by line).",
+    "`floor: true` marks an entry whose name is shared with something the model keeps, so its count is a floor; before a slice flips it to retired, its pattern finds every use it retires.",
+    "`state` is `retired` once the slice that retires it has merged: from then on any mention outside `allow` fails the gate. A `pending` entry is the slice's debt, printed as a count and never failed.",
+    "A slice flips its entries to `retired` in the pull request that retires them. `allow` holds the deliberate mentions, each with its reason; one that matches no line fails the gate."
+  ],
+  "entries": [
+    {
+      "id": "dates-in-slots",
+      "what": "a place's four dates in slots and each source's view of them (place_dates, record_dates); periods hold a record's time",
+      "names": [
+        "place_dates",
+        "record_dates",
+        "placeDatesWriter",
+        "LIFETIME_SLOTS"
+      ],
+      "slice": "B1",
+      "issue": 2578,
+      "state": "retired"
+    },
+    {
+      "id": "standing-from-open-period",
+      "what": "standing read off the open period at write time; derived per day from the periods (refresh_standing)",
+      "names": [
+        "trg_derive_stands_today",
+        "derive_stands_today",
+        "place_stands"
+      ],
+      "slice": "B1",
+      "issue": 1719,
+      "state": "retired"
+    },
+    {
+      "id": "place-existence",
+      "what": "a place's existence column and its API field; a place is gone when none of its standing periods is open",
+      "names": [
+        "experiences.existence",
+        "experiences_existence_check",
+        "idx_experiences_existence",
+        "ExperienceExistence",
+        "ExperienceDetailExistence",
+        "ExperienceSearchResultExistence",
+        "ExperienceStateResultExistence",
+        "ReviewQueueItemExistence",
+        "part_existence"
+      ],
+      "pattern": "\\be\\.existence\\b|\\b(?:place|experience)(?:'s|s'|s)?\\s+`?existence\\b",
+      "slice": "B2",
+      "issue": 2584,
+      "state": "retired"
+    },
+    {
+      "id": "place-state-verdict",
+      "what": "a place's state verdict columns; who decided and why is the curation log's",
+      "names": [
+        "experiences.state_decided_by",
+        "experiences.state_decided_at",
+        "experiences.state_note",
+        "experiences_state_decided_by_fkey"
+      ],
+      "pattern": "\\be\\.state_(?:decided_by|decided_at|note)\\b",
+      "slice": "B2",
+      "issue": 2585,
+      "state": "retired"
+    },
+    {
+      "id": "point-visits-table",
+      "what": "a tick on a point (user_visited_locations); a visit is one row on the place ticked",
+      "names": [
+        "user_visited_locations"
+      ],
+      "slice": "pre-B1",
+      "issue": 2120,
+      "state": "retired"
+    },
+    {
+      "id": "components-kind",
+      "what": "the virtual kind World Heritage components; a part's record is a record in its whole",
+      "names": [
+        "experience_kinds.is_virtual",
+        "is_virtual"
+      ],
+      "pattern": "\\bvirtual kind(?: of)? World Heritage components\\b",
+      "slice": "pre-B1",
+      "issue": 2118,
+      "state": "retired"
+    },
+    {
+      "id": "part-relation-reference",
+      "what": "a part relation's own copy of the component's reference; the record's external_id holds it",
+      "names": [
+        "experience_parts.external_ref"
+      ],
+      "slice": "pre-B1",
+      "issue": 2118,
+      "state": "retired"
+    },
+    {
+      "id": "membership-facts",
+      "what": "a membership's facts JSON; kind facts live in typed tables",
+      "pattern": "\\b(?:m|sr|mem|rec|record|membership|source_records|wh)\\.facts\\b|\\bfacts\\s*(?:->>?|#>>?|\\?\\|?|\\?&|@>|\\|\\|)|['\"]facts['\"]|\\bfacts\\s+JSONB\\b",
+      "slice": "B3",
+      "issue": 2127,
+      "state": "pending",
+      "floor": true
+    },
+    {
+      "id": "admitted-for-json",
+      "what": "admitted_for as JSON; admitted_for_item and admitted_for_label",
+      "names": [
+        "admitted_for"
+      ],
+      "slice": "B3b",
+      "issue": 2127,
+      "state": "pending"
+    },
+    {
+      "id": "admission-answered-at",
+      "what": "admission_answered_at; admission_decided_at and _by",
+      "names": [
+        "admission_answered_at",
+        "admissionAnsweredAt"
+      ],
+      "slice": "B3b",
+      "issue": 2127,
+      "state": "pending"
+    },
+    {
+      "id": "work-year",
+      "what": "a work's year; made_year",
+      "names": [
+        "treasures.year"
+      ],
+      "pattern": "\\b(?:t|tr)\\.year\\b",
+      "slice": "B3b",
+      "issue": 2127,
+      "state": "pending",
+      "floor": true
+    },
+    {
+      "id": "found-at-metadata",
+      "what": "a work's find spot in metadata (foundAt); the found_at_* columns",
+      "names": [
+        "foundAt"
+      ],
+      "slice": "B3b",
+      "issue": 2127,
+      "state": "pending"
+    },
+    {
+      "id": "maker-subject-metadata",
+      "what": "makers and subjects in metadata (creators, commemorates, depicts); experience_makers and experience_subjects",
+      "pattern": "metadata\\s*->>?\\s*'(?:creators|commemorates|depicts)'|\\bmetadata\\??\\.(?:creators|commemorates|depicts)\\b",
+      "slice": "B3b",
+      "issue": 2127,
+      "state": "pending"
+    },
+    {
+      "id": "kinds-kept-as-former",
+      "what": "KINDS_KEPT_AS_FORMER; experience_kinds.list_kept_outside",
+      "names": [
+        "KINDS_KEPT_AS_FORMER"
+      ],
+      "slice": "B3c",
+      "issue": 2009,
+      "state": "pending"
+    },
+    {
+      "id": "listing-writes",
+      "what": "writes of source_membership; a listing is derived from record_listings",
+      "pattern": "\\bSET\\s+(?:\\w+\\.)?source_membership\\s*=|\\bsource_membership\\s*=\\s*EXCLUDED\\.|^\\s*source_membership\\s*=\\s*(?:\\$\\d+|'(?:present|former)'|CASE\\b)",
+      "slice": "B3c",
+      "issue": 2009,
+      "state": "pending",
+      "floor": true
+    },
+    {
+      "id": "membership-iconic",
+      "what": "the Iconic badge on a membership; the badge is on works only",
+      "names": [
+        "source_records.is_iconic",
+        "idx_source_records_iconic"
+      ],
+      "pattern": "\\b(?:sr|mem|membership|rec)\\.is_iconic\\b",
+      "slice": "unassigned",
+      "issue": null,
+      "state": "pending",
+      "floor": true
+    },
+    {
+      "id": "outline-line-source-columns",
+      "what": "the outline's and line's source columns on the place; a view on the source's record (record_geometries)",
+      "names": [
+        "boundary_source_id",
+        "path_source_id",
+        "path_source_ref",
+        "path_updated_at"
+      ],
+      "slice": "B4",
+      "issue": 2577,
+      "state": "pending"
+    },
+    {
+      "id": "shape-part-triggers",
+      "what": "the shape triggers on a part relation",
+      "names": [
+        "trg_shape_part_insert",
+        "trg_shape_part_delete"
+      ],
+      "slice": "B4",
+      "issue": 2577,
+      "state": "pending"
+    },
+    {
+      "id": "point-tables",
+      "what": "the point tables; a component is a record with a part record",
+      "names": [
+        "experience_locations",
+        "experience_location_placements",
+        "experience_location_regions"
+      ],
+      "slice": "B5",
+      "issue": 2124,
+      "state": "pending"
+    },
+    {
+      "id": "cast-points",
+      "what": "experiences.cast_points; a cast group is a whole with parts of the role copy",
+      "names": [
+        "cast_points"
+      ],
+      "slice": "B5",
+      "issue": 2124,
+      "state": "pending"
+    },
+    {
+      "id": "point-existence",
+      "what": "a point's existence axis (extant, lost); the part record's periods",
+      "pattern": "\\b\\w+\\.existence\\b|\\bexistence\\s*(?:<>|!==?|===?|=|\\bIN\\b|\\bIS\\b)|['\"]existence['\"]|\\bexistence\\??:\\s*(?:['\"{]|Existence\\b|z\\.|Point|string\\b)|\\bexistence\\s+VARCHAR\\b|['\"]extant['\"]",
+      "slice": "B5",
+      "issue": 2124,
+      "state": "pending",
+      "names": [
+        "Existence",
+        "EXISTENCES",
+        "PointExistence",
+        "AnsweredPointExistence",
+        "LifecycleStateBodyExistence",
+        "LifecycleStateBodyExpectedExistence",
+        "LocationStateResultExistence",
+        "nextExistence"
+      ]
+    },
+    {
+      "id": "point-state-verdict",
+      "what": "a point's state verdict columns",
+      "names": [
+        "state_decided_by",
+        "state_decided_at",
+        "state_note"
+      ],
+      "slice": "B5",
+      "issue": 2124,
+      "state": "pending"
+    },
+    {
+      "id": "point-functions",
+      "what": "the functions, triggers and helpers that follow a point",
+      "names": [
+        "place_regions_follow_points",
+        "place_shown_points",
+        "is_part_line_point",
+        "part_record_gates_follow_points",
+        "whole_leaves_follow_points",
+        "place_identifiers_follow_point",
+        "moved_to_location_id",
+        "withdrawal_deferred_for_location_id",
+        "offeredLocationSql",
+        "pointNotLostSql"
+      ],
+      "pattern": "\\btrg_\\w+_point_(?:insert|update|delete)\\b|\\bpairing_due_location(?:_update)?\\b",
+      "slice": "B5",
+      "issue": 2124,
+      "state": "pending"
+    },
+    {
+      "id": "held-decision-part-key",
+      "what": "a held decision's part key (part_kind, part_ref); the key is over record or work",
+      "names": [
+        "part_kind",
+        "part_ref"
+      ],
+      "slice": "B5",
+      "issue": 2124,
+      "state": "pending"
+    },
+    {
+      "id": "claims-as-jsonb",
+      "what": "a claim read off curated_fields as JSON; a list of words read with = ANY",
+      "pattern": "\\bcurated_fields\\s*(?:\\?\\|?|\\?&|@>|->>?|#>>?)",
+      "slice": "B6",
+      "issue": null,
+      "state": "pending"
+    },
+    {
+      "id": "visit-tables",
+      "what": "three visit tables; one user_visits",
+      "names": [
+        "user_visited_experiences",
+        "user_visited_regions",
+        "user_viewed_treasures"
+      ],
+      "slice": "B8a",
+      "issue": 768,
+      "state": "pending"
+    },
+    {
+      "id": "run-flag-and-bars",
+      "what": "a run's is_dry_run, world_bars and a source's last_sync_* columns; a run's mode, experience_sync_bars and the run log",
+      "names": [
+        "is_dry_run",
+        "world_bars"
+      ],
+      "pattern": "\\blast_sync_\\w+",
+      "slice": "B9",
+      "issue": null,
+      "state": "pending"
+    },
+    {
+      "id": "place-source-id",
+      "what": "a place's own source_id and external_id; a record belongs to no source and is found by its records' ids",
+      "names": [
+        "experiences.source_id",
+        "experiences.external_id",
+        "experiences_source_id_external_id_key"
+      ],
+      "pattern": "\\be\\.(?:source_id|external_id)\\b",
+      "slice": "B11",
+      "issue": 2116,
+      "state": "pending",
+      "floor": true
+    },
+    {
+      "id": "place-countries",
+      "what": "a place's stored countries; read from its ground (record_countries)",
+      "names": [
+        "country_codes",
+        "country_names"
+      ],
+      "slice": "B12",
+      "issue": 2135,
+      "state": "pending"
+    },
+    {
+      "id": "region-metadata",
+      "what": "regions.metadata",
+      "names": [
+        "regions.metadata"
+      ],
+      "slice": "B14",
+      "issue": null,
+      "state": "pending",
+      "floor": true
+    },
+    {
+      "id": "account-provider-columns",
+      "what": "an account's provider columns; user_auth_providers alone",
+      "names": [
+        "auth_provider",
+        "provider_data",
+        "users.provider_id"
+      ],
+      "slice": "B15",
+      "issue": null,
+      "state": "pending"
+    }
+  ],
+  "allow": [
+    {
+      "entry": "point-visits-table",
+      "path": "backend/src/db/visitFoldMigration.db.test.ts",
+      "why": "the spec of migration 235, which folds a traveller's ticks on points into visits on their places and drops the table: it builds the table whose drop it tests"
+    }
+  ]
+}

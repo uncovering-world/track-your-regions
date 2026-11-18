@@ -37,13 +37,14 @@ check security:secrets      runs     inputs touched: docs, prose
 check lint:md               runs     inputs touched: docs
 check lint:links            runs     inputs touched: docs
 check lint:pointers         runs     inputs touched: prose
+check lint:retired          runs     inputs touched: docs
 check lint:shrunk           runs     inputs touched: docs, prose
 …
 stack test:e2e:smoke        skipped  inputs untouched: backend, web, shared, database, tiles, runners, compose
 stack perf                  skipped  inputs untouched: backend, web, shared, database, tiles, runners, compose
 ```
 
-`security:secrets`, `lint:md`, `lint:links`, `lint:pointers` and `lint:shrunk` run, and every other one
+`security:secrets`, `lint:md`, `lint:links`, `lint:pointers`, `lint:retired` and `lint:shrunk` run, and every other one
 names the input class it did not see move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
@@ -84,7 +85,7 @@ never from a head the branch was rewritten past.
 
 | Tier | What it holds | Owed locally | What runs it |
 | --- | --- | --- | --- |
-| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the migrations a change adds applied to a database that holds rows, the docs pass, the line-pointer pass over every file that carries prose, the workflow lint, the fast security audits | before every commit | `npm run check` — `npm run check:all` forces every one |
+| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the migrations a change adds applied to a database that holds rows, the docs pass, the line-pointer pass over every file that carries prose, the retired-model pass, the workflow lint, the fast security audits | before every commit | `npm run check` — `npm run check:all` forces every one |
 | `test` | the unit lanes, Node and Python | before every commit, narrowed to the specs the change reaches | `TEST_REPORT_LOCAL=1 npm run gates -- run test --affected` (§ Running only the specs a change reaches) |
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | no: CI runs them | `npm run security:all` — the `check` tier, then this one |
 | `stack` | build, smoke, the database lane, the API lane, Lighthouse: the lanes that stand a stack up | only a measurement marked `run here` | `npm run gates -- run stack` **lists** them as `run here`, `CI runs it` or `skip`, and exits 2; they are typed by hand |
@@ -216,7 +217,7 @@ they were. Before this, each of them cost the lane's whole run again: a median
 of 278 s for `test:frontend` on the development machine.
 
 `run` hashes, for each gate, every file in its input classes as it sits on disk,
-and whether git tracks it. `lint:shell`, `lint:docker` and `lint:pointers` read
+and whether git tracks it. `lint:shell`, `lint:docker`, `lint:pointers` and `lint:retired` read
 only what git tracks, so staging a new file moves their key. The hash also covers:
 
 - the files in the gate's own `config` (§ What a tool's settings ask for);
@@ -486,7 +487,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `database` | `/^db\/(?!catalogue-coverage\/.*\.jsonl$)/` | The schema, the migrations and the loaders: what a database is built from. The backend unit lane reads db/ through repoFile() — schema parity, the migration ledger, the trigger guards — and the stack lanes stand on it. No lint, typecheck or web gate reads it. |
 | `tiles` | `martin/` | Martin's configuration. The backend unit lane asserts on the tile sources it publishes, and the smoke and Lighthouse lanes draw them. |
 | `scripts` | `scripts/` | The repository's own scripts and their specs, whole: the tooling specs run in the backend unit lane, and two of its specs scan the tree for anything that switches the geometry triggers off. |
-| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:adr-issues\.sh\|affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-screen-allowance\.mjs\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|gates-base\.mjs\|gates-run\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|migrate-on-rows\.mjs\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh\|test-migrate-on-rows\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
+| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:adr-issues\.sh\|affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-screen-allowance\.mjs\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|gates-base\.mjs\|gates-run\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|lint-retired-model\.mjs\|match-snapshot\.sh\|migrate-on-rows\.mjs\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|retired-model\.json\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh\|test-migrate-on-rows\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
 | `compose` | `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | What the containers are: the dev and test stacks, the unit lanes' container shape and the variables they read. Every lane that runs in a container reads it; no lint or typecheck does. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/: the Python test lane runs their tests, check:py and Bandit read them with db/’s own configuration (#1736), and pip-audit reads the versions their image carries (#1782, db/requirements.txt). |
@@ -530,6 +531,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `api:breaking` | check | `api-contract` | `npm run api:breaking` | check | never: it compares with the base's OpenAPI document, which is not in this tree |
 | `api:client` | check | `api-contract`, `web`, `shared`, `node-deps` | `npm --prefix frontend run api:client:check` | check | on the same inputs |
 | `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check | on the same inputs |
+| `lint:retired` | check | `backend`, `web`, `shared`, `schema`, `scripts`, `docs` | `node scripts/lint-retired-model.mjs` | check | on the same inputs |
 | `lint:allowance` | check | `backend`, `web`; reads `scripts/check-screen-allowance.mjs` | `node scripts/check-screen-allowance.mjs` | check | never: it compares each screen-text allowance with its count at the base and reads the branch's commit messages, neither of which is in this tree |
 | `lint:shrunk` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `db-image`, `coverage`, `schema`, `migrations`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract` | `node scripts/check-shrunk-files.mjs` | check | never: it compares each file with its size at the base and reads the branch's commit messages, neither of which is in this tree |
 | `check:py` | check | `python`, `db-python`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run check:py` | check | on the same inputs |
@@ -1089,6 +1091,58 @@ Its own cases — 232's shape failing, the same backfill alone passing, and a
 constraint the schema does not declare failing the comparison — are
 `npm run test:migrate-on-rows` (`scripts/test-migrate-on-rows.sh`), a local test
 outside the map like `test:db-migrate`, since each case stands a database up.
+
+## The retired model
+
+The catalogue's model (ADR-0225) lands slice by slice, B1 to B17 in its § From today's database
+to the model, and each slice deletes what it replaces: the table or column, the code path, the
+helper, the comment and the sentence of a doc. `lint:retired` makes that a gate from the first
+slice on, rather than a check at the end of the Epic (#2131).
+
+**The ledger** is `scripts/retired-model.json`. Each entry names one thing the model retires —
+a table, a column, a trigger, a function, a constant, a type, an API field or a term — with what
+replaces it (`what`), the slice and the issue that retire it, and its `state`:
+
+- **`retired`**: the slice has merged. Any mention outside the entry's allow lines fails the gate.
+- **`pending`**: the slice is still to come. Its mentions are the slice's debt, printed as a count
+  per entry, and never fail.
+
+An entry finds a mention by `names`, each matched as a whole identifier (`admitted_for` is not
+found in `admitted_for_item`), and, where a name
+alone cannot say it, by `pattern`, a regular expression tested line by line. A pattern is written
+for the use it retires and nothing else: a point's `existence` is found as a column, a value or a
+type, never as the word in "the existence check" or Wikivoyage's `pageExistence`. A `floor`
+entry's name is shared with something the model keeps (`is_iconic` stays on works,
+`metadata` on places), so its count is a floor.
+
+**A slice flips its entries to `retired` in the pull request that retires them**, after it has
+made each pattern find every use it retires: a retired entry whose pattern finds nothing passes
+whatever the tree holds. The slice that finds a name the ledger lacks adds it, and so does the
+review that finds one.
+
+**What it reads**: every tracked file under `db/init/`, `backend/`, `frontend/`, `packages/`
+and `scripts/`, the source, its specs, the lint rules and the generated files alike, and the living
+docs: `docs/tech/`, `docs/vision/`, `docs/security/SECURITY.md`, `docs/README.md`,
+`CLAUDE.md` and `.claude/skills/` (`READ` in `scripts/lint-retired-model.mjs`). It leaves out the
+point-in-time records — `docs/decisions/`, `docs/research/`, `db/migrations/` and the audit
+reports — which name what they decided, measured or did to a database, and its own ledger, script
+and spec (`NOT_READ`).
+
+**A deliberate mention** is an `allow` line of the ledger: the entry, the path, the text of the
+line (or none, for a whole file, as for the spec that builds the table a migration drops) and
+`why`. An allow line that matches nothing fails the gate, so none outlives what it allowed. A
+retired name on a `DROP … IF EXISTS` line of the schema file is the step that retires it on a
+database the file is re-applied to: it is counted as owed to the switch (B17), which folds the
+migrations into one baseline, and is not a failure.
+
+**What it does not prove** is that the schema a fresh build makes is the schema the migrations
+make. That is the switch's check (#2129, ADR-0225 decision 3): a database built from
+`db/init/01-schema.sql` alone and the migrated development database give the same schema dump.
+`db:migrate-on-rows` already holds a migrated fixture, with `db/init/` re-applied, to a fresh
+build on every migration a change adds, and prints what differed before the re-application
+(§ A migration on rows). That difference fails nothing, since a migration may rely on the schema
+file being re-applied after it (`db/migrations/README.md`); the migrations alone are held to a
+fresh build at the switch, when they fold into one baseline.
 
 ## What the map does not reach
 
