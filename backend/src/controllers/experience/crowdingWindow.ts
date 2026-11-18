@@ -31,7 +31,8 @@ import type {
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import {
-  FAME, KINDS, kindRecordSql, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql,
+  FAME, KINDS, kindRecordSql, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipStandsSql,
+  membershipVisibleSql,
 } from '../../db/membership.js';
 import { hasPinSql, hideLostSql } from '../../db/readerPredicates.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
@@ -99,8 +100,9 @@ function listedSql(isAdmin: boolean): string {
 export interface AroundAt { kind: string; point: string; radiusKm: string }
 
 /**
- * Every place of the kind within the radius of a point, admitted and standing,
- * over the aliases `m` and `e`, with the scope's prelude bound. A place's
+ * Every place of the kind within the radius of a point, admitted and standing
+ * today, itself and in the kind (`hideLostSql`, `membershipStandsSql`: the
+ * candidates `crowding_above()` counts among), over the aliases `m` and `e`, with the scope's prelude bound. A place's
  * circle reads it around the place (`$2`, `centre.point`, `$4`); a review
  * card's count reads it around the card's place (`reviewQueueCrowding.ts`),
  * so the button's number is the circle's.
@@ -109,7 +111,7 @@ export function aroundSql(isAdmin: boolean, at: AroundAt = { kind: '$2', point: 
   return `m.kind_id = ${at.kind}
      AND e.location && crowding_box(${at.point}, ${at.radiusKm})
      AND ST_DWithin(e.location::geography, ${at.point}::geography, ${at.radiusKm} * 1000)
-     AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')}
+     AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${membershipStandsSql('m')}
      AND ${listedSql(isAdmin)}`;
 }
 
@@ -401,7 +403,8 @@ export async function getCrowdingPlace(
         JOIN experiences e ON e.id = m.experience_id
         ${joins}
         ${groupLeafSql({ isAdmin: '$3', worldView: '$5', within: false })}
-       WHERE m.id = $2 AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${listedSql(isAdmin)}`,
+       WHERE m.id = $2 AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${membershipStandsSql('m')}
+         AND ${listedSql(isAdmin)}`,
     [caller.id, membershipId, isAdmin, kind.crowding_radius_km, query.worldViewId ?? null]),
     // $1 the caller, $2 the kind, $3 the place, $4 the radius, $5 the type, $6 the membership.
     pool.query<Signals & {

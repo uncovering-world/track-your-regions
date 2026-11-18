@@ -178,6 +178,13 @@ const startServer = async () => {
     }
   }
 
+  // A place whose opening day has come stands from that day (#1719): the sweep
+  // re-derives its standing at boot and every hour. Not awaited: boot never
+  // waits on it, and a failure is the sweep's to log.
+  const { STANDING_SWEEP_MS, sweepStanding } = await import('./services/standingSweep.js');
+  void sweepStanding();
+  setInterval(() => { void sweepStanding(); }, STANDING_SWEEP_MS);
+
   // Schedule periodic cleanup of expired/revoked tokens (every 6 hours)
   setInterval(async () => {
     try {

@@ -6,7 +6,9 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, placeOfferedSql, placeShownSql } from '../../db/membership.js';
-import { experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
+import {
+  experienceShownToReaderSql, hideLostSql, lostByVerdictSql, readableByIdSql,
+} from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -484,15 +486,17 @@ describe('lifecycle visibility across the read paths', () => {
     // Answered by the count that was already running: a permanent "show lost"
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
+    // Only what the toggle can bring back: not a lost place crowded out, nor
+    // one whose only membership no longer stands in its kind.
     expect(count).toContain(
-      `FILTER (WHERE e.existence = 'lost' AND ${experienceOfferedToReaderSql('e')})`);
+      `FILTER (WHERE ${lostByVerdictSql('e')} AND ${experienceShownToReaderSql('e')})`);
     expect(count).toContain('lost_hidden');
     // A refused row is not something the reader is being offered a look at:
     // revealing the lost would not bring it back (ADR-0024). Same for a
     // pending one: `curation_state` has no toggle here, unlike `existence`
     // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
     expect(count).toContain(
-      `FILTER (WHERE ${experienceShownToReaderSql('e')} AND e.existence <> 'lost')`);
+      `FILTER (WHERE ${experienceShownToReaderSql('e')} AND ${hideLostSql('e')})`);
   });
 
   it('counts everything as shown once the caller asked for them', async () => {

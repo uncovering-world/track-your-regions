@@ -9,7 +9,7 @@
  *
  * | column | question | who answers it |
  * |---|---|---|
- * | `existence` | does it still stand? | the world |
+ * | `existence` and `stands_today` | does it still stand? | the world |
  * | the membership's `admission` | does a kind accept it? | the kind's rule (ADR-0024) |
  * | `experience_locations.missing_since` | does its source still offer this point? | the source |
  * | the membership's `curation_state` | has anyone looked at it? | a curator (ADR-0025) |
@@ -54,7 +54,12 @@ import {
 import { pointsShownSql, wholeFocusSql } from './placePoints.js';
 
 /**
- * Hides `lost` objects. `alias` is the `experiences` alias in the query.
+ * Hides a place that no longer stands: one a curator judged `lost`, and one
+ * whose periods say it does not stand today (`stands_today`, derived from
+ * `place_periods`, ADR-0217 decision 5): Nelson's Pillar, blown up in 1966,
+ * or a place whose opening day is still ahead. `alias` is the `experiences`
+ * alias in the query. A membership whose own standing ended, while the place
+ * stands, is `membershipStandsSql`'s (`db/membership.ts`).
  *
  * Written as a fragment rather than a boolean because it has to go into a
  * dozen queries that already build their WHERE by concatenation, and the one
@@ -64,6 +69,38 @@ import { pointsShownSql, wholeFocusSql } from './placePoints.js';
  * suits one reads wrong in the other.
  */
 export function hideLostSql(alias = 'e'): string {
+  return `${placeNotJudgedLostSql(alias)} AND ${alias}.stands_today`;
+}
+
+/**
+ * A place a curator has not judged `lost`, whatever its periods say: the
+ * verdict's half of `hideLostSql`. What a source's missing detection expects
+ * back (`services/sync/missingDetection.ts`): the verdict answers the question
+ * the detection would ask, while a place whose opening day is still ahead, or
+ * whose periods say it ended, is one the source may still drop and be asked
+ * about. `alias` is the `experiences` alias.
+ */
+export function placeNotJudgedLostSql(alias = 'e'): string {
+  return `${alias}.existence <> 'lost'`;
+}
+
+/**
+ * A place a curator judged `lost` that its periods still say stands: what a
+ * list's "show what is gone" reveals (`includeLost`), since dropping
+ * `hideLostSql` brings back the verdict's half and a place that does not
+ * stand today is out of every membership's standing (`membershipStandsSql`)
+ * as well. `alias` is the `experiences` alias.
+ */
+export function lostByVerdictSql(alias = 'e'): string {
+  return `${alias}.existence = 'lost' AND ${alias}.stands_today`;
+}
+
+/**
+ * Hides a point a curator judged `lost` (ADR-0026). `alias` is the
+ * `experience_locations` alias. A point has no periods of its own: whether
+ * the place stands is the place's (`hideLostSql`).
+ */
+export function pointNotLostSql(alias = 'el'): string {
   return `${alias}.existence <> 'lost'`;
 }
 
@@ -133,7 +170,7 @@ export function hideLostSql(alias = 'e'): string {
  * is that point now, and is offered once, as it.
  */
 export function offeredLocationSql(alias = 'el'): string {
-  return `${alias}.missing_since IS NULL AND ${alias}.existence <> 'lost' AND ${alias}.merged_into_id IS NULL`;
+  return `${alias}.missing_since IS NULL AND ${pointNotLostSql(alias)} AND ${alias}.merged_into_id IS NULL`;
 }
 
 /**

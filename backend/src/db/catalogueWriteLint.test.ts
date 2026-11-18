@@ -44,6 +44,8 @@ describe('the catalogue lint rules', () => {
     ['a template in a controller', "export const q = (a: string) => `SELECT 1 FROM t WHERE ${a}.curation_state <> 'pending'`;\n", 'src/controllers/lint-fixture.ts'],
     ['a plain string in a sync service', "export const q = \"SELECT 1 FROM e WHERE existence <> 'lost'\";\n", 'src/services/sync/lint-fixture.ts'],
     ['a SQL comment inside a statement', "export const q = `SELECT 1 -- existence <> 'lost'\n  FROM e`;\n", 'src/services/lint-fixture.ts'],
+    ['a place\'s standing read in a controller (#1719)', 'export const q = `SELECT id FROM experiences e WHERE e.stands_today`;\n', 'src/controllers/lint-fixture.ts'],
+    ['a membership\'s standing in a sync service', "export const q = 'SELECT 1 FROM source_records m WHERE NOT m.stands_today';\n", 'src/services/sync/lint-fixture.ts'],
   ])('refuses a spelled-out reader predicate: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => PREDICATE.test(m))).toBe(true);
   });
@@ -51,6 +53,7 @@ describe('the catalogue lint rules', () => {
   it.each([
     ['a TypeScript comment naming it', "// curation_state <> 'pending' is asked by publishedContentSql\nexport const x = 1;\n", 'src/controllers/lint-fixture.ts'],
     ['the module that defines it', "export const q = (a: string) => `${a}.curation_state <> 'pending'`;\n", 'src/db/readerPredicates.ts'],
+    ['the membership module defining a membership\'s standing', 'export const q = (a: string) => `${a}.stands_today`;\n', 'src/db/membership.ts'],
   ])('lets a reader predicate stand: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => PREDICATE.test(m))).toBe(false);
   });
