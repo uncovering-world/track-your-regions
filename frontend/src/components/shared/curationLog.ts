@@ -286,13 +286,11 @@ function formatEditedChanges(d: Record<string, unknown>): string | null {
  * Which place — where the act was about one — and what the curator wrote about it. The
  * transition is not repeated: the chip beside this already names it, and `details`
  * carries both axes whether or not the act moved them, so printing them would say
- * `existence: extant → extant` beside a membership verdict.
+ * `gone: false → false` beside a membership verdict.
  *
- * This is the note's **only** screen, which is what makes it worth a branch of its own.
- * The row's `state_note` holds the standing answer, and taking a verdict back moves
- * `state_decided_by` and `state_decided_at` to whoever took it — so the note goes with
- * the answer it explained rather than being reattributed, and the wording survives here
- * or nowhere (#544). The card that asks for the note says as much on the field: "Kept
+ * This is the note's **only** screen, which is what makes it worth a branch of its own:
+ * the place keeps no note of its own, so the note goes with the answer it explained
+ * rather than being reattributed, and the wording survives here or nowhere (#544). The card that asks for the note says as much on the field: "Kept
  * with your answer in this object's curation history."
  *
  * The place is a bare id because the log has no name to give: the audit row hangs off the

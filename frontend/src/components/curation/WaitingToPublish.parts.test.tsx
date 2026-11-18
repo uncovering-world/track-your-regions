@@ -50,7 +50,7 @@ function held(): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
     kind_id: 2, kind_name: 'Art Museums', kind_type: null,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'held', sync_log_id: 64, proposed: null,
     counted_works_total: 27,
     proposed_parts: [{

@@ -26,7 +26,7 @@ vi.mock('../../hooks/useNavigation', () => ({
 const UR = {
   id: 1469, external_id: '1481', name: 'The Ahwar of Southern Iraq', kind_id: 1, kind_name: 'World Heritage Sites',
   kind: 'find-sites', proposed: null, find_proposals: 1, missing_since: null, source_membership: 'present',
-  existence: 'extant',
+  gone: false,
 } as unknown as ReviewQueueItem;
 
 const CODE = {

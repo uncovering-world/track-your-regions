@@ -15,7 +15,7 @@ import {
   Box, Button, Collapse, LinearProgress, Paper, Stack, Typography,
 } from '@mui/material';
 import type { BatchReason, ReviewAnswer } from '../../../api/reviewQueue';
-import { REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
+import { GONE_REASON_CODES, REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
 import { ReasonMenu } from '../../shared/ReasonMenu';
 import type { QueueRow } from '../queueRows';
 import {
@@ -50,6 +50,7 @@ export function SelectionBar({
   const busy = progress !== null;
   const kinds = reach;
   const rejectAsks = turnAwayAsks(reach);
+  const lostAsks = goneAsks(reach);
 
   const heading = allMatching
     ? `All ${total.toLocaleString('en')} matching these filters`
@@ -96,7 +97,7 @@ export function SelectionBar({
         {lost && (
           <AnswerButton
             answer="lost" label="Lost" color="error"
-            busy={busy} showing={showing} setShowing={setShowing} onAnswer={onAnswer}
+            busy={busy} showing={showing} setShowing={setShowing} onAnswer={onAnswer} asks={lostAsks}
           />
         )}
       </Stack>
@@ -125,10 +126,11 @@ export function SelectionBar({
 /** The explanation list's id, for every toggle's `aria-controls`. */
 const EXPLANATION_ID = 'selection-bar-explanation';
 
-/** What a rejection that turns arrivals away asks: the button's words, and what the reasons are about. */
-interface TurnAwayAsks {
+/** What an answer that asks why asks: the button's words, what the reasons are about, and the reasons. */
+interface AnswerAsks {
   label: string;
   heading?: string;
+  reasons: readonly BatchReason['reasonCode'][];
 }
 
 /**
@@ -137,11 +139,21 @@ interface TurnAwayAsks {
  * is turned away by count; a mixed one keeps its word for every kind, and the
  * list says the reason is the arrivals'.
  */
-export function turnAwayAsks(reach: Array<{ kind: AnswerableKind; count: number }>): TurnAwayAsks | undefined {
+export function turnAwayAsks(reach: Array<{ kind: AnswerableKind; count: number }>): AnswerAsks | undefined {
   const arrivals = reach.find(({ kind }) => kind === 'arrival');
   if (!arrivals) return undefined;
-  if (reach.length === 1) return { label: `Turn away ${arrivals.count.toLocaleString('en')}` };
-  return { label: 'Reject the proposed changes', heading: 'Why the arrivals are turned away' };
+  if (reach.length === 1) return { label: `Turn away ${arrivals.count.toLocaleString('en')}`, reasons: REFUSAL_REASON_CODES };
+  return { label: 'Reject the proposed changes', heading: 'Why the arrivals are turned away', reasons: REFUSAL_REASON_CODES };
+}
+
+/**
+ * Whether *Lost* records places as gone, and so asks why (#863): one reason
+ * for every place the batch reaches. A point keeps its own verdict until the
+ * point tables go, and asks nothing.
+ */
+export function goneAsks(reach: Array<{ kind: AnswerableKind; count: number }>): AnswerAsks | undefined {
+  if (!reach.some(({ kind }) => kind === 'missing')) return undefined;
+  return { label: 'Lost', heading: 'Why record them as gone by hand', reasons: GONE_REASON_CODES };
 }
 
 /**
@@ -161,7 +173,7 @@ function AnswerButton({
   showing: ReviewAnswer | null;
   setShowing: (a: ReviewAnswer | null) => void;
   onAnswer: (a: ReviewAnswer, reason?: BatchReason) => void;
-  asks?: TurnAwayAsks;
+  asks?: AnswerAsks;
 }) {
   return (
     <Stack direction="row" spacing={0.5} alignItems="center">
@@ -169,7 +181,7 @@ function AnswerButton({
         <ReasonMenu
           label={label}
           heading={asks.heading}
-          reasons={REFUSAL_REASON_CODES}
+          reasons={asks.reasons}
           size="small"
           variant="contained"
           color={color}

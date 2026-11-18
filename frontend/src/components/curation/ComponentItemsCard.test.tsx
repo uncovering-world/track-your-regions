@@ -28,7 +28,7 @@ const GILAU = { locationId: 503, pointName: 'Gilău', pointRef: '1591-007', lati
 
 const DACIA = {
   id: 9850, external_id: '1591', name: 'Frontiers of the Roman Empire – Dacia', kind_id: 1, kind_name: 'World Heritage Sites',
-  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'component-items', proposed: null,
+  missing_since: null, source_membership: 'present', gone: false, kind: 'component-items', proposed: null,
   component_items: [
     { ...BOLOGA, proposalId: 31, item: 'Q98501', label: 'Castrul Bologa', distanceM: 20, similarity: 1, exact: true, takenBack: false, itemLatitude: 46.8855, itemLongitude: 22.8753, registerCode: 'LMI CJ-I-s-A-07104', registerDisagrees: false },
     { ...BOLOGA, proposalId: 32, item: 'Q98502', label: 'Turnul Bologa', distanceM: 410, similarity: 0.52, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null, registerCode: 'LMI CJ-II-m-B-07533', registerDisagrees: true },

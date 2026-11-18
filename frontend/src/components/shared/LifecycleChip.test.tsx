@@ -4,7 +4,7 @@ import { LifecycleChip, lifecycleLabel, verdictOf } from './LifecycleChip';
 
 describe('lifecycleLabel', () => {
   it('says nothing about an ordinary object', () => {
-    expect(lifecycleLabel({ source_membership: 'present', existence: 'extant' })).toBeNull();
+    expect(lifecycleLabel({ source_membership: 'present', gone: false })).toBeNull();
   });
 
   it('says nothing about one a run merely flagged', () => {
@@ -16,13 +16,13 @@ describe('lifecycleLabel', () => {
   it('answers the more important question first', () => {
     // Delisted *and* destroyed: "Former" would answer about the catalogue
     // while the reader is standing where the building used to be
-    const both = lifecycleLabel({ source_membership: 'former', existence: 'lost' });
+    const both = lifecycleLabel({ source_membership: 'former', gone: true });
 
     expect(both?.label).toBe('Lost');
   });
 
   it('explains why a lost object is still on the reader screen', () => {
-    expect(lifecycleLabel({ existence: 'lost' })?.title).toMatch(/visit to it still counts/i);
+    expect(lifecycleLabel({ gone: true })?.title).toMatch(/visit to it still counts/i);
   });
 
   it('says a former object is still worth going to', () => {
@@ -32,13 +32,13 @@ describe('lifecycleLabel', () => {
 
 describe('LifecycleChip', () => {
   it('renders nothing when there is nothing to say', () => {
-    const { container } = render(<LifecycleChip state={{ source_membership: 'present', existence: 'extant' }} />);
+    const { container } = render(<LifecycleChip state={{ source_membership: 'present', gone: false }} />);
 
     expect(container).toBeEmptyDOMElement();
   });
 
   it('labels a delisted place', () => {
-    render(<LifecycleChip state={{ source_membership: 'former', existence: 'extant' }} />);
+    render(<LifecycleChip state={{ source_membership: 'former', gone: false }} />);
 
     expect(screen.getByText('Former')).toBeInTheDocument();
   });
@@ -49,7 +49,7 @@ describe('both card surfaces', () => {
     // Map mode and Discover read the same by-region response, so a row
     // labelled in one and bare in the other would be the same object
     // explained in one place and unexplained in the other
-    const row = { source_membership: 'former' as const, existence: 'extant' as const };
+    const row = { source_membership: 'former' as const, gone: false as const };
 
     expect(lifecycleLabel(row)?.label).toBe('Former');
   });
@@ -57,17 +57,17 @@ describe('both card surfaces', () => {
 
 describe('verdictOf', () => {
   it('finds nothing to take back on an ordinary row', () => {
-    expect(verdictOf({ source_membership: 'present', existence: 'extant' })).toBeNull();
+    expect(verdictOf({ source_membership: 'present', gone: false })).toBeNull();
     expect(verdictOf(null)).toBeNull();
   });
 
   it('offers to undo the verdict that actually hid the row', () => {
     // Delisted *and* destroyed: undoing `former` would leave it hidden, since
     // `lost` is what takes it out of the lists
-    expect(verdictOf({ source_membership: 'former', existence: 'lost' })).toBe('lost');
+    expect(verdictOf({ source_membership: 'former', gone: true })).toBe('lost');
   });
 
   it('offers to undo a delisting on its own', () => {
-    expect(verdictOf({ source_membership: 'former', existence: 'extant' })).toBe('former');
+    expect(verdictOf({ source_membership: 'former', gone: false })).toBe('former');
   });
 });

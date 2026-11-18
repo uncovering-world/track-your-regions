@@ -32,7 +32,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     kind_name: 'World Heritage Sites', kind_type: null,
     missing_since: null,
     source_membership: 'present',
-    existence: 'extant',
+    gone: false,
     kind: 'conflict',
     // Required rather than optional on purpose (`api/reviewQueue.ts`): every queue
     // selects it explicitly so `item.proposed === null` is the whole check anywhere.

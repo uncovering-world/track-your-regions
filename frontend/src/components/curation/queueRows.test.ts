@@ -27,7 +27,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     kind_name: 'World Heritage Sites',
     missing_since: null,
     source_membership: 'present',
-    existence: 'extant',
+    gone: false,
     kind: 'conflict',
     proposed: null,
     ...over,

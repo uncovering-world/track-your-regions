@@ -70,7 +70,7 @@ vi.mock('./PointPreviewDialog', () => ({
 
 import { fetchExperience, type Experience, type ExperienceLocationsResponse } from '../../api/experiences';
 import {
-  editExperience, fetchPlaceKinds, rejectExperience, removeExperienceFromRegion, unrejectExperience,
+  editExperience, fetchPlaceKinds, rejectExperience, removeExperienceFromRegion, setExperienceState, unrejectExperience,
 } from '../../api/curation';
 import { ApiError } from '../../api/fetchUtils';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
@@ -111,7 +111,7 @@ const bamiyan: Experience = {
   treasure_count: 0,
   finds_count: 0,
   source_membership: 'present',
-  existence: 'extant',
+  gone: false,
   missing_since: null,
   is_new: false,
   image_credit: null,
@@ -182,6 +182,25 @@ describe('rejecting from the region (#613)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Unreject' }));
     await waitFor(() => expect(mockedUnreject).toHaveBeenCalledWith(1, 5));
+  });
+});
+
+describe('taking a gone place back (#863)', () => {
+  it('asks why it still stands, and sends that with the region open', async () => {
+    // The Bamiyan Buddhas recorded as gone, taken back: rebuilt since, or never gone.
+    const state = setExperienceState as unknown as ReturnType<typeof vi.fn>;
+    state.mockResolvedValue({ experienceId: 1, sourceMembership: 'present', gone: false });
+    renderDialog({ ...bamiyan, gone: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'It does still exist' }));
+    const lines = within(screen.getByRole('menu')).getAllByRole('menuitem').map(line => line.textContent);
+    expect(lines).toEqual(['It was never gone', 'Rebuilt since', 'Other…']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rebuilt since' }));
+
+    await waitFor(() => expect(state).toHaveBeenCalledWith(1, {
+      gone: false, reasonCode: 'rebuilt', regionId: 5,
+      expected: { membership: 'present', gone: true, flagged: false },
+    }));
   });
 });
 

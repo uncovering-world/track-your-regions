@@ -190,11 +190,11 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: O
         />
         <SeenElsewhere item={item} />
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-          Kept out{item.state_decided_at ? ` on ${formatDateTime(item.state_decided_at)}` : ''}
-          {item.state_note ? ` — “${item.state_note}”` : ''}
+          Kept out{item.answered_at ? ` on ${formatDateTime(item.answered_at)}` : ''}
+          {item.answer_note ? ` — “${item.answer_note}”` : ''}
           {/* A script's words about how the answer came about: the system's, never
               in the curator's quotes (#2195), as on the pin card. */}
-          {item.state_system_note ? ` — recorded by the system: ${item.state_system_note}` : ''}
+          {item.answer_system_note ? ` — recorded by the system: ${item.answer_system_note}` : ''}
         </Typography>
         <ReasonMenu
           label="Put back"

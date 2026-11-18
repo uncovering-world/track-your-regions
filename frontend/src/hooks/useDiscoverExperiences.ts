@@ -236,8 +236,8 @@ export function useDiscoverExperiences() {
   });
 
   // Places that no longer exist come with the answer and are held back here,
-  // by the rule the server applies when asked to hide them (`existence` is
-  // `lost`, `hideLostSql`). Discover shows one kind at a time, and the server's
+  // by the rule the server applies when asked to hide them (`gone`: the
+  // place's standing periods all ended, `placeGoneSql`). Discover shows one kind at a time, and the server's
   // `lostHidden` counts the whole region, so a line offering "3 no longer exist"
   // under World Heritage Sites could reveal none of them; counted here, it says
   // what this kind's list would gain. They are few — almost no region holds
@@ -253,7 +253,7 @@ export function useDiscoverExperiences() {
   const shownRows = useMemo(
     () => experiencesData && (showLost
       ? experiencesData.experiences
-      : experiencesData.experiences.filter(e => e.existence !== 'lost')),
+      : experiencesData.experiences.filter(e => !e.gone)),
     [experiencesData, showLost],
   );
   const experiences = useMemo(() => shownRows ?? [], [shownRows]);
@@ -267,7 +267,7 @@ export function useDiscoverExperiences() {
   const experienceSet = experiencesData?.experiences;
   /** Places of the open kind that no longer exist — what revealing them adds. */
   const lostInKind = useMemo(
-    () => (experiencesData?.experiences ?? []).filter(e => e.existence === 'lost').length,
+    () => (experiencesData?.experiences ?? []).filter(e => e.gone).length,
     [experiencesData],
   );
 

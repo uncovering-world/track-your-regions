@@ -49,7 +49,7 @@ const ROUNDED: ApproximatePoint = {
 
 const ECHMIATSIN = {
   id: 831, external_id: '1011', name: 'Cathedral and Churches of Echmiatsin and the Archaeological Site of Zvartnots',
-  kind_id: 1, kind_name: 'World Heritage Sites', missing_since: null, source_membership: 'present', existence: 'extant',
+  kind_id: 1, kind_name: 'World Heritage Sites', missing_since: null, source_membership: 'present', gone: false,
   kind: 'approximate-points', proposed: null,
   approximate_points: [GAYANEH, ROUNDED],
   site_points: [],

@@ -71,7 +71,7 @@ import { mayBeFindOrigin } from '../../utils/placeKinds';
 import { KindSeparation } from './KindSeparation';
 import { PlaceKinds } from './PlaceKinds';
 import { ReasonMenu, type Reasoned } from './ReasonMenu';
-import { REGION_REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
+import { REGION_REFUSAL_REASON_CODES, STANDS_REASON_CODES } from '@tyr/shared/curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { SUBJECT_LINE_SOURCE_IDS } from '@tyr/shared/commemorates';
@@ -89,7 +89,7 @@ type RegionRefusal = Reasoned<typeof REGION_REFUSAL_REASON_CODES>;
 export type CurationTarget = Pick<Experience,
   | 'id' | 'name' | 'subtitle' | 'description' | 'description_source' | 'description_adapted' | 'type'
   | 'image_url' | 'image_credit' | 'kind_id' | 'kind_name' | 'kinds' | 'country_names'
-  | 'missing_since' | 'source_membership' | 'existence' | 'is_rejected' | 'rejection_reason'>;
+  | 'missing_since' | 'source_membership' | 'gone' | 'is_rejected' | 'rejection_reason'>;
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -273,14 +273,18 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
   const lifecycleVerdict = verdictOf(experience);
 
   const lifecycleMutation = useMutation({
-    mutationFn: () => setExperienceState(experience!.id, {
-      ...(lifecycleVerdict === 'lost' ? { existence: 'extant' as const } : { membership: 'present' as const }),
+    // Taking *lost* back opens the place's standing again (ADR-0217 decision 5),
+    // and says why (#863); taking *former* back asks nothing.
+    mutationFn: (standsAgain?: Reasoned<typeof STANDS_REASON_CODES>) => setExperienceState(experience!.id, {
+      ...(standsAgain ? { gone: false, ...standsAgain } : { membership: 'present' as const }),
+      // The region the curator has open, which the log names (#863).
+      ...(regionId ? { regionId } : {}),
       // The row as this dialog is showing it. The server compares it under the
       // write lock and refuses if someone answered in between, so a stale
       // dialog cannot undo an answer it never saw.
       expected: {
         membership: experience!.source_membership ?? 'present',
-        existence: experience!.existence ?? 'extant',
+        gone: experience!.gone ?? false,
         flagged: experience!.missing_since != null,
       },
     }),
@@ -598,14 +602,24 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
                 Could not change it: {(lifecycleMutation.error as Error)?.message}
               </Alert>
             )}
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={isPending}
-              onClick={() => lifecycleMutation.mutate()}
-            >
-              {lifecycleVerdict === 'lost' ? 'It does still exist' : 'It is still listed'}
-            </Button>
+            {lifecycleVerdict === 'lost' ? (
+              <ReasonMenu
+                label="It does still exist"
+                reasons={STANDS_REASON_CODES}
+                size="small"
+                disabled={isPending}
+                onChoose={(reasonCode, note) => lifecycleMutation.mutate({ reasonCode, ...(note ? { note } : {}) })}
+              />
+            ) : (
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={isPending}
+                onClick={() => lifecycleMutation.mutate(undefined)}
+              >
+                It is still listed
+              </Button>
+            )}
           </>
         )}
 

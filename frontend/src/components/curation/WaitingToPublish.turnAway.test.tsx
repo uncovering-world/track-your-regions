@@ -34,7 +34,7 @@ const DORMITION = { id: 47120, external_id: 'Q4129512', name: 'Dormition Cathedr
 function arrival(): ReviewQueueItem {
   return {
     ...DORMITION, kind_id: 7, kind_name: 'Towers', kind_type: 'bell-tower', membership_id: 88,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'arrival', proposed: null, wikipedia_url: null,
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],
   };

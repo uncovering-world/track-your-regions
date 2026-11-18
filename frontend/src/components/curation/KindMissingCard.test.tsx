@@ -27,7 +27,7 @@ beforeEach(() => {
 function kind(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
     id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
-    missing_since: '2026-10-01T10:00:00Z', source_membership: 'present', existence: 'extant',
+    missing_since: '2026-10-01T10:00:00Z', source_membership: 'present', gone: false,
     kind: 'missing', proposed: null, membership_id: 21, seen_in: ['Art Museums'], kept_as_former: false,
     ...over,
   };
@@ -83,7 +83,7 @@ describe('a kind whose source stopped listing a place', () => {
       membership: 'former',
       note: undefined,
       membershipId: 21,
-      expected: { membership: 'present', existence: 'extant', flagged: true },
+      expected: { membership: 'present', gone: false, flagged: true },
     }));
   });
 

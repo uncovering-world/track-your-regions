@@ -51,7 +51,7 @@ function KindSection({ item, onDone }: { item: ReviewQueueItem; onDone: OnDone }
       // The kind as this card shows it, its flag included: a run that finds
       // the place again clears the flag, and taking it out of the kind then
       // would take out a place its source lists again.
-      expected: { membership: item.source_membership, existence: item.existence, flagged: item.missing_since != null },
+      expected: { membership: item.source_membership, gone: item.gone, flagged: item.missing_since != null },
     }),
     onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined, item.id),
   });

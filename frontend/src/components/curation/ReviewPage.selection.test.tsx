@@ -152,6 +152,18 @@ describe('answering a selection', () => {
     expect(screen.getByRole('button', { name: 'Lost' })).toBeInTheDocument();
   });
 
+  it('records a selection of missing places as lost with one reason for every one of them (#863)', async () => {
+    renderQueue();
+    await screen.findByRole('checkbox', { name: 'Select Dresden Elbe Valley' });
+    tick('Dresden Elbe Valley');
+    fireEvent.click(screen.getByRole('button', { name: 'Lost' }));
+    expect(within(screen.getByRole('menu')).getByText('Why record them as gone by hand')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
+
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(
+      [expect.objectContaining({ kind: 'missing', id: 77 })], 'lost', { reasonCode: 'missing-from-rule', note: undefined }));
+  });
+
   it('withholds Lost from an all-matching selection whose filters reach other kinds', async () => {
     mockedFetch.mockResolvedValue({ missing: [MISSING], limit: 25, total: 1078 });
     renderQueue();

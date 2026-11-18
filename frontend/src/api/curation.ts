@@ -41,8 +41,9 @@ import {
   getExperiencesByIdPictureClasses,
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
-  type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseArrivalBody, type RefuseContentsBody,
-  type RejectExperienceBody, type AssignExperienceBody, type DeleteExperiencesByIdRemoveFromRegionByRegionIdParams,
+  type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type PlaceStateBody, type RefuseArrivalBody,
+  type RefuseContentsBody, type RejectExperienceBody, type AssignExperienceBody,
+  type DeleteExperiencesByIdRemoveFromRegionByRegionIdParams,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -78,7 +79,8 @@ export async function rejectExperience(
  * Record what a curator decided about an object's lifecycle.
  *
  * Sending `membership: 'present'` on a row a run flagged is the "false alarm"
- * answer: the source hiccupped and nothing moved.
+ * answer: the source hiccupped and nothing moved. `gone: true` is *lost*,
+ * which closes the place's standing, and `gone: false` takes it back.
  */
 export async function setExperienceState(
   experienceId: number,
@@ -86,15 +88,16 @@ export async function setExperienceState(
   // the write lock: a run that re-lists the object clears the flag without
   // touching either axis, so the axes alone cannot tell a live question from a
   // withdrawn one.
-  decision: LifecycleStateBody,
+  decision: PlaceStateBody,
 ): Promise<ExperienceStateResult> {
   return postExperiencesByIdState(experienceId, decision);
 }
 
 /**
- * The same verdict about one point inside an object (ADR-0026).
+ * The same verdict about one point inside an object (ADR-0026), in the point's
+ * own words: a point keeps its `existence` until the point tables go.
  *
- * Same body, and one thing to know about the answer: it can move visibility either
+ * One thing to know about the answer: it can move visibility either
  * way. The false alarm reveals a flagged point, `former` leaves a flagged one hidden,
  * `lost` hides a point that was on offer, and taking a `lost` back reveals one whose
  * flag is already clear — because a reader-facing read carries both the withdrawal flag

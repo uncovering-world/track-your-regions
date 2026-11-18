@@ -25,7 +25,7 @@ const mockedSuggest = suggestMergeProposals as unknown as ReturnType<typeof vi.f
 
 const DURHAM = {
   id: 1225, external_id: '370', name: 'Durham Castle and Cathedral', kind_id: 1, kind_name: 'World Heritage Sites',
-  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'merge-proposals', proposed: null,
+  missing_since: null, source_membership: 'present', gone: false, kind: 'merge-proposals', proposed: null,
   merge_pairs: [
     {
       proposalId: 41, otherId: 13341, otherName: 'Durham Cathedral', otherKinds: ['Places of worship'],
@@ -53,7 +53,7 @@ const DURHAM = {
  */
 const BABYLON = {
   id: 183, external_id: '278', name: 'Babylon', kind_id: 1, kind_name: 'World Heritage Sites',
-  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'merge-proposals', proposed: null,
+  missing_since: null, source_membership: 'present', gone: false, kind: 'merge-proposals', proposed: null,
   merge_pairs: [{
     proposalId: 37, otherId: 14711, otherName: 'Babylon', otherKinds: ['Archaeology'],
     otherImageUrl: null, otherImageCredit: null, otherLatitude: 32.5363, otherLongitude: 44.4209,
@@ -73,7 +73,7 @@ const BABYLON = {
 const BISOTUN = {
   id: 586, external_id: '1222', name: 'Bisotun', kind_id: 1, kind_name: 'World Heritage Sites',
   latitude: 34.3883, longitude: 47.4367,
-  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'merge-proposals', proposed: null,
+  missing_since: null, source_membership: 'present', gone: false, kind: 'merge-proposals', proposed: null,
   merge_pairs: [{
     proposalId: 350, otherId: 38201, otherName: 'Bisotūn', otherKinds: [], otherPartOf: 'The Persian Caravanserai',
     otherImageUrl: null, otherImageCredit: null, otherLatitude: 34.3845, otherLongitude: 47.4349,
