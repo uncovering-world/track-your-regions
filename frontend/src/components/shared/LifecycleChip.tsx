@@ -8,7 +8,9 @@
  *   Nothing else about it changes: it stays in lists and on the map, because
  *   you can still go. The chip exists so a curious visitor is not left
  *   wondering why it is missing from the official catalogue.
- * - **Lost** — it no longer exists. These are filtered out of every read that
+ * - **Lost** — it no longer exists: it has standing periods and none is open,
+ *   as its run read them or a curator judged it (ADR-0217 decision 5). These
+ *   are filtered out of every read that
  *   offers a *set* to go through — the lists, the map, search and the counts —
  *   so this chip is reached only where they survive on purpose: a visit history,
  *   or a list the reader deliberately unfiltered. A by-id read leaves a `lost`
@@ -20,20 +22,21 @@
  */
 
 import { Chip, Tooltip } from '@mui/material';
-import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import type { SourceMembership } from '@tyr/shared/lifecycle';
 
 export interface LifecycleState {
   source_membership?: SourceMembership;
-  existence?: Existence;
+  /** Gone: the place's standing periods all ended. */
+  gone?: boolean;
 }
 
 /** The label and reason for a state, or null when there is nothing to say. */
 export function lifecycleLabel(
   state: LifecycleState,
 ): { label: string; title: string; color: 'default' | 'warning' } | null {
-  // Existence first: a place that is gone is gone whatever the catalogue says,
+  // Gone first: a place that is gone is gone whatever the catalogue says,
   // and labelling it "Former" would answer the less important question.
-  if (state.existence === 'lost') {
+  if (state.gone) {
     return {
       label: 'Lost',
       title: 'This no longer exists. Kept here because a visit to it still counts.',
@@ -58,7 +61,7 @@ export function lifecycleLabel(
  * what takes it out of the lists.
  */
 export function verdictOf(state: LifecycleState | null): 'lost' | 'former' | null {
-  if (state?.existence === 'lost') return 'lost';
+  if (state?.gone) return 'lost';
   if (state?.source_membership === 'former') return 'former';
   return null;
 }

@@ -12,7 +12,7 @@ import { TAIL_REASON } from './shared/tailNotice';
 const LAZIO = { id: 7210, name: 'Lazio', world_view_id: 5, world_view_name: 'Administrative' };
 const answer = (id: number, name: string, inTail: boolean) => ({
   id, name, kind_id: 4, kind_name: 'Places of worship', kinds: [], in_tail: inTail,
-  source_membership: 'present', existence: 'extant', missing_since: null, regions: [LAZIO],
+  source_membership: 'present', gone: false, missing_since: null, regions: [LAZIO],
 }) as unknown as ExperienceSearchResult;
 
 describe('the search mark of a shadowed place', () => {

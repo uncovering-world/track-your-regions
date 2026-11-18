@@ -31,7 +31,7 @@ const ARTICLE = 'https://en.wikipedia.org/wiki/Dormition_Cathedral,_Kharkiv';
 function arrival(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   return {
     ...DORMITION, kind_id: 7, kind_name: 'Towers', kind_type: 'bell-tower', membership_id: 88,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'arrival', proposed: null, wikipedia_url: ARTICLE,
     object_description: 'cathedral in Kharkiv, Ukraine',
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],

@@ -31,7 +31,7 @@ beforeEach(() => {
 function refusal(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
     id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'refused', proposed: null,
     ...over,
   };
@@ -150,8 +150,8 @@ describe('a refusal a curator kept out', () => {
       <QueryClientProvider client={client}>
         <KeptOutCard
           item={refusal({
-            membership_id: 21, admission_reason: 'not an archaeological site', state_decided_at: '2026-10-12T10:00:00Z',
-            state_note: null, state_system_note: 'released when the batch answer of 14 September 2026 was read',
+            membership_id: 21, admission_reason: 'not an archaeological site', answered_at: '2026-10-12T10:00:00Z',
+            answer_note: null, answer_system_note: 'released when the batch answer of 14 September 2026 was read',
           })}
           onDone={() => {}}
         />

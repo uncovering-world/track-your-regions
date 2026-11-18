@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 vi.mock('../../utils/queryInvalidation', () => ({
   invalidateExperiences: vi.fn(),
@@ -96,12 +96,12 @@ describe('ReviewQueue', () => {
     // stay possible, or a mis-clicked verdict could never be taken back
     await waitFor(() => {
       expect(mockedState).toHaveBeenCalledWith(77, expect.objectContaining({
-        expected: { membership: 'present', existence: 'extant', flagged: true },
+        expected: { membership: 'present', gone: false, flagged: true },
       }));
     });
   });
 
-  it('sends "former" as a membership decision, leaving existence alone', async () => {
+  it('sends "former" as a membership decision, leaving standing alone', async () => {
     renderQueue();
     await openRow(/Dresden Elbe Valley/);
 
@@ -110,17 +110,22 @@ describe('ReviewQueue', () => {
     await waitFor(() => {
       expect(mockedState).toHaveBeenCalledWith(77, expect.objectContaining({ membership: 'former' }));
     });
-    expect(mockedState.mock.calls[0][1]).not.toHaveProperty('existence');
+    expect(mockedState.mock.calls[0][1]).not.toHaveProperty('gone');
   });
 
-  it('sends "lost" as an existence decision — a destroyed site can still be listed', async () => {
+  it('sends "lost" as gone — a destroyed site can still be listed', async () => {
     renderQueue();
     await openRow(/Dresden Elbe Valley/);
 
     fireEvent.click(await screen.findByRole('button', { name: /lost/i }));
+    // Recorded by hand, it says why (#863): the gone rule missed it, or another reason.
+    const lines = within(screen.getByRole('menu')).getAllByRole('menuitem').map(line => line.textContent);
+    expect(lines).toEqual(['The rule missed it', 'Other…']);
+    expect(mockedState).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'The rule missed it' }));
 
     await waitFor(() => {
-      expect(mockedState).toHaveBeenCalledWith(77, expect.objectContaining({ existence: 'lost' }));
+      expect(mockedState).toHaveBeenCalledWith(77, expect.objectContaining({ gone: true, reasonCode: 'missing-from-rule' }));
     });
     expect(mockedState.mock.calls[0][1]).not.toHaveProperty('membership');
   });

@@ -378,14 +378,14 @@ describe('useDiscoverExperiences — a place former in one of its kinds (#1289)'
 });
 
 describe('useDiscoverExperiences — places that no longer exist (#609)', () => {
-  const kindRow = (id: number, name: string, kindId: number, kindName: string, existence: 'extant' | 'lost') => ({
-    id, name, type: null, kind_id: kindId, kind_name: kindName, kind_priority: kindId, existence,
+  const kindRow = (id: number, name: string, kindId: number, kindName: string, gone: boolean) => ({
+    id, name, type: null, kind_id: kindId, kind_name: kindName, kind_priority: kindId, gone,
     kinds: [{ kind_id: kindId, kind_name: kindName, kind_priority: kindId, type: null, source_id: kindId, external_id: String(id) }],
   } as unknown as Experience);
   // Valletta: the Triton Fountain stands; the Royal Opera House was destroyed in 1942.
-  const TRITON = kindRow(9101, 'Triton Fountain', 3, 'Public art', 'extant');
-  const OPERA = kindRow(9102, 'Royal Opera House, Valletta', 3, 'Public art', 'lost');
-  const TEMPLES = kindRow(9103, 'Megalithic Temples of Malta', 1, 'World Heritage Sites', 'extant');
+  const TRITON = kindRow(9101, 'Triton Fountain', 3, 'Public art', false);
+  const OPERA = kindRow(9102, 'Royal Opera House, Valletta', 3, 'Public art', true);
+  const TEMPLES = kindRow(9103, 'Megalithic Temples of Malta', 1, 'World Heritage Sites', false);
 
   beforeEach(() => {
     mockFetchByRegion.mockResolvedValue({ experiences: [TRITON, OPERA, TEMPLES], total: 3, lostHidden: 0 });

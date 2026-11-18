@@ -143,7 +143,7 @@ export const MISSING = {
   kind_name: 'World Heritage Sites',
   missing_since: '2026-08-03T10:00:00Z',
   source_membership: 'present' as const,
-  existence: 'extant' as const,
+  gone: false,
   kind: 'missing' as const,
   proposed: null,
 };
@@ -163,8 +163,8 @@ export const REFUSED = {
 export const KEPT_OUT = {
   ...REFUSED,
   kind: 'kept-out' as const,
-  state_decided_at: '2026-08-08T09:00:00Z',
-  state_note: 'archaeology, comes back with that import',
+  answered_at: '2026-08-08T09:00:00Z',
+  answer_note: 'archaeology, comes back with that import',
 };
 
 /**

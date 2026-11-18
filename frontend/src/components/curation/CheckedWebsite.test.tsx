@@ -100,7 +100,7 @@ describe('a checked official website (#2165)', () => {
   it("marks the card heading's official site", async () => {
     const villa = {
       id: 205, external_id: '1025', name: "Villa d'Este, Tivoli", kind_id: 1, kind_name: 'World Heritage Sites',
-      missing_since: null, source_membership: 'present', existence: 'extant', kind: 'held', proposed: null,
+      missing_since: null, source_membership: 'present', gone: false, kind: 'held', proposed: null,
       website_url: 'http://www.villadestetivoli.info/',
     } as ReviewQueueItem;
     render(withQuery(<ObjectContext item={villa} />));

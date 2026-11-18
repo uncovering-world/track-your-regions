@@ -30,7 +30,9 @@ import { askedSince } from './askedSince';
 import { rowlessProposalWords, rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
 import { CHANGE_ANSWERS, CHANGE_COLUMNS, changeAnswersLine } from './selection/answerWords';
-import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import type { SourceMembership } from '@tyr/shared/lifecycle';
+import { GONE_REASON_CODES } from '@tyr/shared/curationLog';
+import { ReasonMenu, type Reasoned } from '../shared/ReasonMenu';
 
 
 /**
@@ -43,10 +45,11 @@ import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
-    mutationFn: (decision: { membership?: SourceMembership; existence?: Existence }) =>
+    mutationFn: (decision: { membership?: SourceMembership } | ({ gone: true } & Reasoned<typeof GONE_REASON_CODES>)) =>
       setExperienceState(item.id, {
-        ...decision,
+        // Words written under "Other…" are the answer's; else the card's note.
         note: note || undefined,
+        ...decision,
         // What this card is showing, flag included. The server compares it
         // with what is stored, which is the only way it can tell a card drawn
         // before the question was answered from a correction made with the
@@ -56,7 +59,7 @@ export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
         // axes alone, so this card would otherwise still match.
         expected: {
           membership: item.source_membership,
-          existence: item.existence,
+          gone: item.gone,
           flagged: item.missing_since != null,
         },
       }),
@@ -91,14 +94,16 @@ export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
           >
             Former — delisted, still there
           </Button>
-          <Button
-            variant="outlined"
+          {/* Recording a place as gone by hand says why (#863): the rule that
+              reads a place as gone missed it, or another reason. */}
+          <ReasonMenu
+            label="Lost — no longer exists"
+            heading="Why record it as gone by hand"
+            reasons={GONE_REASON_CODES}
             color="warning"
             disabled={decide.isPending}
-            onClick={() => decide.mutate({ existence: 'lost' })}
-          >
-            Lost — no longer exists
-          </Button>
+            onChoose={(reasonCode, words) => decide.mutate({ gone: true, reasonCode, ...(words ? { note: words } : {}) })}
+          />
           <Button
             variant="text"
             disabled={decide.isPending}

@@ -32,7 +32,7 @@ const PLACE = { id: 6214, external_id: 'Q207694', name: 'Capitoline Museums' };
 function item(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
     ...PLACE, kind_id: 5, kind_name: 'Archaeology', kind_type: null,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'arrival', proposed: null,
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],
     ...over,

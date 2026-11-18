@@ -2293,14 +2293,6 @@ export const ExperienceSearchResultSourceMembership = {
   former: 'former',
 } as const;
 
-export type ExperienceSearchResultExistence = typeof ExperienceSearchResultExistence[keyof typeof ExperienceSearchResultExistence];
-
-
-export const ExperienceSearchResultExistence = {
-  extant: 'extant',
-  lost: 'lost',
-} as const;
-
 /**
  * Where a whole is, measured over the places of it this caller is shown, as a region's frame is (#2122): the Struve Geodetic Arc from Hammerfest to the Black Sea. A whole has no coordinate of its own.
  */
@@ -2362,7 +2354,8 @@ export interface ExperienceSearchResult {
   image_url: string | null;
   image_credit: ImageCredit | null;
   source_membership: ExperienceSearchResultSourceMembership;
-  existence: ExperienceSearchResultExistence;
+  /** Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it (Nelson's Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not. */
+  gone: boolean;
   missing_since: string | null;
   /**
      * Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).
@@ -2551,14 +2544,6 @@ export const ExperienceSourceMembership = {
   former: 'former',
 } as const;
 
-export type ExperienceExistence = typeof ExperienceExistence[keyof typeof ExperienceExistence];
-
-
-export const ExperienceExistence = {
-  extant: 'extant',
-  lost: 'lost',
-} as const;
-
 /**
  * One object in a region's list.
  */
@@ -2654,7 +2639,8 @@ export interface Experience {
   /** @nullable */
   rejection_reason?: string | null;
   source_membership: ExperienceSourceMembership;
-  existence: ExperienceExistence;
+  /** Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it (Nelson's Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not. */
+  gone: boolean;
   missing_since: string | null;
   /** Whether the reader could first see this recently: published, and inside the kind's window or this reader's own week (#529). */
   is_new: boolean;
@@ -2810,14 +2796,6 @@ export const ExperienceDetailSourceMembership = {
   former: 'former',
 } as const;
 
-export type ExperienceDetailExistence = typeof ExperienceDetailExistence[keyof typeof ExperienceDetailExistence];
-
-
-export const ExperienceDetailExistence = {
-  extant: 'extant',
-  lost: 'lost',
-} as const;
-
 /**
  * The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole's kind.
  */
@@ -2905,7 +2883,8 @@ export interface ExperienceDetail {
   created_at: string | null;
   updated_at: string | null;
   source_membership: ExperienceDetailSourceMembership;
-  existence: ExperienceDetailExistence;
+  /** Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it (Nelson's Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not. */
+  gone: boolean;
   missing_since: string | null;
   /**
      * Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).
@@ -3853,14 +3832,6 @@ export type ReviewQueueItemSourceMembership = typeof ReviewQueueItemSourceMember
 export const ReviewQueueItemSourceMembership = {
   present: 'present',
   former: 'former',
-} as const;
-
-export type ReviewQueueItemExistence = typeof ReviewQueueItemExistence[keyof typeof ReviewQueueItemExistence];
-
-
-export const ReviewQueueItemExistence = {
-  extant: 'extant',
-  lost: 'lost',
 } as const;
 
 export type ReviewQueueItemKind = typeof ReviewQueueItemKind[keyof typeof ReviewQueueItemKind];
@@ -4934,7 +4905,8 @@ export interface ReviewQueueItem {
   kind_type: string | null;
   missing_since: string | null;
   source_membership: ReviewQueueItemSourceMembership;
-  existence: ReviewQueueItemExistence;
+  /** Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5). */
+  gone: boolean;
   kind: ReviewQueueItemKind;
   /** The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents are asked per membership whose run placed them (#1290), one card each, which their answer is written under. Absent on a card about the place as a whole. */
   membership_id?: number | null;
@@ -4983,18 +4955,18 @@ export interface ReviewQueueItem {
      * @nullable
      */
   admission_reason?: string | null;
-  /** When a curator answered. Kept-out items only. */
-  state_decided_at?: string | null;
+  /** When a curator answered, read from the curation log. Kept-out items only. */
+  answered_at?: string | null;
   /**
      * The curator's own words with the answer. Kept-out items only.
      * @nullable
      */
-  state_note?: string | null;
+  answer_note?: string | null;
   /**
      * What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195). Kept-out items only.
      * @nullable
      */
-  state_system_note?: string | null;
+  answer_system_note?: string | null;
   /** The fields a run proposed. Null on every kind that carries no proposal, never absent. */
   proposed: ProposedField[] | null;
   /** When the run whose proposal this is finished. Conflicts and held proposals. */
@@ -5443,7 +5415,7 @@ export const ReviewAnswerBodyAnswer = {
 } as const;
 
 /**
- * Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused.
+ * Why the arrivals a rejection turns away were turned away, or why the places a lost answer reaches are gone; an arrival rejected, or a place recorded as lost, without one is refused.
  */
 export type ReviewAnswerBodyReasonCode = typeof ReviewAnswerBodyReasonCode[keyof typeof ReviewAnswerBodyReasonCode];
 
@@ -5456,6 +5428,7 @@ export const ReviewAnswerBodyReasonCode = {
   duplicate: 'duplicate',
   'wrong-place': 'wrong-place',
   other: 'other',
+  'missing-from-rule': 'missing-from-rule',
 } as const;
 
 export interface ReviewAnswerBody {
@@ -5465,10 +5438,10 @@ export interface ReviewAnswerBody {
      */
   rows: ReviewAnswerBodyRowsItem[];
   answer: ReviewAnswerBodyAnswer;
-  /** Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused. */
+  /** Why the arrivals a rejection turns away were turned away, or why the places a lost answer reaches are gone; an arrival rejected, or a place recorded as lost, without one is refused. */
   reasonCode?: ReviewAnswerBodyReasonCode;
   /**
-     * The curator's words beside the reason, kept with each arrival turned away.
+     * The curator's words beside the reason, kept with each arrival turned away or place recorded as lost.
      * @maxLength 1000
      */
   note?: string;
@@ -6048,6 +6021,88 @@ export interface CrowdingAnswered {
   placementFailed: CrowdingAnsweredPlacementFailedItem[];
 }
 
+export type PlaceStateBodyMembership = typeof PlaceStateBodyMembership[keyof typeof PlaceStateBodyMembership];
+
+
+export const PlaceStateBodyMembership = {
+  present: 'present',
+  former: 'former',
+} as const;
+
+/**
+ * Why the curator acted, kept in the log entry the act writes. Required with `gone`: a gone answer's reasons with true, a taken-back one's with false.
+ */
+export type PlaceStateBodyReasonCode = typeof PlaceStateBodyReasonCode[keyof typeof PlaceStateBodyReasonCode];
+
+
+export const PlaceStateBodyReasonCode = {
+  'missing-from-rule': 'missing-from-rule',
+  other: 'other',
+  'never-gone': 'never-gone',
+  rebuilt: 'rebuilt',
+} as const;
+
+export type PlaceStateBodyExpectedMembership = typeof PlaceStateBodyExpectedMembership[keyof typeof PlaceStateBodyExpectedMembership];
+
+
+export const PlaceStateBodyExpectedMembership = {
+  present: 'present',
+  former: 'former',
+} as const;
+
+export type PlaceStateBodyExpected = {
+  membership: PlaceStateBodyExpectedMembership;
+  gone: boolean;
+  flagged: boolean;
+};
+
+export interface PlaceStateBody {
+  membership?: PlaceStateBodyMembership;
+  gone?: boolean;
+  /** @maxLength 1000 */
+  note?: string;
+  /** Why the curator acted, kept in the log entry the act writes. Required with `gone`: a gone answer's reasons with true, a taken-back one's with false. */
+  reasonCode?: PlaceStateBodyReasonCode;
+  /**
+     * The region the curator had open when acting, recorded as where they were working; grants nothing.
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  regionId?: number;
+  expected: PlaceStateBodyExpected;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
+}
+
+/**
+ * Whether the source still lists it: `former` once it has delisted it.
+ */
+export type ExperienceStateResultSourceMembership = typeof ExperienceStateResultSourceMembership[keyof typeof ExperienceStateResultSourceMembership];
+
+
+export const ExperienceStateResultSourceMembership = {
+  present: 'present',
+  former: 'former',
+} as const;
+
+/**
+ * An object's lifecycle as a curator's verdict left it.
+ */
+export interface ExperienceStateResult {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** Whether the source still lists it: `former` once it has delisted it. */
+  sourceMembership: ExperienceStateResultSourceMembership;
+  /** Whether it is gone: it has standing periods and none is open (ADR-0217 decision 5). A curator's *lost* closes them, and taking it back opens the last one again. */
+  gone: boolean;
+}
+
 export type LifecycleStateBodyMembership = typeof LifecycleStateBodyMembership[keyof typeof LifecycleStateBodyMembership];
 
 
@@ -6092,48 +6147,6 @@ export interface LifecycleStateBody {
   /** @maxLength 1000 */
   note?: string;
   expected: LifecycleStateBodyExpected;
-  /**
-     * @maximum 2147483647
-     * @exclusiveMinimum 0
-     */
-  membershipId?: number;
-}
-
-/**
- * Whether the source still lists it: `former` once it has delisted it.
- */
-export type ExperienceStateResultSourceMembership = typeof ExperienceStateResultSourceMembership[keyof typeof ExperienceStateResultSourceMembership];
-
-
-export const ExperienceStateResultSourceMembership = {
-  present: 'present',
-  former: 'former',
-} as const;
-
-/**
- * Whether it is still there to visit: `lost` once it is gone.
- */
-export type ExperienceStateResultExistence = typeof ExperienceStateResultExistence[keyof typeof ExperienceStateResultExistence];
-
-
-export const ExperienceStateResultExistence = {
-  extant: 'extant',
-  lost: 'lost',
-} as const;
-
-/**
- * An object's lifecycle as a curator's verdict left it.
- */
-export interface ExperienceStateResult {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  experienceId: number;
-  /** Whether the source still lists it: `former` once it has delisted it. */
-  sourceMembership: ExperienceStateResultSourceMembership;
-  /** Whether it is still there to visit: `lost` once it is gone. */
-  existence: ExperienceStateResultExistence;
 }
 
 export type LocationStateResultSourceMembership = typeof LocationStateResultSourceMembership[keyof typeof LocationStateResultSourceMembership];
@@ -13843,7 +13856,7 @@ export const getPostExperiencesByIdStateUrl = (id: number,) => {
  * @summary Record whether an experience is still listed and still stands, or take a verdict back
  */
 export const postExperiencesByIdState = async (id: number,
-    lifecycleStateBody: LifecycleStateBody, options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceStateResult> => {
+    placeStateBody: PlaceStateBody, options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceStateResult> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -13864,7 +13877,7 @@ return apiFetch<ExperienceStateResult>(getPostExperiencesByIdStateUrl(id),
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(lifecycleStateBody)
+    body: JSON.stringify(placeStateBody)
   }
 );}
 

@@ -157,6 +157,21 @@ describe('a verdict on the whole object', () => {
     expect(line).toBe('“Demolished after the 2019 fire; the source still lists it”');
   });
 
+  it('reads an entry written since a place\'s lost is its periods as one written before (ADR-0225)', () => {
+    // Older entries carry `existence`, newer ones `gone` and the reason; both print the note alone.
+    expect(formatLogDetails(entry('marked_lost', {
+      membership: { old: 'present', new: 'present' },
+      gone: { old: false, new: true },
+      note: 'Blown up on 6 June 2023',
+      reasonCode: 'missing-from-rule',
+    }))).toBe('“Blown up on 6 June 2023”');
+    expect(formatLogDetails(entry('marked_former', {
+      membership: { old: 'present', new: 'former' },
+      gone: { old: false, new: false },
+      note: null,
+    }))).toBeNull();
+  });
+
   it('says nothing rather than repeating an axis the act never moved', () => {
     expect(formatLogDetails(entry('marked_former', {
       membership: { old: 'present', new: 'former' },

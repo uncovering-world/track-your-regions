@@ -6,7 +6,7 @@ import { rowSpecific } from './rowSpecific';
 function contents(extra: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
     id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'contents', proposed: null,
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],
     ...extra,

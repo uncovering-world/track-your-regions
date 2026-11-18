@@ -43,7 +43,7 @@ function held(kind: 'Art Museums' | 'Archaeology', over: Partial<ReviewQueueItem
   return {
     ...PLACE, kind: 'held', kind_id: art ? 2 : 5, kind_name: kind, kind_type: null, membership_id: art ? 30 : 31,
     sync_log_id: art ? 170 : 169,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],
     proposed: [WEBSITE], proposed_parts: [apollo(120)],
     ...over,

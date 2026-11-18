@@ -45,7 +45,7 @@ const WIKIDATA = {
 
 const RILA = {
   id: 450, external_id: '216', name: 'Rila Monastery', kind_id: 1, kind_name: 'World Heritage Sites',
-  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'sources', proposed: null,
+  missing_since: null, source_membership: 'present', gone: false, kind: 'sources', proposed: null,
   source_views: [
     {
       field: 'name',

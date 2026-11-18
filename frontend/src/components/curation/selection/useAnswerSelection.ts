@@ -57,7 +57,9 @@ function couldNotStart(error: unknown): string {
 
 /**
  * One line per kind in the selection: the count, and what this answer does to
- * it; the arrivals' line names the reason they are turned away for.
+ * it; the arrivals' line names the reason they are turned away for, and the
+ * missing places' the reason they are recorded as gone for, each only on the
+ * answer that records it.
  */
 function confirmLinesFor(
   counts: Array<{ kind: AnswerableKind; count: number }>, answer: ReviewAnswer, reason?: BatchReason,
@@ -67,7 +69,8 @@ function confirmLinesFor(
     const words = ANSWER_WORDS[kind][answer];
     if (!words) continue;
     const noun = KIND_NOUN[kind][count === 1 ? 0 : 1];
-    const why = kind === 'arrival' && reason ? ` (${CURATION_REASON_WORDS[reason.reasonCode]})` : '';
+    const recordsWhy = (kind === 'arrival' && answer === 'reject') || (kind === 'missing' && answer === 'lost');
+    const why = recordsWhy && reason ? ` (${CURATION_REASON_WORDS[reason.reasonCode]})` : '';
     lines.push(`${count.toLocaleString('en')} ${noun}: ${words}${why}`);
   }
   return lines;

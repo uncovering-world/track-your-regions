@@ -71,7 +71,7 @@ function contents(...works: Work[]): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
     kind_id: 2, kind_name: 'Art Museums', kind_type: null,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'contents', proposed: null,
     pending_locations: 0, pending_treasures: works.length,
     pending_points: [], pending_works: works,
@@ -83,7 +83,7 @@ function points(...rows: Point[]): ReviewQueueItem {
   return {
     id: 1345, external_id: '1465', name: 'Champagne Hillsides, Houses and Cellars',
     kind_id: 1, kind_name: 'World Heritage Sites', kind_type: null,
-    missing_since: null, source_membership: 'present', existence: 'extant',
+    missing_since: null, source_membership: 'present', gone: false,
     kind: 'contents', proposed: null,
     pending_locations: rows.length, pending_treasures: 0,
     pending_points: rows, pending_works: [],
@@ -419,7 +419,7 @@ describe('the question the run wrote down', () => {
     return {
       id: 7311, external_id: 'Q4238', name: 'Pushkin Museum',
       kind_id: 5, kind_name: 'Archaeology', kind_type: null,
-      missing_since: null, source_membership: 'present', existence: 'extant',
+      missing_since: null, source_membership: 'present', gone: false,
       kind: 'arrival', proposed: null,
       pending_locations: 0, pending_treasures: 0,
       pending_points: [], pending_works: [],
