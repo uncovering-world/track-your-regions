@@ -46,6 +46,7 @@ describe('the catalogue lint rules', () => {
     ['a SQL comment inside a statement', "export const q = `SELECT 1 -- existence <> 'lost'\n  FROM e`;\n", 'src/services/lint-fixture.ts'],
     ['a place\'s standing read in a controller (#1719)', 'export const q = `SELECT id FROM experiences e WHERE e.stands_today`;\n', 'src/controllers/lint-fixture.ts'],
     ['a membership\'s standing in a sync service', "export const q = 'SELECT 1 FROM source_records m WHERE NOT m.stands_today';\n", 'src/services/sync/lint-fixture.ts'],
+    ['a place\'s stood periods read in a controller (#2584)', "export const q = `SELECT 1 FROM place_periods p WHERE p.says = 'stood' AND NOT p.ended`;\n", 'src/controllers/lint-fixture.ts'],
   ])('refuses a spelled-out reader predicate: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => PREDICATE.test(m))).toBe(true);
   });

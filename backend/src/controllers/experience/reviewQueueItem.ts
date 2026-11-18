@@ -36,7 +36,8 @@ export interface QueueRow {
   kind_type?: string | null;
   missing_since: Date | null;
   source_membership: CheckValue<'experiences', 'source_membership'>;
-  existence: CheckValue<'experiences', 'existence'>;
+  /** Gone: standing periods, none open (`placeGoneSql`). */
+  gone: boolean;
   kind: QueueItemKind;
   /** Selected by the four membership cards (#1264). */
   membership_id?: number | null;
@@ -65,10 +66,10 @@ export interface QueueRow {
   in_danger?: boolean;
   danger_since?: number | null;
   admission_reason?: string | null;
-  state_decided_at?: Date | null;
-  state_note?: string | null;
+  answered_at?: Date | null;
+  answer_note?: string | null;
   /** What the system recorded about how the kept-out answer came about (#2195). */
-  state_system_note?: string | null;
+  answer_system_note?: string | null;
   run_completed_at?: Date | null;
   first_asked_run_id?: number | null;
   first_asked_at?: Date | null;
@@ -185,7 +186,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     kind_type: row.kind_type ?? null,
     missing_since: iso(row.missing_since) ?? null,
     source_membership: row.source_membership,
-    existence: row.existence,
+    gone: row.gone,
     kind: row.kind,
     membership_id: row.membership_id,
     image_url: row.image_url,
@@ -207,9 +208,9 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     in_danger: row.in_danger,
     danger_since: row.danger_since,
     admission_reason: row.admission_reason,
-    state_decided_at: iso(row.state_decided_at),
-    state_note: row.state_note,
-    state_system_note: row.state_system_note,
+    answered_at: iso(row.answered_at),
+    answer_note: row.answer_note,
+    answer_system_note: row.answer_system_note,
     proposed: row.proposed?.map(proposedFieldOf) ?? null,
     run_completed_at: iso(row.run_completed_at),
     first_asked_run_id: row.first_asked_run_id,

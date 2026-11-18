@@ -93,9 +93,9 @@ import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@t
 import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockExperience, lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
-import type { RecordPeriods } from '../../db/placePeriodsWriter.js';
+import { heldPeriodsOf, type RecordPeriods } from '../../db/placePeriodsWriter.js';
 import {
-  decideLifetime, heldPeriodsOf, withLifetimeChanges, writeLifetime, type LifetimeDecision, type LifetimeGate,
+  decideLifetime, withLifetimeChanges, writeLifetime, type LifetimeDecision, type LifetimeGate,
 } from './lifetimeWrites.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts.js';
@@ -1127,7 +1127,7 @@ async function writeUnderLock(
         -- as its absence was. A curator's 'former' was a claim about the
         -- source's collection, and the source has just contradicted it;
         -- leaving it would mark as delisted a place the source currently
-        -- offers, with nothing anywhere to say so. Existence is untouched: a
+        -- offers, with nothing anywhere to say so. Standing is untouched: a
         -- listing says nothing about whether the thing still stands. Only ever
         -- toward more visibility, so a source outage still cannot hide
         -- anything (ADR-0020).

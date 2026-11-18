@@ -493,7 +493,10 @@ export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
  * `shownOnly` leaves out a kind that crowds the place out of a crowded city
  * (`membershipShownSql`, ADR-0172), for a list or a map that groups by kind:
  * the church crowded out of Rome's places of worship and offered as a tower
- * is in the towers' group alone. The card and search name every kind.
+ * is in the towers' group alone. The card and search name every kind. A place
+ * that does not stand today has no standing membership, and is in a list only
+ * where a reader asked to see what is gone (`experienceShownWithGoneSql`): its
+ * shown kinds are then the kinds that offer it, so it is grouped where it stood.
  *
  * `withFame` adds each kind's `fame`, the membership's blended fame
  * (`membership_fame.score`, ADR-0172), null where the kind measures none or the
@@ -508,7 +511,9 @@ export function placeKindsSql(experience = 'e', shownOnly = false, withFame = fa
   return `(SELECT COALESCE(${kindsAggregateSql(withFame)}, '[]'::json)
          FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
         WHERE pk.experience_id = ${experience}.id
-          AND ${shownOnly ? membershipShownSql('pk') : membershipOfferedSql('pk')})`;
+          AND ${shownOnly
+    ? `(${membershipShownSql('pk')} OR (${membershipOfferedSql('pk')} AND NOT ${experience}.stands_today))`
+    : membershipOfferedSql('pk')})`;
 }
 
 /** A place's kinds as `placeKindsSql` aggregates them over `pk` and `pkk`: one entry per membership, in the kinds' order. */

@@ -43,7 +43,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql, contentsMembershipToAnswerSql } from './waitingCounts.js';
-import { lockExperience, recordDecisionOnExperience, type UnderLock } from '../../db/experienceWriter.js';
+import { lockExperience, type UnderLock } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
 import { logCurationAct } from '../../db/curationLogWriter.js';
@@ -187,11 +187,9 @@ export async function refuseArrivalUnderLock(
     // The verdict, its reason and the pin on the membership, the badge cleared
     // the way a rule's refusal clears it (#760): the pin keeps every later run
     // off the row, so what the badge holds after this is what it holds for
-    // good. Who decided, when and the note on the place, beside the other
-    // verdicts that share those columns.
+    // good. Who decided, when and the note are the log entry's below.
     const curated = [...new Set([...((before.curated_fields as string[]) ?? []), 'admission'])];
     await refuseOnMembership(client, locked.lock, membershipId, CURATOR_REFUSAL_REASON, curated);
-    await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     // The membership kept out (#1264), which the kept-out card reads; the
     // membership's own reason stays the constant, and the curator's why is the

@@ -19,7 +19,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK, placeLockOrderSql } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipAdmittedSql, sourcePlacesSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
-import { placeNotJudgedLostSql } from '../../db/readerPredicates.js';
+import { placeGoneSql } from '../../db/readerPredicates.js';
 
 /**
  * The places a run is expected to see again, as `e` with the run's membership
@@ -37,22 +37,22 @@ import { placeNotJudgedLostSql } from '../../db/readerPredicates.js';
  * never appear in a source listing, so measuring it against one would report
  * every clean run as having delisted the curator's own work.
  *
- * A row judged `lost` is answered, whatever the source still says. Asking
- * again every run would put it back in the review queue for good — the only
- * way out would be to answer a different question — and leaving it in the
- * denominator counts a row that can never be seen against the coverage guard,
- * dragging the source toward the 90 % floor that disables detection.
+ * A place that is gone (`placeGoneSql`) is answered, whatever the source
+ * still says: a curator judged it lost, or its periods say it ended (Nelson's
+ * Pillar). Asking every run would put it back in the review queue for good —
+ * the only way out would be to answer a different question — and leaving it
+ * in the denominator counts a row that can never be seen against the coverage
+ * guard, dragging the source toward the 90 % floor that disables detection.
  *
- * Only the verdict excuses a row (`placeNotJudgedLostSql`), not the periods
- * (`stands_today`): nobody has answered for a place whose opening day is still
- * ahead, so a source that drops it before it opens marks it missing, as it
+ * A place whose opening day is still ahead is not gone: nobody has answered
+ * for it, so a source that drops it before it opens marks it missing, as it
  * would any other.
  */
 const EXPECTED = `sm.source_id = $1
        AND sm.source_membership = 'present'
        AND sm.missing_since IS NULL
        AND e.is_manual = FALSE
-       AND ${placeNotJudgedLostSql('e')}
+       AND NOT ${placeGoneSql('e')}
        AND ${membershipAdmittedSql('sm')}`;
 
 export type SourceCompleteness = 'authoritative' | 'ranked';

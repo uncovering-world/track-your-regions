@@ -587,7 +587,7 @@ describe('a refusal of each membership (#1264)', () => {
       caller: { id: adminId, role: 'admin' } as Express.User,
     });
 
-    const noteOf = Object.fromEntries(queue.keptOut.map(item => [item.membership_id, item.state_note]));
+    const noteOf = Object.fromEntries(queue.keptOut.map(item => [item.membership_id, item.answer_note]));
     expect(noteOf).toEqual({ [archaeology]: 'no excavated holdings', [art]: 'antiquities only' });
   });
 
@@ -610,8 +610,8 @@ describe('a refusal of each membership (#1264)', () => {
     });
 
     expect(queue.keptOut).toEqual([expect.objectContaining({
-      membership_id: archaeology, state_note: null,
-      state_system_note: 'released when the batch answer of 14 September 2026 was read',
+      membership_id: archaeology, answer_note: null,
+      answer_system_note: 'released when the batch answer of 14 September 2026 was read',
     })]);
   });
 });
@@ -651,7 +651,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
 
   it('takes the place out of that kind, and only that kind, on "no longer this kind"', async () => {
     const archaeology = await archaeologyDropped();
-    const expected = { membership: 'present' as const, existence: 'extant' as const, flagged: true };
+    const expected = { membership: 'present' as const, gone: false as const, flagged: true };
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
       membership: 'former', note: 'reclassified as a museum building', expected, membershipId: archaeology,
@@ -671,7 +671,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     const queue = await queueFor();
     expect(queue.missing).toEqual([]);
     expect(queue.keptOut).toEqual([expect.objectContaining({
-      membership_id: archaeology, state_note: 'reclassified as a museum building',
+      membership_id: archaeology, answer_note: 'reclassified as a museum building',
     })]);
   });
 
@@ -679,7 +679,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     const archaeology = await archaeologyDropped();
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
-      membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+      membership: 'present', expected: { membership: 'present', gone: false, flagged: true }, membershipId: archaeology,
     });
 
     expect(outcome.refusal).toBeUndefined();
@@ -703,7 +703,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     expect(queue.missing).toEqual([expect.objectContaining({ membership_id: membershipId, kept_as_former: true })]);
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
-      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId,
+      membership: 'former', expected: { membership: 'present', gone: false, flagged: true }, membershipId,
     });
 
     expect(outcome.refusal).toBeUndefined();
@@ -719,7 +719,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     // place's own question, not a kind's.
     const archaeology = await archaeologyDropped();
     await answerStateUnderLock(PLACE, adminId, null, {
-      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+      membership: 'former', expected: { membership: 'present', gone: false, flagged: true }, membershipId: archaeology,
     });
     await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
 
@@ -735,7 +735,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
-      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+      membership: 'former', expected: { membership: 'present', gone: false, flagged: true }, membershipId: archaeology,
     });
 
     expect(outcome.refusal).toMatchObject({ status: 409 });
@@ -747,13 +747,13 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     // Archaeology answer stands.
     const archaeology = await archaeologyDropped();
     await answerStateUnderLock(PLACE, adminId, null, {
-      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+      membership: 'former', expected: { membership: 'present', gone: false, flagged: true }, membershipId: archaeology,
     });
     const art = await membershipOf(artSource);
     await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [art]);
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
-      membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true },
+      membership: 'present', expected: { membership: 'present', gone: false, flagged: true },
     });
 
     expect(outcome.refusal).toBeUndefined();

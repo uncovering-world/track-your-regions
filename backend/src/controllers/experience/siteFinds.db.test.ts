@@ -124,7 +124,7 @@ describe('the finds on view of a site', () => {
   });
 
   it('stays one answer when the museum a reader could go to no longer stands', async () => {
-    await pool.query(`UPDATE experiences SET existence = 'lost' WHERE id = $1`, [SHOWN]);
+    await pool.query(`INSERT INTO place_periods (experience_id, says, ordinal, ended, source_id, decided_at) VALUES ($1, 'stood', 1, true, 11, NOW())`, [SHOWN]);
 
     const list = await getSiteFinds({ params: { id: DIG } });
     expect(list.total).toBe(0);
@@ -134,7 +134,7 @@ describe('the finds on view of a site', () => {
   it('lists and counts the finds of a site that no longer stands, which are still on view', async () => {
     // A dig flooded by a dam: gone, and shown to a reader who asks for what is
     // gone, while what was found there is in a museum a traveller can visit.
-    await pool.query(`UPDATE experiences SET existence = 'lost' WHERE id = $1`, [DIG]);
+    await pool.query(`INSERT INTO place_periods (experience_id, says, ordinal, ended, source_id, decided_at) VALUES ($1, 'stood', 1, true, 11, NOW())`, [DIG]);
 
     const list = await getSiteFinds({ params: { id: DIG } });
     expect(list.total).toBe(1);

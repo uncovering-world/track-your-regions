@@ -423,7 +423,7 @@ export async function searchExperiences(
       m.image_url,
       m.image_credit,
       m.source_membership,
-      m.existence,
+      m.gone,
       m.missing_since,
       m.longitude,
       m.latitude,

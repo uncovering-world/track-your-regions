@@ -14568,7 +14568,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LifecycleStateBody"
+                "$ref": "#/components/schemas/PlaceStateBody"
               }
             }
           }
@@ -26785,12 +26785,9 @@
               "former"
             ]
           },
-          "existence": {
-            "type": "string",
-            "enum": [
-              "extant",
-              "lost"
-            ]
+          "gone": {
+            "type": "boolean",
+            "description": "Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it (Nelson's Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not."
           },
           "missing_since": {
             "anyOf": [
@@ -26837,7 +26834,7 @@
           "treasure_count",
           "finds_count",
           "source_membership",
-          "existence",
+          "gone",
           "missing_since",
           "is_new"
         ],
@@ -27100,12 +27097,9 @@
               "former"
             ]
           },
-          "existence": {
-            "type": "string",
-            "enum": [
-              "extant",
-              "lost"
-            ]
+          "gone": {
+            "type": "boolean",
+            "description": "Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it (Nelson's Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not."
           },
           "missing_since": {
             "anyOf": [
@@ -27305,7 +27299,7 @@
           "created_at",
           "updated_at",
           "source_membership",
-          "existence",
+          "gone",
           "missing_since",
           "longitude",
           "latitude",
@@ -27816,12 +27810,9 @@
               "former"
             ]
           },
-          "existence": {
-            "type": "string",
-            "enum": [
-              "extant",
-              "lost"
-            ]
+          "gone": {
+            "type": "boolean",
+            "description": "Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it (Nelson's Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not."
           },
           "missing_since": {
             "anyOf": [
@@ -27882,7 +27873,7 @@
           "image_url",
           "image_credit",
           "source_membership",
-          "existence",
+          "gone",
           "missing_since",
           "longitude",
           "latitude",
@@ -28106,19 +28097,15 @@
             ],
             "description": "Whether the source still lists it: `former` once it has delisted it."
           },
-          "existence": {
-            "type": "string",
-            "enum": [
-              "extant",
-              "lost"
-            ],
-            "description": "Whether it is still there to visit: `lost` once it is gone."
+          "gone": {
+            "type": "boolean",
+            "description": "Whether it is gone: it has standing periods and none is open (ADR-0217 decision 5). A curator's *lost* closes them, and taking it back opens the last one again."
           }
         },
         "required": [
           "experienceId",
           "sourceMembership",
-          "existence"
+          "gone"
         ],
         "additionalProperties": false,
         "description": "An object's lifecycle as a curator's verdict left it."
@@ -31542,11 +31529,6 @@
               "existence",
               "flagged"
             ]
-          },
-          "membershipId": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647
           }
         },
         "required": [
@@ -35654,6 +35636,72 @@
         "additionalProperties": false,
         "description": "Places found by name."
       },
+      "PlaceStateBody": {
+        "type": "object",
+        "properties": {
+          "membership": {
+            "type": "string",
+            "enum": [
+              "present",
+              "former"
+            ]
+          },
+          "gone": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "reasonCode": {
+            "description": "Why the curator acted, kept in the log entry the act writes. Required with `gone`: a gone answer's reasons with true, a taken-back one's with false.",
+            "type": "string",
+            "enum": [
+              "missing-from-rule",
+              "other",
+              "never-gone",
+              "rebuilt"
+            ]
+          },
+          "regionId": {
+            "description": "The region the curator had open when acting, recorded as where they were working; grants nothing.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "expected": {
+            "type": "object",
+            "properties": {
+              "membership": {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "former"
+                ]
+              },
+              "gone": {
+                "type": "boolean"
+              },
+              "flagged": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "membership",
+              "gone",
+              "flagged"
+            ]
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "expected"
+        ]
+      },
       "PlacementCount": {
         "type": "object",
         "properties": {
@@ -39017,7 +39065,7 @@
             ]
           },
           "reasonCode": {
-            "description": "Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused.",
+            "description": "Why the arrivals a rejection turns away were turned away, or why the places a lost answer reaches are gone; an arrival rejected, or a place recorded as lost, without one is refused.",
             "type": "string",
             "enum": [
               "not-this-kind",
@@ -39026,11 +39074,12 @@
               "gone",
               "duplicate",
               "wrong-place",
-              "other"
+              "other",
+              "missing-from-rule"
             ]
           },
           "note": {
-            "description": "The curator's words beside the reason, kept with each arrival turned away.",
+            "description": "The curator's words beside the reason, kept with each arrival turned away or place recorded as lost.",
             "type": "string",
             "maxLength": 1000
           }
@@ -39609,12 +39658,9 @@
               "former"
             ]
           },
-          "existence": {
-            "type": "string",
-            "enum": [
-              "extant",
-              "lost"
-            ]
+          "gone": {
+            "type": "boolean",
+            "description": "Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5)."
           },
           "kind": {
             "type": "string",
@@ -39791,8 +39837,8 @@
               "null"
             ]
           },
-          "state_decided_at": {
-            "description": "When a curator answered. Kept-out items only.",
+          "answered_at": {
+            "description": "When a curator answered, read from the curation log. Kept-out items only.",
             "anyOf": [
               {
                 "type": "string",
@@ -39804,14 +39850,14 @@
               }
             ]
           },
-          "state_note": {
+          "answer_note": {
             "description": "The curator's own words with the answer. Kept-out items only.",
             "type": [
               "string",
               "null"
             ]
           },
-          "state_system_note": {
+          "answer_system_note": {
             "description": "What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195). Kept-out items only.",
             "type": [
               "string",
@@ -40204,7 +40250,7 @@
           "kind_type",
           "missing_since",
           "source_membership",
-          "existence",
+          "gone",
           "kind",
           "proposed"
         ],

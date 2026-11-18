@@ -22,13 +22,14 @@ import type { lifecycleStateBodySchema, locationIdParamSchema } from '../../type
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { lockExperience, setLifecycleVerdict, type LockedExperience } from '../../db/experienceWriter.js';
+import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { setPlaceGone } from '../../db/placePeriodsWriter.js';
 import { logCurationAct } from '../../db/curationLogWriter.js';
 import type { POINT_VERDICT_ACTIONS } from '@tyr/shared/curationLog';
 import { setPointVerdict } from './experienceLocationWriter.js';
 import { setPartRecordListingVerdict } from './membershipWriter.js';
 import { MEMBERSHIPS, partRecordSql, partRecordWithdrawnSql } from '../../db/membership.js';
-import { hideLostSql, partOfferedSql } from '../../db/readerPredicates.js';
+import { hideLostSql, partOfferedSql, placeGoneSql } from '../../db/readerPredicates.js';
 import { answeringPlaceSql } from '../../db/placePoints.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
@@ -180,7 +181,8 @@ interface PartLine {
   source_membership: string;
   /** Withdrawn by the list and not yet judged (`partRecordWithdrawnSql`). */
   withdrawn: boolean;
-  part_existence: string;
+  /** The part is gone (`placeGoneSql`): its standing periods say so. */
+  part_gone: boolean;
 }
 
 /**
@@ -191,7 +193,7 @@ interface PartLine {
 async function partLineOf(client: PoolClient, locationId: number): Promise<PartLine | null> {
   const found = await client.query<PartLine>(
     `SELECT rec.id, rec.experience_id AS part, rec.missing_since, rec.source_membership,
-            ${partRecordWithdrawnSql('rec')} AS withdrawn, part.existence AS part_existence
+            ${partRecordWithdrawnSql('rec')} AS withdrawn, ${placeGoneSql('part')} AS part_gone
        FROM ${MEMBERSHIPS} rec
        JOIN experiences part ON part.id = rec.experience_id
        JOIN experience_locations el ON el.id = $1 AND el.experience_id = rec.experience_id
@@ -220,8 +222,9 @@ async function partShown(client: PoolClient, part: number): Promise<boolean> {
  * Taking *lost* back says the part still stands, not that the list gives it:
  * the record keeps its mark, and the site's card asks again. A verdict on a
  * point the list moved is the point's.
- * *Lost*, and taking it back, are written on the part, under its own lock
- * taken after its site's (a whole before its parts, `db/locks.ts`).
+ * *Lost*, and taking it back, are written on the part's standing periods
+ * (`setPlaceGone`), under its own lock taken after its site's (a whole
+ * before its parts, `db/locks.ts`).
  */
 async function answerPartLine(
   client: PoolClient,
@@ -229,7 +232,7 @@ async function answerPartLine(
   line: PartLine,
   verdict: {
     nextMembership: string; nextExistence: string; clearFlag: boolean; wasLost: boolean;
-    userId: number; note: string | null;
+    userId: number;
   },
 ): Promise<void> {
   const listingAnswered = line.withdrawn
@@ -238,12 +241,12 @@ async function answerPartLine(
   if (listingAnswered) {
     await setPartRecordListingVerdict(client, siteLock, line.id, verdict.nextMembership);
   }
-  const lostNow = verdict.nextExistence === 'lost' && line.withdrawn && line.part_existence !== 'lost';
-  const backNow = verdict.nextExistence === 'extant' && line.part_existence === 'lost';
+  const lostNow = verdict.nextExistence === 'lost' && line.withdrawn && !line.part_gone;
+  const backNow = verdict.nextExistence === 'extant' && line.part_gone;
   if (!lostNow && !backNow) return;
   const part = await lockExperience(client, line.part);
   if (part) {
-    await setLifecycleVerdict(client, part.lock, { existence: verdict.nextExistence, decidedBy: verdict.userId, note: verdict.note });
+    await setPlaceGone(client, part.lock, lostNow, verdict.userId);
   }
 }
 
@@ -413,7 +416,7 @@ export async function answerLocationStateUnderLock(
     });
     if (line !== null) {
       await answerPartLine(client, object.lock, line, {
-        nextMembership, nextExistence, clearFlag, wasLost: before.existence === 'lost', userId, note: note ?? null,
+        nextMembership, nextExistence, clearFlag, wasLost: before.existence === 'lost', userId,
       });
     }
     isVisible = line !== null ? await partShown(client, line.part)

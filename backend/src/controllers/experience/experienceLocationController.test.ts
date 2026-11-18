@@ -15,7 +15,7 @@
  *   instead — `/:id/treasures`, which is not covered here. Two of the 404 reads
  *   live under `/api/experiences/:id`; the per-user visited status lives under
  *   `/api/users/me/experiences/:id` and is covered here too, since it reads the
- *   same table. `existence` is deliberately left alone on all of them, matching
+ *   same table. Standing is deliberately left alone on all of them, matching
  *   `getExperience`.
  *
  * Asserted on the SQL each handler sends, which is where the predicate either
@@ -695,7 +695,7 @@ describe('the by-id reads and a refused row', () => {
     // closing it as a separate decision about a different question.
     const existenceRead = sentSql().find(sql => /FROM experiences\b/i.test(sql));
     // The place's own, not its part's point, which a part's card asks after (ADR-0100).
-    expect(existenceRead).not.toMatch(/\be\.existence <> 'lost'/);
+    expect(existenceRead).not.toMatch(/\be\.stands_today/);
   });
 
   it('answers 404 when the admission-filtered read returns nothing', async () => {
@@ -740,14 +740,14 @@ describe('the by-id reads and a refused row', () => {
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
 
     // Same choice as the read one segment up, for the same reason: the
-    // *experience's* `existence` predates the admission axis and closing it is a
+    // *experience's* standing predates the admission axis and closing it is a
     // separate decision. Anchored on the alias, like the assertions above it: a
     // point's own `existence` does appear here, and legitimately — `el.existence <>
     // 'lost'` rides in `offeredLocationSql`, so a component a curator declared gone
     // stays out of a progress denominator even while the source keeps offering it
     // (ADR-0026). Unanchored, this assertion would have read that as the container's
     // axis being closed.
-    expect(locationRead()).not.toMatch(/e\.existence <> 'lost'/);
+    expect(locationRead()).not.toMatch(/\be\.stands_today/);
     expect(locationRead()).toMatch(/el\.existence <> 'lost'/);
   });
 

@@ -7,7 +7,7 @@ function conflictRow(over: Record<string, unknown> = {}): QueueRow {
   return {
     id: 208, external_id: '208', name: 'Cultural Landscape and Archaeological Remains of the Bamiyan Valley',
     kind_id: 1, kind_name: 'World Heritage Sites',
-    missing_since: null, source_membership: 'present', existence: 'extant', kind: 'conflict',
+    missing_since: null, source_membership: 'present', gone: false, kind: 'conflict',
     run_completed_at: new Date('2026-08-21T09:12:00.000Z'), sync_log_id: 98,
     proposed: [{
       field: 'name', old: 'Bamiyan Valley', new: 'Cultural Landscape of the Bamiyan Valley',

@@ -12,7 +12,7 @@ import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
-import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
+import { CURATION_LOG_ACTIONS, GONE_REASON_CODES, REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { instantSchema } from './instants.js';
 import { ARTICLE_PATTERN, BBOX_PATTERN, commonsFileUrlSchema, LANGUAGES_PATTERN, TWO_SEARCHED } from './queryPatterns.js';
@@ -30,7 +30,7 @@ export * from './reviewQueueMapNamesSchema.js';
 // Why a curator acted, and the region acts (#863).
 export * from './curatorActSchemas.js';
 import {
-  additionReasonSchema, answeredMembershipSchema, openRegionSchema, refusalReasonSchema, sourceAnswerReasonSchema,
+  additionReasonSchema, answeredMembershipSchema, openRegionSchema, reasonsOf, sourceAnswerReasonSchema,
 } from './curatorActSchemas.js';
 
 // =============================================================================
@@ -687,22 +687,19 @@ export const reviewQueueMapQuerySchema = reviewQueueQuerySchema.pick({
 });
 
 /**
- * A lifecycle verdict, for an object or for one point inside it.
- *
- * One schema for both endpoints because it is one question — delisted, gone, or
- * never gone — asked about two rows that carry the same two axes in the same words
- * (ADR-0026). What the two verdicts *do* differs, and that difference lives in the
- * controllers rather than in the body: on an experience every answer clears
- * `missing_since`, on a location only the false alarm does, because there the flag
- * is one of the two terms that keep a point off the map — `former` is held by the
- * flag, `lost` by its own axis whatever the flag says (ADR-0026 decision 7). So the
- * false alarm is the only answer that clears the flag, though not the only one that
- * can reveal a point: taking a `lost` verdict back on a row whose flag is already
- * clear reveals it too.
+ * A lifecycle verdict on one point inside an object: delisted, gone, or never
+ * gone (ADR-0026). Only the false alarm clears the point's flag, because there
+ * the flag is one of the two terms that keep a point off the map — `former` is
+ * held by the flag, `lost` by the point's own axis whatever the flag says
+ * (ADR-0026 decision 7). So the false alarm is the only answer that clears the
+ * flag, though not the only one that can reveal a point: taking a `lost`
+ * verdict back on a row whose flag is already clear reveals it too. The point
+ * keeps its `existence` until the point tables go (ADR-0225); the place's own
+ * verdict is `placeStateBodySchema`.
  */
 export const lifecycleStateBodySchema = z.object({
-  membership: z.enum(CHECK_VALUES.experiences.source_membership).optional(),
-  existence: z.enum(CHECK_VALUES.experiences.existence).optional(),
+  membership: z.enum(CHECK_VALUES.experience_locations.source_membership).optional(),
+  existence: z.enum(CHECK_VALUES.experience_locations.existence).optional(),
   note: z.string().max(1000).optional(),
   /**
    * The row as the curator was looking at it: both axes and whether it was
@@ -717,17 +714,10 @@ export const lifecycleStateBodySchema = z.object({
    * currently lists.
    */
   expected: z.object({
-    membership: z.enum(CHECK_VALUES.experiences.source_membership),
-    existence: z.enum(CHECK_VALUES.experiences.existence),
+    membership: z.enum(CHECK_VALUES.experience_locations.source_membership),
+    existence: z.enum(CHECK_VALUES.experience_locations.existence),
     flagged: z.boolean(),
   }),
-  /**
-   * One kind whose source stopped listing the place while another still lists
-   * it (#1264): the verdict is that membership's, and `expected` is its own
-   * listing and flag beside the place's existence. Absent, the verdict is the
-   * place's.
-   */
-  membershipId: bodyRowIdSchema.optional(),
 }).refine(b => b.membership !== undefined || b.existence !== undefined, {
   message: 'Pass membership, existence, or both',
 });
@@ -852,7 +842,8 @@ export const crowdingAnswersBodySchema = z.object({
  *
  * A rejection that turns arrivals away says why, one reason for every one of
  * them (#863): an arrival row rejected without one is refused, as its card's
- * own turn-away is. The reason and the note go with a rejection only.
+ * own turn-away is. A reason goes with a rejection or a lost, each from its own
+ * answer's list, and the note with either.
  */
 export const reviewAnswerBodySchema = z.object({
   rows: z.array(z.object({
@@ -862,12 +853,23 @@ export const reviewAnswerBodySchema = z.object({
     membershipId: answeredMembershipSchema,
   })).min(1).max(100),
   answer: z.enum(['accept', 'reject', 'lost']),
-  reasonCode: refusalReasonSchema
-    .describe('Why the arrivals a rejection turns away were turned away; an arrival rejected without one is refused.'),
-  note: z.string().max(1000).optional().describe('The curator\'s words beside the reason, kept with each arrival turned away.'),
-}).refine(body => body.answer === 'reject' || (body.reasonCode === undefined && body.note === undefined), {
-  message: 'A reason goes with a rejection only', path: ['reasonCode'],
+  reasonCode: z.enum(reasonsOf(REFUSAL_REASON_CODES, GONE_REASON_CODES)).optional()
+    .describe('Why the arrivals a rejection turns away were turned away, or why the places a lost answer reaches are gone; an arrival rejected, or a place recorded as lost, without one is refused.'),
+  note: z.string().max(1000).optional().describe('The curator\'s words beside the reason, kept with each arrival turned away or place recorded as lost.'),
+}).refine(body => batchReasonFits(body.answer, body.reasonCode, body.note), {
+  message: 'A reason goes with a rejection or a lost answer only, from its own list', path: ['reasonCode'],
 });
+
+/** Whether a batch's reason fits its answer: a refusal's with a rejection, a gone answer's with lost, none with accept. */
+function batchReasonFits(answer: 'accept' | 'reject' | 'lost', reasonCode: string | undefined, note: string | undefined): boolean {
+  if (reasonCode === undefined) return answer !== 'accept' || note === undefined;
+  return BATCH_REASONS[answer].includes(reasonCode);
+}
+
+/** The reasons each batch answer offers. */
+const BATCH_REASONS: Record<'accept' | 'reject' | 'lost', readonly string[]> = {
+  accept: [], reject: REFUSAL_REASON_CODES, lost: GONE_REASON_CODES,
+};
 
 /**
  * An arrival answered with the kind it belongs in instead (#2213): the chosen

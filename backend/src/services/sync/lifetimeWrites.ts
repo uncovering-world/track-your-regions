@@ -39,22 +39,15 @@
 
 import type { PoolClient } from 'pg';
 import {
-  latestDayOnEarth, PERIOD_SAYS, periodOf, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy,
+  latestDayOnEarth, periodOf, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy,
   type CalendarDay, type PeriodSays,
 } from '@tyr/shared/lifetime';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import {
-  writePlacePeriods, writeRecordPeriods, type RecordPeriods, type SourcedDate, type SourcedPeriod,
+  heldPeriodsOf, reopenedStanding, writePlacePeriods, writeRecordPeriods,
+  type HeldPeriods, type RecordPeriods, type SourcedDate, type SourcedPeriod,
 } from '../../db/placePeriodsWriter.js';
 import type { ChangeSetResult, FieldChange } from './changeSet.js';
-
-/** The periods a place holds that say one thing, with whose view they were taken from. */
-export interface HeldPeriods {
-  periods: readonly SourcedPeriod[];
-  sourceId: number;
-  /** The curator who set them, or null for a run's. */
-  decidedBy: number | null;
-}
 
 /** What the gate needs to know of the run and the place. */
 export interface LifetimeGate {
@@ -127,18 +120,6 @@ function opensLongGap(held: readonly SourcedPeriod[], next: readonly SourcedPeri
   });
 }
 
-/**
- * The standing periods a pinned place is read by: the curator's pin says the
- * place stands, so its last period is open whatever end the source reports.
- * A period left with nothing known of it says nothing and is not kept.
- */
-function keptStanding(stood: readonly SourcedPeriod[]): readonly SourcedPeriod[] {
-  const last = stood.at(-1);
-  if (!last || stood.some((period) => !period.ended)) return stood;
-  if (stood.length === 1 && last.from === null) return [];
-  return [...stood.slice(0, -1), { ...last, ended: false, until: null, ending: null }];
-}
-
 /** A list as the change set files it: the periods, or null for none. */
 const filed = (periods: readonly SourcedPeriod[]): readonly SourcedPeriod[] | null => (periods.length > 0 ? periods : null);
 
@@ -168,7 +149,7 @@ export function decideLifetime(
   const decision: LifetimeDecision = { write: {}, changes: [], heldBack: [] };
   for (const says of REPORTED_SAYS) {
     const reported = view[says] ?? [];
-    const next = says === PLACE_STOOD && gate.pinned ? keptStanding(reported) : reported;
+    const next = says === PLACE_STOOD && gate.pinned ? reopenedStanding(reported) : reported;
     const held = stored[says];
     const action = listAction(says, next, held, gate, today);
     if (action === 'hold') decision.heldBack.push(says);
@@ -180,54 +161,6 @@ export function decideLifetime(
     });
   }
   return decision;
-}
-
-interface PeriodRow {
-  says: PeriodSays;
-  from_year: number | null; from_month: number | null; from_day: number | null; from_span: SourcedDate['span']; from_circa: boolean;
-  from_property: string | null; from_statement: string | null;
-  ended: boolean;
-  until_year: number | null; until_month: number | null; until_day: number | null; until_span: SourcedDate['span']; until_circa: boolean;
-  until_property: string | null; until_statement: string | null;
-  ending: SourcedPeriod['ending']; what: string | null;
-  source_id: number; decided_by: number | null;
-}
-
-const endOf = (
-  year: number | null, month: number | null, day: number | null, span: SourcedDate['span'], circa: boolean,
-  property: string | null, statement: string | null,
-): SourcedDate | null => (year === null ? null : { year, month, day, span, circa, property, statement });
-
-/**
- * The periods the place holds for every kind, by what they say, as the gate
- * compares them: a run reports a place's standing as a thing, and a period of
- * one membership is that membership's, never the place's.
- */
-export async function heldPeriodsOf(client: Pick<PoolClient, 'query'>, placeId: number): Promise<Partial<Record<PeriodSays, HeldPeriods>>> {
-  const { rows } = await client.query<PeriodRow>(
-    `SELECT says, from_year, from_month, from_day, from_span, from_circa, from_property, from_statement, ended,
-            until_year, until_month, until_day, until_span, until_circa, until_property, until_statement,
-            ending, what, source_id, decided_by
-       FROM place_periods WHERE experience_id = $1 AND kind_id IS NULL ORDER BY says, ordinal`,
-    [placeId],
-  );
-  const held: Partial<Record<PeriodSays, HeldPeriods>> = {};
-  for (const says of PERIOD_SAYS) {
-    const own = rows.filter((row) => row.says === says);
-    if (own.length === 0) continue;
-    held[says] = {
-      sourceId: own[0].source_id,
-      decidedBy: own.find((row) => row.decided_by !== null)?.decided_by ?? null,
-      periods: own.map((row) => ({
-        from: endOf(row.from_year, row.from_month, row.from_day, row.from_span, row.from_circa, row.from_property, row.from_statement),
-        ended: row.ended,
-        until: endOf(row.until_year, row.until_month, row.until_day, row.until_span, row.until_circa, row.until_property, row.until_statement),
-        ending: row.ending,
-        what: row.what,
-      })),
-    };
-  }
-  return held;
 }
 
 /**

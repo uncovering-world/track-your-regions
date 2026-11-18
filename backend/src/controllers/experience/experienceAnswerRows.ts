@@ -19,7 +19,6 @@ import type { TextSource } from '@tyr/shared/textCredits';
 import { commemoratesOf, depictsOf, type CommemoratedSubject as StoredSubject } from '@tyr/shared/commemorates';
 
 type Membership = CheckValue<'experiences', 'source_membership'>;
-type Existence = CheckValue<'experiences', 'existence'>;
 
 function iso(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
@@ -133,7 +132,8 @@ export interface ExperienceListRow extends PlacePosition {
   treasure_count: number;
   finds_count: number;
   source_membership: Membership;
-  existence: Existence;
+  /** Gone: standing periods, none open (`placeGoneSql`). */
+  gone: boolean;
   missing_since: Date | null;
   is_new: boolean;
   /** Selected only for a curator whose scope reaches the region. */
@@ -174,7 +174,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     can_curate: row.can_curate,
     rejection_reason: row.rejection_reason,
     source_membership: row.source_membership,
-    existence: row.existence,
+    gone: row.gone,
     missing_since: iso(row.missing_since),
     is_new: row.is_new,
   };
@@ -201,7 +201,8 @@ export interface ExperienceDetailRow extends PlacePosition {
   created_at: Date | null;
   updated_at: Date | null;
   source_membership: Membership;
-  existence: Existence;
+  /** Gone: standing periods, none open (`placeGoneSql`). */
+  gone: boolean;
   missing_since: Date | null;
   boundary_geojson: ExperienceDetail['boundary_geojson'];
   area_km2: number | null;
@@ -244,7 +245,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     created_at: iso(row.created_at),
     updated_at: iso(row.updated_at),
     source_membership: row.source_membership,
-    existence: row.existence,
+    gone: row.gone,
     missing_since: iso(row.missing_since),
     ...positionOf(row),
     boundary_geojson: row.boundary_geojson,
@@ -283,7 +284,8 @@ export interface SearchRow extends PlacePosition {
   image_url: string | null;
   image_credit: ImageCredit | null;
   source_membership: Membership;
-  existence: Existence;
+  /** Gone: standing periods, none open (`placeGoneSql`). */
+  gone: boolean;
   missing_since: Date | null;
   relevance: number;
   in_tail: boolean;
@@ -306,7 +308,7 @@ export function searchResultOf(row: SearchRow): ExperienceSearchResult {
     image_url: row.image_url,
     image_credit: creditOf(row.image_credit),
     source_membership: row.source_membership,
-    existence: row.existence,
+    gone: row.gone,
     missing_since: iso(row.missing_since),
     ...positionOf(row),
     relevance: row.relevance,

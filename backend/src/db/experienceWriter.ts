@@ -371,50 +371,6 @@ export async function updateExperienceColumns(
 }
 
 /**
- * Who decided about the place, when, and what they noted — the three columns
- * every curator verdict on the place shares (ADR-0020), written beside the
- * verdict itself: an admission answer or a curator's refusal, whose own columns
- * are the membership's (#822).
- */
-export async function recordDecisionOnExperience(
-  client: PoolClient,
-  lock: LockedExperience,
-  decidedBy: number,
-  note: string | null,
-): Promise<void> {
-  await client.query(`
-    UPDATE experiences
-    SET state_decided_by = $2,
-        state_decided_at = NOW(),
-        state_note = $3,
-        updated_at = NOW()
-    WHERE id = $1
-  `, [lock.id, decidedBy, note]);
-}
-
-/**
- * A lifecycle verdict on the place (ADR-0020, ADR-0021): whether it still
- * stands, with who decided. Whether its sources still list it is its
- * memberships' (ADR-0084) and is written beside this by `setListingVerdict`
- * (`membershipWriter.ts`), under the same lock.
- */
-export async function setLifecycleVerdict(
-  client: PoolClient,
-  lock: LockedExperience,
-  verdict: { existence: string; decidedBy: number; note: string | null },
-): Promise<void> {
-  await client.query(`
-    UPDATE experiences
-    SET existence = $2,
-        state_decided_by = $3,
-        state_decided_at = NOW(),
-        state_note = $4,
-        updated_at = NOW()
-    WHERE id = $1
-  `, [lock.id, verdict.existence, verdict.decidedBy, verdict.note]);
-}
-
-/**
  * A place a curator adds by hand, as `createManualExperience` builds it:
  * `is_manual`, owned by nobody's run, and `active` from the moment it exists.
  *

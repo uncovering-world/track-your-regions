@@ -9,15 +9,17 @@
  * (`@tyr/shared/curationLog`), kept in the act's log entry
  * (`db/curationLogWriter.ts`). Required where every surface of the act asks
  * it: an arrival turned away, a place put back against its kind's rule, kept
- * out of a kind, added to one, created by hand, and rejected from, placed in
- * or removed from a region. Optional elsewhere, where an act sent without one
- * is recorded without one.
+ * out of a kind, added to one, created by hand, rejected from, placed in or
+ * removed from a region, and recorded as gone or that taken back. Optional
+ * elsewhere, where an act sent without one is recorded without one.
  */
 
 import { z } from 'zod/v4';
 import {
-  ADDITION_REASON_CODES, REFUSAL_REASON_CODES, REGION_REFUSAL_REASON_CODES, SOURCE_ANSWER_REASON_CODES,
+  ADDITION_REASON_CODES, GONE_REASON_CODES, REFUSAL_REASON_CODES, REGION_REFUSAL_REASON_CODES,
+  SOURCE_ANSWER_REASON_CODES, STANDS_REASON_CODES, type CurationReasonCode,
 } from '@tyr/shared/curationLog';
+import { CHECK_VALUES } from '../db/schema.generated.js';
 import { bodyRowIdSchema } from './rowId.js';
 
 const REASON_CODE = 'Why the curator acted, kept in the log entry the act writes.';
@@ -151,3 +153,64 @@ export const removeFromRegionQuerySchema = z.object({
 export const unassignQuerySchema = z.object({
   reasonCode: z.enum(REGION_REFUSAL_REASON_CODES).optional().describe(REASON_CODE),
 });
+
+/**
+ * A lifecycle verdict on an object: whether its sources still list it, and
+ * whether it is gone. Every answer clears its `missing_since`. `gone` is not a
+ * column: a place is gone when it has standing periods and none is open
+ * (ADR-0217 decision 5), so `gone: true` closes its standing as the curator's
+ * periods, and `gone: false` opens it again (`setPlaceGone`).
+ *
+ * A verdict that sends `gone` says why, as every hand-made act against a rule
+ * does (#863): `gone: true` from a gone answer's reasons, since the rule that
+ * reads a place as gone missed it, and `gone: false` from a taken-back one's.
+ * A listing verdict alone asks nothing.
+ */
+export const placeStateBodySchema = z.object({
+  membership: z.enum(CHECK_VALUES.experiences.source_membership).optional(),
+  gone: z.boolean().optional(),
+  note: NOTE,
+  reasonCode: z.enum(reasonsOf(GONE_REASON_CODES, STANDS_REASON_CODES)).optional()
+    .describe(`${REASON_CODE} Required with \`gone\`: a gone answer's reasons with true, a taken-back one's with false.`),
+  regionId: openRegionSchema,
+  /**
+   * The row as the curator was looking at it: both axes and whether it was
+   * flagged, compared under the write lock, for the reason the point's
+   * verdict compares it.
+   */
+  expected: z.object({
+    membership: z.enum(CHECK_VALUES.experiences.source_membership),
+    gone: z.boolean(),
+    flagged: z.boolean(),
+  }),
+  /**
+   * One kind whose source stopped listing the place while another still lists
+   * it (#1264): the verdict is that membership's, and `expected` is its own
+   * listing and flag beside whether the place is gone. Absent, the verdict is
+   * the place's.
+   */
+  membershipId: bodyRowIdSchema.optional(),
+}).refine(b => b.membership !== undefined || b.gone !== undefined, {
+  message: 'Pass membership, gone, or both',
+}).refine(b => goneReasonFits(b.gone, b.reasonCode), {
+  message: 'A gone verdict says why from its own reasons, and a listing verdict alone takes none',
+  path: ['reasonCode'],
+});
+
+/** Two surfaces' reasons as one list, each code once, for a body that takes either. */
+export function reasonsOf<A extends readonly CurationReasonCode[], B extends readonly CurationReasonCode[]>(
+  a: A, b: B,
+): Array<A[number] | B[number]> {
+  return [...new Set<A[number] | B[number]>([...a, ...b])];
+}
+
+/**
+ * Whether a reason fits the gone verdict it rides with: one of the gone
+ * answer's reasons with `gone: true`, of the taken-back one's with
+ * `gone: false`, and none without `gone`.
+ */
+export function goneReasonFits(gone: boolean | undefined, reasonCode: string | undefined): boolean {
+  if (gone === undefined) return reasonCode === undefined;
+  const offered: readonly string[] = gone ? GONE_REASON_CODES : STANDS_REASON_CODES;
+  return reasonCode !== undefined && offered.includes(reasonCode);
+}

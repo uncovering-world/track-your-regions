@@ -23,11 +23,11 @@ describe('a kind counts its memberships', () => {
   it('counts the memberships the kind shows, of places still standing', () => {
     // The questions every list under a kind's header asks, so the number
     // labels the list it sits above: the membership's admission, gate and
-    // crowding (ADR-0172), and the place's existence.
+    // crowding (ADR-0172), and whether the place stands.
     expect(countedMembershipSql('m', 'e')).toBe(`${membershipShownSql('m')} AND ${hideLostSql('e')}`);
     expect(countedMembershipSql('x', 'y')).toContain('NOT EXISTS (SELECT 1 FROM membership_crowding crowded WHERE crowded.membership_id = x.id)');
     expect(countedMembershipSql('x', 'y')).toContain("x.admission <> 'refused'");
-    expect(countedMembershipSql('x', 'y')).toContain("y.existence <> 'lost'");
+    expect(countedMembershipSql('x', 'y')).toContain('y.stands_today');
   });
 
   it('spells the whole count as one subquery over the membership table', () => {

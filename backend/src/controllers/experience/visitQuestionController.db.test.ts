@@ -115,7 +115,7 @@ describe("a curator's answer to it", () => {
     const read = await queue();
     expect(read.visitQuestions).toEqual([]);
     expect(read.keptOut).toEqual([expect.objectContaining({
-      id: EBORACUM, membership_id: membershipId, admission_reason: VISIT_REFUSAL_REASON, state_note: 'Roman York is the city',
+      id: EBORACUM, membership_id: membershipId, admission_reason: VISIT_REFUSAL_REASON, answer_note: 'Roman York is the city',
     })]);
   });
 

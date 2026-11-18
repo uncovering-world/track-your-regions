@@ -56,9 +56,7 @@ export async function listAdmissionPins(
   }>(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id AS experience_id, e.name, m.id AS membership_id, kd.name AS kind_name,
            m.admission AS answer, m.admission_pin_reason AS answered_reason,
-           COALESCE(pinned_by.at, e.state_decided_at) AS answered_at,
-           CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END AS note,
-           CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.system_note END AS system_note,
+           pinned_by.at AS answered_at, pinned_by.note AS note, pinned_by.system_note AS system_note,
            CASE WHEN ${nameVisible} THEN u.display_name END AS curator_name,
            pinned_by.action IS NOT DISTINCT FROM 'kind_added' AS added,
            m.admission_questioned_at IS NOT NULL AS questioned,

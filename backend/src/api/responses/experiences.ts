@@ -175,7 +175,10 @@ export const RegionExperienceLocationsResponse = z.strictObject({
 export type RegionExperienceLocationsResponse = z.infer<typeof RegionExperienceLocationsResponse>;
 
 const SourceMembership = z.enum(CHECK_VALUES.experiences.source_membership);
-const Existence = z.enum(CHECK_VALUES.experiences.existence);
+const Gone = z.boolean().describe(
+    'Whether the place is gone: it has standing periods and none is open (ADR-0217 decision 5), as its run read it'
+    + ' (Nelson\'s Pillar, 1809 to 1966) or a curator judged it lost. A place whose opening day is still ahead is not.',
+  );
 
 export const ExperienceRegionRef = z.strictObject({
   id: z.number().int(),
@@ -291,7 +294,7 @@ export const Experience = z.strictObject({
     .describe('Only for a curator or admin: whether they may curate this place itself, by the rule the server applies on every write (#613).'),
   rejection_reason: z.string().nullable().optional(),
   source_membership: SourceMembership,
-  existence: Existence,
+  gone: Gone,
   missing_since: timestamp,
   is_new: z.boolean().describe(
     'Whether the reader could first see this recently: published, and inside the kind\'s window or this reader\'s own'
@@ -386,7 +389,7 @@ export const ExperienceDetail = z.strictObject({
   created_at: timestamp,
   updated_at: timestamp,
   source_membership: SourceMembership,
-  existence: Existence,
+  gone: Gone,
   missing_since: timestamp,
   longitude: z.number().nullable().describe(
     'Where a reader is sent: the place\'s own point, or the nearest of its points to its own coordinate. Null on a whole,'
@@ -444,7 +447,7 @@ export const ExperienceSearchResult = z.strictObject({
   image_url: z.string().nullable(),
   image_credit: ImageCredit.nullable(),
   source_membership: SourceMembership,
-  existence: Existence,
+  gone: Gone,
   missing_since: timestamp,
   longitude: z.number().nullable().describe(
     'Where a reader is sent: the place\'s own point, or the nearest of its points to its own coordinate. Null on a whole,'

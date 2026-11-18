@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { partOfferedSql } from '../../db/readerPredicates.js';
+import { partOfferedSql, placeGoneSql } from '../../db/readerPredicates.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 import { withdrawnPointOpenSql } from './reviewQueuePredicates.js';
 import { answerLocationStateUnderLock } from './locationStateController.js';
@@ -73,6 +73,12 @@ async function necropolis() {
   return rows[0];
 }
 
+/** Whether the part is gone: its standing periods say so (ADR-0217 decision 5). */
+async function partGone(partId: number): Promise<boolean> {
+  const { rows } = await pool.query<{ gone: boolean }>(`SELECT ${placeGoneSql('e')} AS gone FROM experiences e WHERE e.id = $1`, [partId]);
+  return rows[0].gone;
+}
+
 describe('a component the list stops giving stays shown until a curator answers', () => {
   /** A curator's verdict on the necropolis's point, as the withdrawn card sends it. */
   async function answer(
@@ -125,12 +131,11 @@ describe('a component the list stops giving stays shown until a curator answers'
     expect(await outOfStep()).toEqual([]);
   });
 
-  it('writes lost on the part, the record keeping its mark', async () => {
+  it('writes lost on the part\'s standing, the record keeping its mark', async () => {
     await answer({ existence: 'lost' });
 
     const { part_id } = await necropolis();
-    const part = await pool.query<{ existence: string }>('SELECT existence FROM experiences WHERE id = $1', [part_id]);
-    expect(part.rows[0].existence).toBe('lost');
+    expect(await partGone(part_id)).toBe(true);
     expect(await necropolis()).toMatchObject({ asked: false, listing: 'present' });
     expect((await necropolis()).record_missing).not.toBeNull();
     expect(await outOfStep()).toEqual([]);
@@ -155,8 +160,7 @@ describe('a component the list stops giving stays shown until a curator answers'
     expect(taken.refusal).toBeUndefined();
     expect(taken.result?.offeredToReaders).toBe(true);
     const { part_id } = await necropolis();
-    const part = await pool.query<{ existence: string }>('SELECT existence FROM experiences WHERE id = $1', [part_id]);
-    expect(part.rows[0].existence).toBe('extant');
+    expect(await partGone(part_id)).toBe(false);
     // Still standing says nothing of the list, which still leaves the line out.
     expect(await necropolis()).toMatchObject({ point_missing: null, offered: true, listing: 'present', asked: true });
     expect((await necropolis()).record_missing).not.toBeNull();

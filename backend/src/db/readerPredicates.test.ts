@@ -13,8 +13,10 @@ import {
   hasPinSql,
   hideLostSql,
   lifecycleSelectSql,
-  lostByVerdictSql,
   offeredLocationSql,
+  placeGoneSql,
+  experienceShownWithGoneSql,
+  experienceShownToReaderSql,
   pointNotLostSql,
   offeredLinkSql,
   linkedForReaderSql,
@@ -63,7 +65,7 @@ describe('hideLostSql', () => {
   it('hides only what no longer exists', () => {
     const sql = hideLostSql();
 
-    expect(sql).toContain("existence <> 'lost'");
+    expect(sql).toContain('stands_today');
     // `former` is a claim about the source's catalogue, not about the world:
     // the place is still there and still worth going to
     expect(sql).not.toContain('source_membership');
@@ -73,15 +75,26 @@ describe('hideLostSql', () => {
   });
 
   it('qualifies the column, so it can join a query with more than one table', () => {
-    expect(hideLostSql('ex')).toContain("ex.existence <> 'lost'");
+    expect(hideLostSql('ex')).toBe('ex.stands_today');
   });
 
-  it('hides a place whose periods say it does not stand today (#1719)', () => {
-    expect(hideLostSql('e')).toBe("e.existence <> 'lost' AND e.stands_today");
+  it('hides a place whose periods say it does not stand today, a curator\'s lost among them (#1719, #2584)', () => {
+    expect(hideLostSql('e')).toBe('e.stands_today');
+  });
+});
+
+describe('placeGoneSql', () => {
+  it('reads gone off the place\'s standing periods: some, and none open (ADR-0217 decision 5)', () => {
+    const sql = placeGoneSql('e');
+    expect(sql).toContain('NOT e.stands_today');
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM place_periods gone_p\s+WHERE gone_p\.experience_id = e\.id AND gone_p\.kind_id IS NULL AND gone_p\.says = 'stood' AND NOT gone_p\.ended\)/);
   });
 
-  it('reveals with "show what is gone" only what the verdict hid, never a place that does not stand', () => {
-    expect(lostByVerdictSql('e')).toBe("e.existence = 'lost' AND e.stands_today");
+  it('reveals with "show what is gone" only a gone place a kind offers, never one opening on a day ahead', () => {
+    // A place whose opening day is still ahead (the Jeddah Tower) does not
+    // stand today and has an open period: not gone, so never revealed.
+    expect(experienceShownWithGoneSql('e')).toBe(
+      `(${experienceShownToReaderSql('e')} OR (${placeGoneSql('e')} AND ${experienceOfferedToReaderSql('e')}))`);
   });
 
   it('keeps a point\'s own verdict apart from its place\'s standing', () => {
@@ -100,7 +113,7 @@ describe('lifecycleSelectSql', () => {
     const sql = lifecycleSelectSql();
 
     expect(sql).toContain('source_membership');
-    expect(sql).toContain('existence');
+    expect(sql).toContain(`${placeGoneSql('e')} AS gone`);
   });
 
   it('carries the flag, so a correction can send the row as it was seen', () => {

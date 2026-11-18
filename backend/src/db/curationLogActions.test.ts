@@ -23,7 +23,9 @@
  */
 
 import { describe, it, expect, expectTypeOf } from 'vitest';
-import { CURATION_LOG_ACTIONS, POINT_VERDICT_ACTIONS, type CurationLogAction } from '@tyr/shared/curationLog';
+import {
+  CURATION_LOG_ACTIONS, CURATION_REASON_CODES, POINT_VERDICT_ACTIONS, type CurationLogAction, type CurationReasonCode,
+} from '@tyr/shared/curationLog';
 import { AUTH_PROVIDERS, USER_ROLES, type AuthProvider, type UserRole } from '@tyr/shared/auth';
 import { MAPS_APPS, type MapsApp } from '@tyr/shared/preferences';
 import { IDENTIFIER_SCHEMES, IDENTIFIER_VERDICTS, type IdentifierScheme, type IdentifierVerdict } from '@tyr/shared/identifiers';
@@ -54,6 +56,11 @@ describe('the vocabularies both sides import', () => {
     expect([...CURATION_LOG_ACTIONS]).toEqual([...CHECK_VALUES.experience_curation_log.action]);
   });
 
+  it('name exactly the reasons a curation-log entry may carry', () => {
+    expectTypeOf<CurationReasonCode>().toEqualTypeOf<CheckValue<'experience_curation_log', 'reason_code'>>();
+    expect([...CURATION_REASON_CODES]).toEqual([...CHECK_VALUES.experience_curation_log.reason_code]);
+  });
+
   it('name the four point verdicts as actions that can happen', () => {
     for (const action of POINT_VERDICT_ACTIONS) expect(CURATION_LOG_ACTIONS).toContain(action);
   });
@@ -72,7 +79,6 @@ describe('the vocabularies both sides import', () => {
 
   it('name exactly the lifecycle states the schema allows, on every table that carries each (#794)', () => {
     expectTypeOf<Admission>().toEqualTypeOf<CheckValue<'source_records', 'admission'>>();
-    expectTypeOf<Existence>().toEqualTypeOf<CheckValue<'experiences', 'existence'>>();
     expectTypeOf<Existence>().toEqualTypeOf<CheckValue<'experience_locations', 'existence'>>();
     expectTypeOf<SourceMembership>().toEqualTypeOf<CheckValue<'experiences', 'source_membership'>>();
     expectTypeOf<SourceMembership>().toEqualTypeOf<CheckValue<'experience_locations', 'source_membership'>>();
@@ -81,7 +87,7 @@ describe('the vocabularies both sides import', () => {
     }
     expectTypeOf<CurationState>().toEqualTypeOf<CheckValue<'source_records', 'curation_state'>>();
     expect([...ADMISSIONS]).toEqual([...CHECK_VALUES.source_records.admission]);
-    expect([...EXISTENCES]).toEqual([...CHECK_VALUES.experiences.existence]);
+    expect([...EXISTENCES]).toEqual([...CHECK_VALUES.experience_locations.existence]);
     expect([...SOURCE_MEMBERSHIPS]).toEqual([...CHECK_VALUES.experiences.source_membership]);
   });
 

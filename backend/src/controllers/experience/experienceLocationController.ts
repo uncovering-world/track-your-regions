@@ -21,6 +21,7 @@ import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../d
 import {
   hideLostSql,
   experienceShownToReaderSql,
+  experienceShownWithGoneSql,
   readableByIdSql,
   offeredLocationSql,
   publishedContentSql,
@@ -131,8 +132,9 @@ export async function getRegionExperienceLocations(
   // reads so the two never disagree on what is being shown. One question of
   // the memberships, as the list asks it (`experienceShownToReaderSql`, #1275),
   // a crowded city's tail left out as the list leaves it (ADR-0172).
-  const lifecycleFilter = `AND ${experienceShownToReaderSql()} `
-    + (includeLost(q) ? '' : `AND ${hideLostSql()}`);
+  const lifecycleFilter = includeLost(q)
+    ? `AND ${experienceShownWithGoneSql()} `
+    : `AND ${experienceShownToReaderSql()} AND ${hideLostSql()}`;
 
   let query: string;
   const params: number[] = [regionId];
@@ -305,7 +307,7 @@ export async function getExperienceLocations(
   //
   // Without the second half this read answered 200 with a refused museum's name
   // and coordinates while `GET /:id` answered 404 for the same row — measured
-  // live on the British Museum (id 6205). `existence` is deliberately not
+  // live on the British Museum (id 6205). Standing is deliberately not
   // filtered, matching `getExperience`: that gap predates the admission axis and
   // closing it is a separate decision about a different question.
   const expResult = await pool.query<Pick<ExperiencesRow, 'id' | 'name'>>(

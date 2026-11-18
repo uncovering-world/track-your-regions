@@ -136,8 +136,8 @@ describe('refuseArrival', () => {
     // Nobody passed it: the gate state is left as it is, and both facts are said.
     expect(membership?.sql).not.toContain('curation_state');
 
-    const place = client.queries.find(q => q.sql.includes('UPDATE experiences'));
-    expect(place?.params).toEqual([5, 7, 'a parish church']);
+    // Who decided and the note are the log entry's: the place keeps no decision of its own (#2585).
+    expect(client.queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
 
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
     expect(log?.params[2]).toBe('arrival_refused');

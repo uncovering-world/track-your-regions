@@ -30,8 +30,9 @@ export interface PinQuestionContext {
  * The curator's act the pin stands on: the latest answer on the membership the
  * log records — a put-back, a confirmation, a refusal of an arrival, a pin
  * kept, a listing verdict that took the place out of the kind, a place with
- * nothing to see refused, a place added to a kind no run offers it in — and,
- * for an answer logged before memberships were named, the place's.
+ * nothing to see refused, a place added to a kind no run offers it in — or,
+ * for an answer logged before memberships were named, the place's latest such
+ * act.
  * Over the place `e` and the membership `m`, as `pinned_by`: when, the note,
  * what the system recorded about how the answer came about (`systemNote`, a
  * script's words, never the curator's, #2195), who, the act, and the region it
@@ -97,9 +98,9 @@ export async function queryPinQuestions(ids: number[], ctx: PinQuestionContext):
              -- run started to ask again about the pins (#1370), not a change.
              'restated', m.admission_question_verdict IS NOT DISTINCT FROM m.admission_pin_verdict
                          AND ${foldedReasonSql('m.admission_question_reason')} IS NOT DISTINCT FROM ${foldedReasonSql('m.admission_pin_reason')},
-             'answeredAt', COALESCE(pinned_by.at, e.state_decided_at),
-             'note', CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END,
-             'systemNote', CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.system_note END
+             'answeredAt', pinned_by.at,
+             'note', pinned_by.note,
+             'systemNote', pinned_by.system_note
            ) AS pin_question
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id

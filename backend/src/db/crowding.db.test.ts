@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { placeOfferedSql, placeShownSql } from './membership.js';
-import { lostByVerdictSql } from './readerPredicates.js';
+import { placeGoneSql } from './readerPredicates.js';
 
 const WORSHIP = 4;
 const BASE = 9_201_000;
@@ -126,9 +126,11 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
   });
 
   it('recounts where a place was once it is lost or moved', async () => {
-    await pool.query("UPDATE experiences SET existence = 'lost' WHERE id = $1", [BASE + 2]);
+    // A curator's lost is an ended standing period of theirs (ADR-0217 decision 5).
+    await pool.query(
+      `INSERT INTO place_periods (experience_id, says, ordinal, ended, source_id, decided_at) VALUES ($1, 'stood', 1, true, (SELECT id FROM experience_sources WHERE name = 'Curators'), NOW())`, [BASE + 2]);
     expect(await crowded()).toEqual([BASE + 12]);
-    await pool.query("UPDATE experiences SET existence = 'extant' WHERE id = $1", [BASE + 2]);
+    await pool.query('DELETE FROM place_periods WHERE experience_id = $1', [BASE + 2]);
     await pool.query('UPDATE experiences SET location = ST_SetSRID(ST_MakePoint(13.5, 42.5), 4326) WHERE id = $1', [BASE + 3]);
     expect(await crowded()).toEqual([BASE + 12]);
   });
@@ -160,16 +162,18 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
   });
 
-  it('offers to show a lost place only where the list would then show it (#1719)', async () => {
-    // Churches 1 and 2 judged lost; church 2's only membership no longer stands as a place of worship.
-    await pool.query("UPDATE experiences SET existence = 'lost' WHERE id = ANY($1::int[])", [[BASE + 1, BASE + 2]]);
+  it('reads a place as gone once its standing ended, never one whose opening day is ahead (#2584)', async () => {
+    // Church 1 judged lost by a curator; church 2 opens in 2090, so it does not
+    // stand today and is not gone either: nothing has ended.
     await pool.query(
-      `INSERT INTO place_periods (experience_id, kind_id, says, ordinal, ended, source_id)
-       VALUES ($1, $2, 'stood', 1, true, 4)`, [BASE + 2, WORSHIP]);
-    const offered = await pool.query<{ id: number }>(
-      `SELECT e.id FROM experiences e WHERE e.id >= $1 AND e.id < $2 AND ${lostByVerdictSql('e')} AND ${placeShownSql('e')}
-        ORDER BY e.id`, [BASE, BASE + 1000]);
-    expect(offered.rows.map(row => row.id)).toEqual([BASE + 1]);
+      `INSERT INTO place_periods (experience_id, says, ordinal, ended, source_id, decided_at) VALUES ($1, 'stood', 1, true, (SELECT id FROM experience_sources WHERE name = 'Curators'), NOW())`, [BASE + 1]);
+    await pool.query(
+      `INSERT INTO place_periods (experience_id, says, ordinal, from_year, from_first, source_id)
+       VALUES ($1, 'stood', 1, 2090, date_first(2090, NULL, NULL, NULL), 4)`, [BASE + 2]);
+    const read = await pool.query<{ id: number; gone: boolean; shown: boolean }>(
+      `SELECT e.id, ${placeGoneSql('e')} AS gone, ${placeShownSql('e')} AS shown FROM experiences e
+        WHERE e.id = ANY($1::int[]) ORDER BY e.id`, [[BASE + 1, BASE + 2]]);
+    expect(read.rows).toEqual([{ id: BASE + 1, gone: true, shown: false }, { id: BASE + 2, gone: false, shown: false }]);
   });
 
   it('hides nothing a membership measured since the last refresh adds', async () => {

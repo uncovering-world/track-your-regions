@@ -20,7 +20,7 @@ import {
 } from '../../db/membership.js';
 import type { reviewQueueMapQuerySchema, reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists } from '../../middleware/auth.js';
-import { lifecycleSelectSql } from '../../db/readerPredicates.js';
+import { lifecycleSelectSql, placeGoneSql } from '../../db/readerPredicates.js';
 import {
   objectContextSelectSql, countedWorksSelectSql,
 } from './reviewQueueContext.js';
@@ -317,7 +317,7 @@ export async function getReviewQueue(
   `, [...params, missingIds]);
     const kinds = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
-           m.source_membership, e.existence, m.missing_since, ${seenInSql()} AS seen_in,
+           m.source_membership, ${placeGoneSql('e')} AS gone, m.missing_since, ${seenInSql()} AS seen_in,
            ${keptAsFormerSql('m')} AS kept_as_former, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
@@ -387,15 +387,13 @@ export async function getReviewQueue(
            m.admission_reason, ${seenInSql()} AS seen_in,
            -- When this membership's refusal was answered, and the note given
            -- (#1264): the latest confirmation or kept-out arrival the log
-           -- records for it, else a
-           -- batch's answer, else the place's own decision, which is the only
-           -- one an answer logged before memberships were named carries.
-           COALESCE(answer.at, m.admission_answered_at, e.state_decided_at) AS state_decided_at,
-           CASE WHEN answer.at IS NOT NULL THEN answer.note ELSE e.state_note END AS state_note,
+           -- records for it, else a batch's answer, which carries no note.
+           COALESCE(answer.at, m.admission_answered_at) AS answered_at,
+           answer.note AS answer_note,
            -- What a script recorded about how the answer came about (the unread
            -- batch's pins, read as a list): the system's words, never the
            -- curator's (#2195).
-           CASE WHEN answer.at IS NOT NULL THEN answer.system_note END AS state_system_note,
+           answer.system_note AS answer_system_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
@@ -416,7 +414,7 @@ export async function getReviewQueue(
       ${membershipSourceFilter}
       ${nameFilter}
       AND ${membershipScopeFilter}
-    ORDER BY COALESCE(answer.at, m.admission_answered_at, e.state_decided_at) DESC NULLS LAST, e.id, m.id
+    ORDER BY COALESCE(answer.at, m.admission_answered_at) DESC NULLS LAST, e.id, m.id
     LIMIT $${answeredParams.length + 1} OFFSET $${answeredParams.length + 2}
   `, [...answeredParams, pageSize, offsets.keptOut]);
 

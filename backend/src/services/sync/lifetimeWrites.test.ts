@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { SourcedDate, SourcedPeriod } from '../../db/placePeriodsWriter.js';
-import { decideLifetime, withLifetimeChanges, type HeldPeriods, type LifetimeGate } from './lifetimeWrites.js';
+import type { HeldPeriods, SourcedDate, SourcedPeriod } from '../../db/placePeriodsWriter.js';
+import { decideLifetime, withLifetimeChanges, type LifetimeGate } from './lifetimeWrites.js';
 
 /**
  * #2578: the gate over a place's periods (ADR-0217 decision 3), on the
