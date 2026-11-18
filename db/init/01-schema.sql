@@ -3301,7 +3301,11 @@ ALTER TABLE source_records ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
 -- db/migrations/178-a-kind-keeps-its-own-facts.sql for a database whose places
 -- still hold them.
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS facts JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN source_records.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, the tier that admitted the row where it is the surroundings one, a World Heritage Site''s dateInscribed, inDanger, dangerList, criteria, areaHectares, ...), written by the source''s run every pass; one a reader is shown (the inscription year, the danger flag and its listing) waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, ADR-0171, ADR-0178, #1775, #2068, #2178).';
+COMMENT ON COLUMN source_records.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, the tier that admitted the row where it is the surroundings one, ...), written by the source''s run every pass; one a reader is shown waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, ADR-0171, ADR-0178, #1775, #2068, #2178). A World Heritage Site''s inscription is held in record_heritage_inscriptions, record_listings and record_danger_periods instead, never here (#2127).';
+-- db/migrations/269-the-inscription-leaves-the-facts.sql moves what a database already holds.
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_facts_hold_no_inscription_check;
+ALTER TABLE source_records ADD CONSTRAINT source_records_facts_hold_no_inscription_check
+    CHECK (NOT (facts ?| ARRAY['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares']));
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
@@ -3377,7 +3381,7 @@ COMMENT ON COLUMN source_records.admission_questioned_at IS 'When a run first as
 COMMENT ON COLUMN source_records.admission_question_sync_log_id IS 'The run that last asked about this row''s pin (#1367).';
 COMMENT ON COLUMN source_records.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
 COMMENT ON COLUMN source_records.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
-COMMENT ON COLUMN source_records.curated_fields IS 'Field names a curator has pinned on this record -- admission (a confirmed or overridden refusal), is_iconic, type, and on a record of World Heritage components wikidata_items (a confirmed item, ADR-0200) -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
+COMMENT ON COLUMN source_records.curated_fields IS 'Field names a curator has pinned on this record -- admission (a confirmed or overridden refusal), is_iconic, type, on a World Heritage record danger (a stay on the Danger List a curator decided, #2127), and on a record of World Heritage components wikidata_items (a confirmed item, ADR-0200) -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
 COMMENT ON COLUMN source_records.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7). On a part''s record in its whole, whether a curator has read the part (ADR-0213).';
 COMMENT ON COLUMN source_records.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
 COMMENT ON COLUMN source_records.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';
@@ -5543,6 +5547,12 @@ BEGIN
     ids := CASE WHEN TG_OP = 'DELETE' THEN ARRAY[OLD.whole_id, OLD.part_id] ELSE ARRAY[NEW.whole_id, NEW.part_id] END;
   ELSIF TG_TABLE_NAME = 'experience_separations' THEN
     ids := ARRAY[NEW.original_id, NEW.separated_id];
+  ELSIF TG_TABLE_NAME = 'record_heritage_inscriptions' THEN
+    -- The inscribed area gives a World Heritage membership its reach: the
+    -- record's place.
+    SELECT array_agg(s.experience_id) INTO ids
+      FROM source_records s
+     WHERE s.id = CASE WHEN TG_OP = 'DELETE' THEN OLD.record_id ELSE NEW.record_id END;
   ELSE
     -- A record in a whole changes nothing the pairing reads (ADR-0198): the
     -- part it records was marked when it was parted. Its own IF, since an AND
@@ -5597,9 +5607,10 @@ CREATE TRIGGER pairing_due_membership_update AFTER UPDATE ON source_records
                      OR OLD.reported_name IS DISTINCT FROM NEW.reported_name
                      OR OLD.kind_id IS DISTINCT FROM NEW.kind_id
                      OR OLD.admission IS DISTINCT FROM NEW.admission
-                     OR OLD.curation_state IS DISTINCT FROM NEW.curation_state
-                     OR OLD.facts->'areaHectares' IS DISTINCT FROM NEW.facts->'areaHectares')
+                     OR OLD.curation_state IS DISTINCT FROM NEW.curation_state)
   EXECUTE FUNCTION mark_pairing_due();
+-- The reach an inscribed area gives marks from record_heritage_inscriptions,
+-- whose triggers stand with the table (trg_inscription_area_pairing).
 
 DROP TRIGGER IF EXISTS pairing_due_location ON experience_locations;
 CREATE TRIGGER pairing_due_location AFTER INSERT OR DELETE ON experience_locations
@@ -9494,7 +9505,8 @@ CREATE TABLE IF NOT EXISTS record_listings (
     from_first INTEGER, until_last INTEGER,
         -- from_*: the list's own start: Liverpool inscribed 2004 (UNESCO's dataset, every offered
         -- World Heritage record); from_property NULL for a dataset date, P580 for a designation.
-        -- until_*: 21 July 2021 (offered from P582 of the P1435 statement, confirmed by a curator).
+        -- until_*: 21 July 2021 (P582 of the P1435 statement). The model offers it and a curator confirms
+        -- it (ADR-0217 decision 4, #2643); until then the run writes it on a membership a curator made former.
     ending          VARCHAR(10) CONSTRAINT record_listings_ending_check CHECK (ending IN ('delisted', 'dropped')),
         -- 'delisted': the list struck the whole site off (Dresden Elbe Valley 2009); 'dropped': a
         -- serial site's list stopped giving a component (Maidantal, October 2026, once answered).
@@ -9515,6 +9527,10 @@ CREATE TABLE IF NOT EXISTS record_listings (
     CONSTRAINT record_listings_decided_pair CHECK (decided_by IS NULL OR decided_at IS NOT NULL)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_record_listings_open ON record_listings (record_id) WHERE NOT ended;
+-- Writer (ADR-0069): backend/src/db/placePeriodsWriter.ts (PLACE_PERIOD_WRITE_RULES), for the UNESCO run:
+-- the start from the dataset's year (db/inscriptionWriter.ts), and the end of a membership the list
+-- struck off, from Wikidata's P582 where it states one (services/sync/heritageHistory.ts), until the review
+-- queue offers that date to a curator (#2643).
 
 -- With its slice of #2458: a trigger per event deriving source_records.source_membership from
 --   these rows ('present' where the record has no listing row or an open one, 'former'
@@ -9735,13 +9751,12 @@ CREATE TABLE IF NOT EXISTS record_heritage_inscriptions (
     -- Arc, so a property held as fewer parts than its source counts is a stored fact.
     components_listed  integer CONSTRAINT record_heritage_inscriptions_components_listed_check CHECK (components_listed > 0)
 );
--- Writer (ADR-0069): the UNESCO run (services/sync/unescoSyncService.ts through kindFacts.ts), and a curator's claimed correction
--- ('inscription.criteria', 'inscription.area') through controllers/experience/membershipWriter.ts under the place's
--- LockedExperience.
+-- Writer (ADR-0069): backend/src/db/inscriptionWriter.ts under the place's LockedExperience, for the
+-- UNESCO run's upsert and a curator publishing the run's held proposal (INSCRIPTION_WRITE_RULES).
 -- trg_inscription_on_heritage_record: BEFORE INSERT/UPDATE, refuses a row whose record is
 -- not a membership of a kind whose list is kept outside the catalogue and filled by source 1.
--- With its slice of #2458: a trigger AFTER UPDATE OF area_ha marking the place due for pairing
--- (mark_pairing_due(), in place of today's facts->'areaHectares' condition).
+-- trg_inscription_area_pairing and trg_inscription_area_pairing_write mark the place due for
+-- pairing when its inscribed area, the reach the pairing reads, comes, goes or changes.
 
 -- When the property stood on the List of World Heritage in Danger: a period per stay, with
 -- its dates. Cologne Cathedral 2004 -> 2006; Liverpool 2012 -> 21 July 2021 (its delisting);
@@ -9776,8 +9791,9 @@ CREATE TABLE IF NOT EXISTS record_danger_periods (
     CONSTRAINT record_danger_periods_decided_pair CHECK (decided_by IS NULL OR decided_at IS NOT NULL)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_record_danger_periods_open ON record_danger_periods (record_id) WHERE NOT ended;
--- Writer: the UNESCO run (services/sync/dangerListing.ts), and a curator's claimed 'danger' through membershipWriter.ts.
--- 266 carries today's current stay, with its from_year, and closes it once the facts no longer read it.
+-- Writer (ADR-0069): backend/src/db/placePeriodsWriter.ts (PLACE_PERIOD_WRITE_RULES), for the UNESCO
+-- run, which moves the open stay with the dataset (db/inscriptionWriter.ts) and reads the stays that ended
+-- from Wikidata (services/sync/heritageHistory.ts).
 
 -- What a Wikidata kind's rule read to admit the membership: its bookkeeping, shown on the
 -- card and never a reader's filter. Writer: the Wikidata runs' kind-facts step
@@ -10409,6 +10425,19 @@ DROP TRIGGER IF EXISTS trg_inscription_on_heritage_record ON record_danger_perio
 CREATE TRIGGER trg_inscription_on_heritage_record
     BEFORE INSERT OR UPDATE OF record_id ON record_danger_periods
     FOR EACH ROW EXECUTE FUNCTION inscription_on_heritage_record();
+
+-- The inscribed area sets a World Heritage property's reach (candidatePairsSql): its row
+-- written, changed or gone marks the property's place (the Okavango Delta's 2,023,590 ha
+-- against the Longmen Grottoes' 331).
+DROP TRIGGER IF EXISTS trg_inscription_area_pairing ON record_heritage_inscriptions;
+CREATE TRIGGER trg_inscription_area_pairing
+    AFTER UPDATE OF area_ha ON record_heritage_inscriptions
+    FOR EACH ROW WHEN (OLD.area_ha IS DISTINCT FROM NEW.area_ha)
+    EXECUTE FUNCTION mark_pairing_due();
+DROP TRIGGER IF EXISTS trg_inscription_area_pairing_write ON record_heritage_inscriptions;
+CREATE TRIGGER trg_inscription_area_pairing_write
+    AFTER INSERT OR DELETE ON record_heritage_inscriptions
+    FOR EACH ROW EXECUTE FUNCTION mark_pairing_due();
 
 DROP TRIGGER IF EXISTS trg_rule_reads_items ON record_rule_reads;
 CREATE TRIGGER trg_rule_reads_items
