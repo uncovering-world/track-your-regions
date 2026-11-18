@@ -24,7 +24,6 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocationIcon from '@mui/icons-material/LocationOn';
 import UnrejectIcon from '@mui/icons-material/Undo';
 import CurateIcon from '@mui/icons-material/Tune';
-import RemoveFromRegionIcon from '@mui/icons-material/LinkOff';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { cardImageUrl, isImagePreloaded, preloadImage } from '../../utils/imagePreload';
@@ -50,6 +49,10 @@ import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import { NoPlaceShownNote } from '../shared/NoPlaceShownNote';
 import { ShareButton } from '../shared/ShareButton';
+import type { Reasoned } from '../shared/ReasonMenu';
+import type { REGION_REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
+import { lazyChunk } from '../../utils/lazyChunk';
+import { ChunkBoundary } from '../shared/ChunkBoundary';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
@@ -61,6 +64,11 @@ import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { typeChipsFor } from './typeChips';
 import { cardAsksFinds, standsInWorldHeritage } from '../../utils/placeKinds';
+
+/** A curator's *Remove ▾* on a rejected row, fetched when one is drawn: no visitor's card holds it (#863). */
+const RemoveFromRegionMenuChunk = lazyChunk(
+  () => import('./RemoveFromRegionMenu').then(m => ({ default: m.RemoveFromRegionMenu })),
+);
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -92,7 +100,8 @@ export interface ExperienceExpandedDetailsProps {
   /** And into correcting one of the works, which is the same rule one level over (#731). */
   onCorrectWork?: (work: ExperienceTreasure) => void;
   onUnreject?: () => void;
-  onRemoveFromRegion?: () => void;
+  /** Take a rejected place out of the region, saying why (#863). */
+  onRemoveFromRegion?: (why: Reasoned<typeof REGION_REFUSAL_REASON_CODES>) => void;
   /**
    * Called in the layout phase whenever something inside this card changes its
    * height — the picture arriving, either cap on the places lifting — so the
@@ -513,15 +522,14 @@ function ExperienceExpandedDetailsComponent({
           </Button>
         )}
         {onRemoveFromRegion && isRejected && (
-          <Tooltip title="Remove from this region entirely">
-            <IconButton
-              size="small"
-              color="error"
-              onClick={(e) => { e.stopPropagation(); onRemoveFromRegion(); }}
-            >
-              <RemoveFromRegionIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          // The menu, its "Other…" dialog and a failed chunk's notice render in
+          // portals, whose clicks still bubble through React to the card: held
+          // here, so none of them toggles it.
+          <Box component="span" onClick={(e) => e.stopPropagation()}>
+            <ChunkBoundary>
+              <RemoveFromRegionMenuChunk onRemove={onRemoveFromRegion} />
+            </ChunkBoundary>
+          </Box>
         )}
         {onCurate && isRejected && (
           <Tooltip title="Edit or manage this experience">

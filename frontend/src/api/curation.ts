@@ -42,6 +42,7 @@ import {
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
   type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseArrivalBody, type RefuseContentsBody,
+  type RejectExperienceBody, type AssignExperienceBody, type DeleteExperiencesByIdRemoveFromRegionByRegionIdParams,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -63,14 +64,14 @@ export type {
 } from './client.generated';
 
 /**
- * Reject an experience from a region
+ * Reject an experience from a region: why, from the region act's reasons
+ * (#863), and the curator's words, which the rejection keeps as its reason.
  */
 export async function rejectExperience(
   experienceId: number,
-  regionId: number,
-  reason?: string,
+  body: RejectExperienceBody,
 ): Promise<RegionMembershipResult> {
-  return postExperiencesByIdReject(experienceId, { regionId, reason });
+  return postExperiencesByIdReject(experienceId, body);
 }
 
 /**
@@ -455,13 +456,13 @@ export async function unrejectExperience(
 }
 
 /**
- * Manually assign an experience to a region
+ * Manually assign an experience to a region, saying why (#863)
  */
 export async function assignExperienceToRegion(
   experienceId: number,
-  regionId: number,
+  body: AssignExperienceBody,
 ): Promise<RegionMembershipResult> {
-  return postExperiencesByIdAssign(experienceId, { regionId });
+  return postExperiencesByIdAssign(experienceId, body);
 }
 
 /**
@@ -659,13 +660,15 @@ export async function unassignExperienceFromRegion(
 /**
  * Remove an experience from a region entirely (any assignment type).
  * Unlike unassign, this works for both auto and manual assignments.
- * The rejection row is kept as a guard against spatial recompute.
+ * The rejection row is kept as a guard against spatial recompute. Says why,
+ * from the region act's reasons, with the curator's words (#863).
  */
 export async function removeExperienceFromRegion(
   experienceId: number,
   regionId: number,
+  why: DeleteExperiencesByIdRemoveFromRegionByRegionIdParams,
 ): Promise<RegionMembershipResult> {
-  return deleteExperiencesByIdRemoveFromRegionByRegionId(experienceId, regionId);
+  return deleteExperiencesByIdRemoveFromRegionByRegionId(experienceId, regionId, why);
 }
 
 /** A curator's word on one identifier (#1896): what the dialog may say of it. */

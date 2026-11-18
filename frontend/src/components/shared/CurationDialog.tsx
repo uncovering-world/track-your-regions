@@ -4,7 +4,10 @@
  * Supports editing (name, subtitle, description, type, picture, links, whom it
  * commemorates and, where the card can carry the line, what it depicts), rejecting, and
  * unrejecting an experience within a region, and lists the places the object
- * is made of with the way to correct each (`CurationPlaces`). The edit's
+ * is made of with the way to correct each (`CurationPlaces`). A rejection and
+ * a removal from the region say why, picked from the region act's reasons
+ * (#863); taking a rejection back asks nothing, since the place returns to
+ * where its own points put it. The edit's
  * fields are held by the form layer (`useEditForm`, ADR-0076), which decides
  * what changed, what is sent and which field a refusal names. Ends with the
  * object's curation history (`CurationHistory`). Self-contained mutations that
@@ -37,9 +40,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
-import BlockIcon from '@mui/icons-material/Block';
 import UndoIcon from '@mui/icons-material/Undo';
-import LinkOffIcon from '@mui/icons-material/LinkOff';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchExperience,
@@ -69,10 +70,15 @@ import { SiteFindQuestions } from './SiteFindQuestions';
 import { mayBeFindOrigin } from '../../utils/placeKinds';
 import { KindSeparation } from './KindSeparation';
 import { PlaceKinds } from './PlaceKinds';
+import { ReasonMenu, type Reasoned } from './ReasonMenu';
+import { REGION_REFUSAL_REASON_CODES } from '@tyr/shared/curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { SUBJECT_LINE_SOURCE_IDS } from '@tyr/shared/commemorates';
 import { queryKeys } from '../../api/queryKeys';
+
+/** Why a place is rejected from the region, or removed from it. */
+type RegionRefusal = Reasoned<typeof REGION_REFUSAL_REASON_CODES>;
 
 /**
  * What the dialog reads of a place. The region list's row carries it, and so
@@ -239,7 +245,6 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
     tidy: { name: tidyLabel },
     required: ['name'],
   });
-  const rejectForm = useEditForm({ initial: { reason: '' }, resetKey: experience?.id ?? null });
   // The place's kinds as the dialog's kind rows read them, waiting ones included (#2022).
   const placeKinds = useQuery({
     queryKey: queryKeys.curation.placeKinds(experience?.id ?? 0),
@@ -285,10 +290,10 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
     },
   });
 
-  // Reject mutation
+  // Reject mutation: why, and the curator's words under "Other…", which the rejection keeps as its reason.
   const rejectMutation = useMutation({
-    mutationFn: ({ experienceId, rId, reason }: { experienceId: number; rId: number; reason?: string }) =>
-      rejectExperience(experienceId, rId, reason),
+    mutationFn: ({ experienceId, rId, reasonCode, note }: RegionRefusal & { experienceId: number; rId: number }) =>
+      rejectExperience(experienceId, { regionId: rId, reasonCode, reason: note }),
     onSuccess: () => {
       invalidateCaches();
       onClose();
@@ -307,8 +312,8 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
 
   // Remove from region mutation
   const removeMutation = useMutation({
-    mutationFn: ({ experienceId, rId }: { experienceId: number; rId: number }) =>
-      removeExperienceFromRegion(experienceId, rId),
+    mutationFn: ({ experienceId, rId, reasonCode, note }: RegionRefusal & { experienceId: number; rId: number }) =>
+      removeExperienceFromRegion(experienceId, rId, { reasonCode, note }),
     onSuccess: () => {
       invalidateCaches();
       queryClient.invalidateQueries({ queryKey: queryKeys.discover.regionCountsAll });
@@ -318,13 +323,13 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
 
   if (!experience) return null;
 
-  const handleReject = () => {
+  const handleReject = (reasonCode: RegionRefusal['reasonCode'], note?: string) => {
     if (!regionId) return;
-    rejectMutation.mutate({
-      experienceId: experience.id,
-      rId: regionId,
-      reason: rejectForm.changes().reason || undefined,
-    });
+    rejectMutation.mutate({ experienceId: experience.id, rId: regionId, reasonCode, note });
+  };
+  const handleRemove = (reasonCode: RegionRefusal['reasonCode'], note?: string) => {
+    if (!regionId) return;
+    removeMutation.mutate({ experienceId: experience.id, rId: regionId, reasonCode, note });
   };
 
   const handleUnreject = () => {
@@ -525,19 +530,14 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
                   >
                     {unrejectMutation.isPending ? 'Unrejecting...' : 'Unreject'}
                   </Button>
-                  <Button
+                  <ReasonMenu
+                    label={removeMutation.isPending ? 'Removing...' : 'Remove from region'}
+                    reasons={REGION_REFUSAL_REASON_CODES}
                     size="small"
-                    variant="outlined"
                     color="error"
-                    startIcon={<LinkOffIcon />}
-                    onClick={() => {
-                      if (!regionId) return;
-                      removeMutation.mutate({ experienceId: experience.id, rId: regionId });
-                    }}
                     disabled={isPending}
-                  >
-                    {removeMutation.isPending ? 'Removing...' : 'Remove from region'}
-                  </Button>
+                    onChoose={(reasonCode, note) => handleRemove(reasonCode, note)}
+                  />
                 </Box>
                 {unrejectMutation.isError && (
                   <Alert severity="error" sx={{ mt: 1 }}>
@@ -558,26 +558,14 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                   Hides <strong>{experience.name}</strong> from this region. Other regions are not affected.
                 </Typography>
-                <TextField
-                  label="Reason (optional)"
-                  placeholder="Why is this experience being rejected?"
-                  {...rejectForm.field('reason')}
-                  fullWidth
+                <ReasonMenu
+                  label={rejectMutation.isPending ? 'Rejecting...' : 'Reject'}
+                  reasons={REGION_REFUSAL_REASON_CODES}
                   size="small"
-                  multiline
-                  rows={2}
-                  sx={{ mb: 1.5 }}
-                />
-                <Button
-                  size="small"
-                  variant="outlined"
                   color="error"
-                  startIcon={<BlockIcon />}
-                  onClick={handleReject}
                   disabled={isPending}
-                >
-                  {rejectMutation.isPending ? 'Rejecting...' : 'Reject'}
-                </Button>
+                  onChoose={(reasonCode, note) => handleReject(reasonCode, note)}
+                />
                 {rejectMutation.isError && (
                   <Alert severity="error" sx={{ mt: 1 }}>
                     {rejectMutation.error.message}

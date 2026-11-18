@@ -19,6 +19,10 @@
  * fired by a pause in typing searched a half-typed name. Pressed again
  * (*Look up again*), it overwrites what an earlier lookup filled in.
  *
+ * Creating a place and adding one each say why, picked from an addition's
+ * reasons on the button that does it (#863); the region the dialog adds to is
+ * the log entry's region.
+ *
  * Used from both Map mode (ExperienceList) and Discover mode
  * (DiscoverExperienceView).
  */
@@ -64,6 +68,13 @@ import { DenseThumbnail } from './DenseThumbnail';
 import { PictureWithCredit } from './PictureWithCredit';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { queryKeys } from '../../api/queryKeys';
+import { ReasonMenu, type Reasoned } from './ReasonMenu';
+import { ADDITION_REASON_CODES } from '@tyr/shared/curationLog';
+
+/** Why a place is created or added by hand (#863). */
+type Addition = Reasoned<typeof ADDITION_REASON_CODES>;
+/** The line above the reasons: an addition's question, which its button's label does not ask. */
+const ADDITION_HEADING = 'Why add it by hand?';
 
 /**
  * The new place's fields, named by the create body's keys (ADR-0076); the one
@@ -270,8 +281,10 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     enabled: searchQuery.length >= 2,
   });
 
+  // An addition by hand says why (#863): the rule that places the rest missed this one, or another reason.
   const assignMutation = useMutation({
-    mutationFn: (experienceId: number) => assignExperienceToRegion(experienceId, regionId),
+    mutationFn: ({ experienceId, reasonCode, note }: Addition & { experienceId: number }) =>
+      assignExperienceToRegion(experienceId, { regionId, reasonCode, note }),
     onSuccess: () => {
       invalidateExperiences(queryClient, { regionId });
     },
@@ -582,7 +595,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   // The form sends the optional fields that were filled in; the ones the body
   // requires come from the values, which `form.missing` holds non-blank before
   // the button is enabled — the check below only narrows their types.
-  const handleCreate = async () => {
+  const handleCreate = async (reasonCode: Addition['reasonCode'], note?: string) => {
     if (kindId === '' || coords === null) return;
     const created = await form.submit(filled => createMutation.mutateAsync({
       ...filled,
@@ -591,6 +604,8 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       latitude: coords.lat,
       longitude: coords.lng,
       regionId,
+      reasonCode,
+      ...(note ? { note } : {}),
     }), OPTIONAL_FIELDS);
     if (!created) return;
     // A new draft: blank values, no kind — the next opening's "+" names its
@@ -778,13 +793,15 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
             {form.formError && <Alert severity="error">{form.formError}</Alert>}
 
-            <Button
+            <ReasonMenu
+              label={createMutation.isPending ? 'Creating...' : 'Create Experience'}
+              heading={ADDITION_HEADING}
+              reasons={ADDITION_REASON_CODES}
               variant="contained"
-              onClick={handleCreate}
+              color="primary"
               disabled={form.missing || createMutation.isPending}
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create Experience'}
-            </Button>
+              onChoose={(reasonCode, note) => { void handleCreate(reasonCode, note); }}
+            />
           </Box>
         )}
 
@@ -827,14 +844,15 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                         gap: 1.5,
                       }}
                       secondaryAction={
-                        <Button
+                        <ReasonMenu
+                          label="Add"
+                          heading={ADDITION_HEADING}
+                          reasons={ADDITION_REASON_CODES}
                           size="small"
-                          variant="outlined"
-                          onClick={() => assignMutation.mutate(exp.id)}
+                          color="primary"
                           disabled={assignMutation.isPending}
-                        >
-                          Add
-                        </Button>
+                          onChoose={(reasonCode, note) => assignMutation.mutate({ experienceId: exp.id, reasonCode, note })}
+                        />
                       }
                     >
                       <SearchResultBody exp={exp} />
