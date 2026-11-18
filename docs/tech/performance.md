@@ -851,7 +851,12 @@ membership admitted and passed (`membershipAdmittedSql`,
 `membershipVisibleSql`), and `idx_experience_locations_reader`, a point
 offered and passed (`offeredLocationSql`, `publishedContentSql`). Both
 carry the row's id, so a read's crowding check and the region membership's
-join stay inside the index. The world's kind pick reads shown memberships
+join stay inside the index. The membership index carries `stands_today` as
+well (#1719), the standing a list, a count and the map ask beside its terms
+(`membershipStandsSql`): without it each of those probes went back to the
+heap: the by-region read of Spain measured 89 ms on the dev catalogue with
+the standing asked outside the index, against 47 ms before it was asked
+(`perf:api` p50, #2640). The world's kind pick reads shown memberships
 only (`membershipShownSql`), which is the same pick for every place the read
 keeps. Its rows are the same: the overview, the folded overview and the
 Europe markers return the same rows with the same fingerprint before and

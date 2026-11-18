@@ -152,22 +152,29 @@ a closure may carry a curator's words (`what`). The row names the source its vie
 
 Beside its ends a period keeps the outer days it may cover: `from_first`, the first day its start
 may be, and `until_last`, the last day its end may be, in the count of days `periodOf` orders dates
-by. The writer writes them from `outerDaysOf` (`@tyr/shared/lifetime`), which has no twin in SQL,
-and a read as of a date compares them: a trip of 1980 falls after the `until_last` of the
+by. The writer writes them from `outerDaysOf` (`@tyr/shared/lifetime`), and the schema holds them to
+its SQL twins `date_first()` and `date_last()` (#1719), which `lifetimeTwin.db.test.ts` holds to
+`periodOf` on fixed dates from the millennium of 9500 BC to a leap day; `current_day_index()` is
+the twin of `latestDayOnEarth`, today at UTC+14. A read as of a date compares them: a trip of 1980 falls after the `until_last` of the
 cathedral's first period and before the `from_first` of its second.
 
 **The shape is held three times, each by what it can say.**
 
 - The schema: `period_ok()` is the one CHECK of a period on both tables (each end a date by
-  `approx_date_ok()`, an end date only on a period that has one, an outer day exactly where its
-  end has a year, the start's first day never after the end's last), beside the CHECK lists of
-  `says`, the spans and the endings, and `idx_place_periods_standing`, which lets a place hold one
-  open standing period at most.
+  `approx_date_ok()`, an end date only on a period that has one, each outer day the one its date
+  gives, the start's first day never after the end's last), beside the CHECK lists of `says`, the
+  spans and the endings, and `idx_place_periods_open_standing`, which lets a place, and each of its
+  memberships, hold one open standing period at most. A named use carries a curator's decision
+  (`use_is_answered`), a curator's row the moment of it (`curator_decides`, `decided_pair`), and a
+  period of a kind a membership the place holds (`place_periods_of_membership`, which carries the
+  periods with the membership when a merge moves it and drops them with it). A change of a row
+  stamps `updated_at`, or the trigger `place_periods_stamped()` refuses it.
 - The shared rule, `periodsFault` in `@tyr/shared/lifetime`, checks a list of periods that say one
   thing: each date by `isValidPlaceDate` (a month only within a year, a day only within a month
   the month has, a BC leap year one later than an AD one, a year from 100,000 BC), the list in
   time order, standing periods that do not overlap and of which only the last may be open, and no
-  standing period or use in the future (`latestDayOnEarth`). Order is as the dates are stated
+  standing period or use in the future (`latestDayOnEarth`), except a standing period that begins
+  ahead and is still open: a place's opening day, at most `FURTHEST_YEARS_AHEAD` years off. Order is as the dates are stated
   (`statedAfter`): one date is later than another where it is wholly after it or under a later
   year, so a period from "the century of 1900" until 18 February 1870 is refused although the
   century's span holds 1870; a closure and an occurrence may lie
@@ -175,16 +182,41 @@ cathedral's first period and before the `from_first` of its second.
   schema's, and `REPORTED_SAYS` what a run reports of it (`stood` and `used`).
 - The writer, `db/placePeriodsWriter.ts`, the only module that writes the two tables (ADR-0069,
   `PLACE_PERIOD_WRITE_RULES`), under the place's `LockedExperience`: `writePlacePeriods` replaces
-  the place's whole list of periods that say one thing, and `writeRecordPeriods` a record's whole
-  view. Both ask `periodsFault` first, number the list in the order given, and rewrite no row
+  the place's whole list of periods that say one thing, or a membership's when it is given a kind
+  (only `stood` and `closed` hold for one kind: Frick Madison was among Art Museums from 2021 to
+  3 March 2024 while its building stands), and `writeRecordPeriods` a record's whole view, of the
+  place or, with `ofMembership`, of its membership. Both ask `periodsFault` first, number the list in the order given, and rewrite no row
   that is written as it stands.
 
-**A place is gone when it has standing periods and none is open** (ADR-0217 decision 5).
-`experiences.stands_today` is that statement as a column: `derive_stands_today()` keeps it equal to
-`place_stands()` after every write to a `stood` period, and `stands_today_is_derived()` refuses any
-other write of it, so the trigger is its one writer. Nelson's Pillar in Dublin (1809 → 8 March
-1966) reads false; a place with no period, or with only a use that ended, stands. No reader reads
-the column yet: `existence` still hides a lost place.
+**A place stands today when it has no standing period, or one that is open and has begun** (ADR-0217
+decision 5, #1719). `experiences.stands_today` is that statement of the place's own periods, and
+`source_records.stands_today` of a membership's: the place stands, and the kind's own periods, if
+any, say the same. `stands_on_day()` is the rule, `refresh_standing()` writes both columns where they
+differ, after every write to `place_periods` (`place_periods_follow()`, one statement-level trigger
+per event) and on a membership's insert or move (`source_record_stands()`); `stands_today_is_derived()`
+and `record_stands_is_derived()` refuse any other write. Nelson's Pillar in Dublin (1809 → 8 March
+1966) reads false; the Cathedral of Christ the Saviour, 1883 → 1931 and 2000 → open, stands; Frick
+Madison stands while its Art Museums membership does not; a place with no period, or with only a
+use that ended, stands. A period that begins on a day still ahead turns the columns true on that
+day with no write: `refresh_standing_due()` re-derives the places whose open standing period has
+begun while the place, or its membership in the period's kind, is still stored as not standing, so a
+sweep missed for a day or a year opens it at the next; the backend runs it at boot and every hour
+(`services/standingSweep.ts`). A run's gate reads the standing the same way, on the same day
+(`standsBy`, `@tyr/shared/lifetime`): a museum with no period that its item now says opens on
+1 May 2027 is asked, not filled, since the view takes it off today's lists until that day.
+
+The readers read them: `hideLostSql` (`db/readerPredicates.ts`) hides a place that is `lost` or does
+not stand today, and `membershipStandsSql` (`db/membership.ts`), composed into `membershipShownSql`
+and `placeShownSql`, keeps a membership whose standing ended out of a kind's lists, the map and the
+counts, while its card still opens. A list's "show what is gone" (`includeLost`) reveals what the
+verdict hid and nothing more, so its offer counts `lostByVerdictSql` among what the list then shows
+(`experienceShownToReaderSql`): a place that does not stand is out of every membership's standing
+too, and a lost place whose only membership ended, or that is crowded out, is not offered. A source's
+missing detection excuses only the verdict (`placeNotJudgedLostSql`): a place whose opening day is
+still ahead is one the source may drop and be asked about. Crowding counts neither a place that does
+not stand nor a membership whose standing ended (`crowding_above()`, `recount_crowding()`,
+`refresh_crowding()`), and a change of a membership's standing recounts around it. A point keeps its own verdict alone (`pointNotLostSql`). The
+backend lint refuses `stands_today` spelled anywhere else.
 
 Both tables are serving tables (ADR-0124). No curator screen writes them yet; the runs write them
 as § How a run writes a place's periods says.
@@ -6842,7 +6874,7 @@ Maggiore, and crowds out 51 more of its churches.
   sixteenth and twelfth.
 - **The schema recounts between runs.** `crowding_follows_membership()` and
   `crowding_follows_place()` call `recount_crowding(near)` within the radius of a place. They fire
-  when a membership's admission, type, kind or place changes, when the membership is deleted, and
+  when a membership's admission, type, kind, place or standing today changes, when the membership is deleted, and
   when a place's existence or point changes or the place is deleted. `crowding_follows_link()` and
   `crowding_follows_work()` recount around a place when what it holds changes: a link written,
   deleted, no longer placed, read or moved, or a work read. They go through
@@ -7600,7 +7632,11 @@ which are set and all three empty is a trip whose date the traveller does not re
 within a year, a day only within a month the month has, from 1900 to next year
 (`@tyr/shared/approximateDates`). The table's checks hold the shape and the earliest year, 1900; the
 latest, next year, is held by the body schema `tripDateBodySchema` alone, since a bound that moves with
-the calendar cannot be a check.
+the calendar cannot be a check. Beside its date a trip keeps the days it may be, `first_day` and
+`last_day`, in the count of days a period's outer days use (§ A place's lifetime): March 2022 is 1 to
+31 March. Every writer of a trip writes them from the date by `tripDaysOf` (`db/visits.ts`, over
+`periodOf`), and the check `user_visit_trips_outer_days` holds them to `date_first()` and
+`date_last()`, so a trip can be compared with a place's periods without reading its date again.
 The visit stays one row per traveller and place, and a visit with no trip has no date: migration 236
 wrote none for the visits made before it, since the visit's own moment, renamed `marked_at` from
 `visited_at`, is when the tick was made. The routes, all under `/api/users/me` and of the caller's own
