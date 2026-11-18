@@ -25,6 +25,7 @@ import {
 } from '../../controllers/experience/reviewQueueVocabulary.js';
 import { CardCrowding, ContentKind, PlacementFailure } from './curation.js';
 import { DescriptionSource, ImageCredit, LinkedPlace, WorkVenue } from './experiences.js';
+import { AdmissionRecord, GuideLink } from './admission.js';
 
 export const RegionCrossing = z.strictObject({
   worldView: z.string().describe('The hierarchy whose regions the move crosses.'),
@@ -491,6 +492,16 @@ export const ReviewQueueItem = z.strictObject({
   ),
   admission_note: z.string().nullable().optional()
     .describe("The run's own question about a row it could not settle by its rule (ADR-0058)."),
+  admission: AdmissionRecord.nullable().optional().describe(
+    'On an arrival: why the run of the kind this card asks about admitted the place, as figures (#2184), read off that'
+    + ' kind\'s membership, so a place two kinds ask about carries each kind\'s own. Null where its run has written none'
+    + ' yet; absent on every other card.',
+  ),
+  guides: z.array(GuideLink).nullable().optional().describe(
+    'On an arrival: the Wikivoyage articles that use the place\'s item, one per edition, the English edition\'s first'
+    + ' (#2184). Empty where none does; null where the Wikivoyage copy in place keeps no article, built before the'
+    + ' articles were kept or none in place, so nothing is known of the guides; absent on every other card.',
+  ),
   in_danger: z.boolean().optional(),
   danger_since: z.number().int().nullable().optional().describe('The year the site was listed in danger.'),
   admission_reason: z.string().nullable().optional().describe("Why this kind turned the row down, in the rule's own words."),

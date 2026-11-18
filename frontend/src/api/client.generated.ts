@@ -3886,6 +3886,226 @@ export interface PartOf {
   component_ref: string | null;
 }
 
+export type AdmissionRecordTier = typeof AdmissionRecordTier[keyof typeof AdmissionRecordTier];
+
+
+export const AdmissionRecordTier = {
+  world: 'world',
+  surroundings: 'surroundings',
+} as const;
+
+/**
+ * What admitted the place: its editions, its readers, its readers over the bar for a place a guide marks (`guided`), the guides that use it, the cafés and bars around it, a famous work or find it holds, or `kept` where a held place was kept because the run could not read what decides it.
+ */
+export type AdmissionRecordDecided = typeof AdmissionRecordDecided[keyof typeof AdmissionRecordDecided];
+
+
+export const AdmissionRecordDecided = {
+  editions: 'editions',
+  readers: 'readers',
+  guided: 'guided',
+  guides: 'guides',
+  venues: 'venues',
+  kept: 'kept',
+  work: 'work',
+  find: 'find',
+} as const;
+
+export type AdmissionRecordClearedItem = typeof AdmissionRecordClearedItem[keyof typeof AdmissionRecordClearedItem];
+
+
+export const AdmissionRecordClearedItem = {
+  editions: 'editions',
+  readers: 'readers',
+  guided: 'guided',
+  guides: 'guides',
+  venues: 'venues',
+  kept: 'kept',
+  work: 'work',
+  find: 'find',
+} as const;
+
+/**
+ * What the run could not read, where `decided` is `kept`.
+ */
+export type AdmissionRecordUnread = typeof AdmissionRecordUnread[keyof typeof AdmissionRecordUnread];
+
+
+export const AdmissionRecordUnread = {
+  pool: 'pool',
+  readers: 'readers',
+  guides: 'guides',
+  venues: 'venues',
+} as const;
+
+/**
+ * `needed`: the bars of the world tier, what a place needs to get in. `typical`: the medians of the best places around it.
+ */
+export type AdmissionRecordReferenceKind = typeof AdmissionRecordReferenceKind[keyof typeof AdmissionRecordReferenceKind];
+
+
+export const AdmissionRecordReferenceKind = {
+  needed: 'needed',
+  typical: 'typical',
+} as const;
+
+export type AdmissionRecordMarksItem = typeof AdmissionRecordMarksItem[keyof typeof AdmissionRecordMarksItem];
+
+
+export const AdmissionRecordMarksItem = {
+  guide: 'guide',
+  'atlas-obscura': 'atlas-obscura',
+  'world-heritage': 'world-heritage',
+} as const;
+
+/**
+ * A place's figures, each where the run read it: absent where it read none, never zero for unread.
+ */
+export type AdmissionRecordPlace = {
+  /** Wikipedia editions. */
+  editions?: number;
+  /** Readers a year, in every counted edition (ADR-0055). */
+  readers?: number;
+  /** The Wikivoyage editions that use the place, where the tier counts them (the surroundings tier). */
+  guides?: number;
+  /** Cafés, restaurants and bars within the venue radius of the point (ADR-0192). */
+  venues?: number;
+  /** Cafés, restaurants and bars per 100 m along the street's line (ADR-0194). */
+  venuesPer100m?: number;
+};
+
+/**
+ * What a place the world tier held needed to stay, where it stayed rather than entered (ADR-0175 decision 2).
+ */
+export type AdmissionRecordReferenceToStay = {
+  editions?: number;
+  readers?: number;
+  guidedReaders?: number;
+};
+
+/**
+ * The share of each median a surroundings test asks, where it is not the whole: 1.5 times the readers, a quarter of the guides.
+ */
+export type AdmissionRecordReferenceShares = {
+  editions?: number;
+  readers?: number;
+  guides?: number;
+  venues?: number;
+};
+
+export type AdmissionRecordReference = {
+  /** `needed`: the bars of the world tier, what a place needs to get in. `typical`: the medians of the best places around it. */
+  kind: AdmissionRecordReferenceKind;
+  /** Wikipedia editions. */
+  editions?: number;
+  /** Readers a year, in every counted edition (ADR-0055). */
+  readers?: number;
+  /** The Wikivoyage editions that use the place, where the tier counts them (the surroundings tier). */
+  guides?: number;
+  /** Cafés, restaurants and bars within the venue radius of the point (ADR-0192). */
+  venues?: number;
+  /** Cafés, restaurants and bars per 100 m along the street's line (ADR-0194). */
+  venuesPer100m?: number;
+  /** The world tier's readers bar for a place a guide marks, where the place carries a mark. */
+  guidedReaders?: number;
+  /** What a place the world tier held needed to stay, where it stayed rather than entered (ADR-0175 decision 2). */
+  toStay?: AdmissionRecordReferenceToStay;
+  /** The share of each median a surroundings test asks, where it is not the whole: 1.5 times the readers, a quarter of the guides. */
+  shares?: AdmissionRecordReferenceShares;
+  /** How far around the place its surroundings reach. */
+  radiusKm?: number;
+  /**
+     * How many of the best places around set each median.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  best?: number;
+  /**
+     * How many places of its density lie within the radius.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  around?: number;
+} | null;
+
+/**
+ * The bar its figure cleared.
+ */
+export type AdmissionRecordWorkNeeded = {
+  editions?: number;
+  readers?: number;
+};
+
+/**
+ * The famous work or find whose figures admitted the place that holds it (ADR-0056, ADR-0164).
+ */
+export type AdmissionRecordWork = {
+  qid: string;
+  label: string;
+  editions?: number;
+  readers?: number;
+  /** Whether its year is a burst: a quarter in one week, or months that swing. */
+  burst?: boolean;
+  /** The bar its figure cleared. */
+  needed?: AdmissionRecordWorkNeeded;
+};
+
+/**
+ * The OpenStreetMap object that stood in for a class of a site: the tag and the element (#895).
+ */
+export type AdmissionRecordOsm = {
+  tag: string;
+  element: string;
+};
+
+/**
+ * The ruin OpenStreetMap maps near the place under its name, where no object carries its item (ADR-0188).
+ */
+export type AdmissionRecordNamedRuin = {
+  name: string;
+  element: string;
+};
+
+/**
+ * Why the run admitted the place to the kind, as figures (#2184).
+ */
+export interface AdmissionRecord {
+  tier: AdmissionRecordTier;
+  /** What admitted the place: its editions, its readers, its readers over the bar for a place a guide marks (`guided`), the guides that use it, the cafés and bars around it, a famous work or find it holds, or `kept` where a held place was kept because the run could not read what decides it. */
+  decided: AdmissionRecordDecided;
+  /** Every test the place passed, the deciding one first, where it passed more than one. */
+  cleared?: AdmissionRecordClearedItem[];
+  /** Whether a place the tier held stayed by the stay share of a bar or test rather than entering. */
+  stayed?: boolean;
+  /** What the run could not read, where `decided` is `kept`. */
+  unread?: AdmissionRecordUnread;
+  /** A place's figures, each where the run read it: absent where it read none, never zero for unread. */
+  place: AdmissionRecordPlace;
+  reference: AdmissionRecordReference;
+  /** The guide's marks the world tier read of the place. */
+  marks?: AdmissionRecordMarksItem[];
+  /** English Wikipedia's monuments categories that named the place (#2171). */
+  categories?: string[];
+  /** The famous work or find whose figures admitted the place that holds it (ADR-0056, ADR-0164). */
+  work?: AdmissionRecordWork;
+  /** The OpenStreetMap object that stood in for a class of a site: the tag and the element (#895). */
+  osm?: AdmissionRecordOsm;
+  /** The ruin OpenStreetMap maps near the place under its name, where no object carries its item (ADR-0188). */
+  namedRuin?: AdmissionRecordNamedRuin;
+}
+
+/**
+ * A Wikivoyage article that uses the place.
+ */
+export interface GuideLink {
+  /** The article's title as a reader reads it. */
+  title: string;
+  /** The article on its edition's own host. */
+  url: string;
+  /** The edition's language, as its host names it: en for en.wikivoyage.org. */
+  lang: string;
+}
+
 export type ProposedFieldSignificance = typeof ProposedFieldSignificance[keyof typeof ProposedFieldSignificance];
 
 
@@ -4947,6 +5167,10 @@ export interface ReviewQueueItem {
      * @nullable
      */
   admission_note?: string | null;
+  /** On an arrival: why the run of the kind this card asks about admitted the place, as figures (#2184), read off that kind's membership, so a place two kinds ask about carries each kind's own. Null where its run has written none yet; absent on every other card. */
+  admission?: AdmissionRecord | null;
+  /** On an arrival: the Wikivoyage articles that use the place's item, one per edition, the English edition's first (#2184). Empty where none does; null where the Wikivoyage copy in place keeps no article, built before the articles were kept or none in place, so nothing is known of the guides; absent on every other card. */
+  guides?: GuideLink[] | null;
   in_danger?: boolean;
   /** The year the site was listed in danger. */
   danger_since?: number | null;
