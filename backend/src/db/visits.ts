@@ -13,10 +13,33 @@
  */
 
 import type { PoolClient } from 'pg';
+import { periodOf } from '@tyr/shared/lifetime';
 import { pool, rollbackQuietly } from './index.js';
 import { offeredLocationSql, placeStandsAtSql, publishedContentSql } from './readerPredicates.js';
 import { badRequest, notFound } from '../middleware/errorHandler.js';
 import { RESTORE_LIMITS, TOO_MUCH_TO_UNDO } from '../types/trips.js';
+
+/** A trip's date as the traveller gave it: a year, a month within it and a day within that, each optional. */
+export interface TripDate {
+  year: number | null;
+  month: number | null;
+  day: number | null;
+}
+
+/**
+ * The outer days of a trip's date, written beside it (`user_visit_trips.first_day`
+ * and `last_day`): the first and the last day the date may be, as `periodOf`
+ * (`@tyr/shared/lifetime`) counts them, so a trip compares with a place's
+ * periods by one order of dates (#2008). March 2022 is 1 to 31 March, 2022 the
+ * whole year, and a trip with no date has none. The schema holds the columns
+ * to the date (`user_visit_trips_outer_days`), so every writer of a trip's
+ * date writes them from here.
+ */
+export function tripDaysOf(date: TripDate): { first_day: number | null; last_day: number | null } {
+  if (date.year === null) return { first_day: null, last_day: null };
+  const days = periodOf({ year: date.year, month: date.month, day: date.day, span: null, circa: false });
+  return { first_day: days.first, last_day: days.last };
+}
 
 /**
  * Whether the place `place` is a whole a reader is shown by its parts: one of

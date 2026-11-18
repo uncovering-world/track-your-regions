@@ -311,8 +311,9 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
   it("carries a folded visit's trips to the survivor's visit, and the undo takes back exactly those (#2120)", async () => {
     const trip = (user: number, place: number, year: number, month: number | null = null) => pool.query(
-      `INSERT INTO user_visit_trips (visit_id, year, month)
-       SELECT id, $3, $4 FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2`,
+      `INSERT INTO user_visit_trips (visit_id, year, month, first_day, last_day)
+       SELECT id, $3::int, $4::int, date_first($3::int, $4::smallint, NULL, NULL), date_last($3::int, $4::smallint, NULL, NULL)
+         FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2`,
       [user, place, year, month],
     );
     const tripsOf = async (user: number, place: number) => (await pool.query<{ year: number; month: number | null }>(

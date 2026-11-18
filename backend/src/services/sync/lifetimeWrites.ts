@@ -39,7 +39,8 @@
 
 import type { PoolClient } from 'pg';
 import {
-  PERIOD_SAYS, periodOf, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy, type PeriodSays,
+  latestDayOnEarth, PERIOD_SAYS, periodOf, PLACE_STOOD, REPORTED_SAYS, samePlaceDate, standsBy,
+  type CalendarDay, type PeriodSays,
 } from '@tyr/shared/lifetime';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import {
@@ -88,12 +89,13 @@ const sameList = (a: readonly SourcedPeriod[], b: readonly SourcedPeriod[]): boo
  * Whether `next` only fills `held` in (ADR-0217 decision 3): no period fewer,
  * every start the place holds still a start, every end still an end and told
  * the same way where the place says how, an end with no date among them, and
- * the place standing or not as it was. A view that drops a held date, moves 1883 to 1881 or closes the last
- * standing period is not one.
+ * the place standing or not today as it was. A view that drops a held date, moves 1883 to 1881, closes the last
+ * standing period or opens the place's only one on a day still ahead (a museum
+ * with no period, reported as opening on 1 May 2027) is not one.
  */
-function fills(says: PeriodSays, held: readonly SourcedPeriod[], next: readonly SourcedPeriod[]): boolean {
+function fills(says: PeriodSays, held: readonly SourcedPeriod[], next: readonly SourcedPeriod[], today: CalendarDay): boolean {
   if (next.length < held.length) return false;
-  if (says === PLACE_STOOD && standsBy(held) !== standsBy(next)) return false;
+  if (says === PLACE_STOOD && standsBy(held, today) !== standsBy(next, today)) return false;
   const toldTheSame = (period: SourcedPeriod, other: SourcedPeriod): boolean =>
     other.ended && (period.ending === null || period.ending === other.ending);
   return held.every((period) =>
@@ -132,7 +134,7 @@ function opensLongGap(held: readonly SourcedPeriod[], next: readonly SourcedPeri
  */
 function keptStanding(stood: readonly SourcedPeriod[]): readonly SourcedPeriod[] {
   const last = stood.at(-1);
-  if (!last || standsBy(stood)) return stood;
+  if (!last || stood.some((period) => !period.ended)) return stood;
   if (stood.length === 1 && last.from === null) return [];
   return [...stood.slice(0, -1), { ...last, ended: false, until: null, ending: null }];
 }
@@ -141,27 +143,34 @@ function keptStanding(stood: readonly SourcedPeriod[]): readonly SourcedPeriod[]
 const filed = (periods: readonly SourcedPeriod[]): readonly SourcedPeriod[] | null => (periods.length > 0 ? periods : null);
 
 /** What the gate does with one list: nothing, hold it back, or write the run's, as a fill or as a change. */
-function listAction(says: PeriodSays, next: readonly SourcedPeriod[], held: HeldPeriods | undefined, gate: LifetimeGate) {
+function listAction(
+  says: PeriodSays, next: readonly SourcedPeriod[], held: HeldPeriods | undefined, gate: LifetimeGate, today: CalendarDay,
+) {
   if (gate.claimed.includes(says)) return 'keep';
   if (held && (held.sourceId !== gate.sourceId || held.decidedBy !== null)) return 'keep';
   const stored = held?.periods ?? [];
   if (sameList(stored, next)) return 'keep';
-  if (fills(says, stored, next) && !(says === PLACE_STOOD && opensLongGap(stored, next))) return 'fill';
+  if (fills(says, stored, next, today) && !(says === PLACE_STOOD && opensLongGap(stored, next))) return 'fill';
   return gate.gated && gate.held ? 'hold' : 'write';
 }
 
-/** The gate over one place: what of the run's view it writes and holds back. Pure. */
+/**
+ * The gate over one place: what of the run's view it writes and holds back,
+ * with the place's standing read on `today`, the day the schema derives it on.
+ * Pure but for that default.
+ */
 export function decideLifetime(
   stored: Partial<Record<PeriodSays, HeldPeriods>>,
   view: RecordPeriods,
   gate: LifetimeGate,
+  today: CalendarDay = latestDayOnEarth(new Date()),
 ): LifetimeDecision {
   const decision: LifetimeDecision = { write: {}, changes: [], heldBack: [] };
   for (const says of REPORTED_SAYS) {
     const reported = view[says] ?? [];
     const next = says === PLACE_STOOD && gate.pinned ? keptStanding(reported) : reported;
     const held = stored[says];
-    const action = listAction(says, next, held, gate);
+    const action = listAction(says, next, held, gate, today);
     if (action === 'hold') decision.heldBack.push(says);
     if (action !== 'fill' && action !== 'write') continue;
     decision.write[says] = next;
@@ -189,13 +198,17 @@ const endOf = (
   property: string | null, statement: string | null,
 ): SourcedDate | null => (year === null ? null : { year, month, day, span, circa, property, statement });
 
-/** The periods the place holds, by what they say, as the gate compares them. */
+/**
+ * The periods the place holds for every kind, by what they say, as the gate
+ * compares them: a run reports a place's standing as a thing, and a period of
+ * one membership is that membership's, never the place's.
+ */
 export async function heldPeriodsOf(client: Pick<PoolClient, 'query'>, placeId: number): Promise<Partial<Record<PeriodSays, HeldPeriods>>> {
   const { rows } = await client.query<PeriodRow>(
     `SELECT says, from_year, from_month, from_day, from_span, from_circa, from_property, from_statement, ended,
             until_year, until_month, until_day, until_span, until_circa, until_property, until_statement,
             ending, what, source_id, decided_by
-       FROM place_periods WHERE experience_id = $1 ORDER BY says, ordinal`,
+       FROM place_periods WHERE experience_id = $1 AND kind_id IS NULL ORDER BY says, ordinal`,
     [placeId],
   );
   const held: Partial<Record<PeriodSays, HeldPeriods>> = {};

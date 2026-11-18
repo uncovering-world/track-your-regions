@@ -16,7 +16,9 @@
 import type { z } from 'zod/v4';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { claimablePlaceSql } from '../../db/readerPredicates.js';
-import { liveVisitsSql, ownTripAtWriteSql, ownVisitsAtWriteSql, placeAtWriteSql, tripOrderSql } from '../../db/visits.js';
+import {
+  liveVisitsSql, ownTripAtWriteSql, ownVisitsAtWriteSql, placeAtWriteSql, tripDaysOf, tripOrderSql,
+} from '../../db/visits.js';
 import { badRequest, notFound } from '../../middleware/errorHandler.js';
 import type { experienceIdParamSchema } from '../../types/index.js';
 import { TOO_MANY_TRIPS, TRIPS_PER_VISIT } from '../../types/trips.js';
@@ -75,6 +77,7 @@ export async function addTrip(
   // visit made or found and locked by the same statement, so an untick
   // cannot take it away between the two (#2120). A visit already holding
   // TRIPS_PER_VISIT takes no more, and the one row still says it was found.
+  const days = tripDaysOf(body);
   const result = await pool.query<Omit<TripRow, 'id'> & { found: boolean; id: number | null }>(`
     WITH pl AS (${placeAtWriteSql('$2', 'e.id', claimablePlaceSql())}),
     visit AS (
@@ -83,12 +86,12 @@ export async function addTrip(
       ON CONFLICT (user_id, experience_id) DO UPDATE SET user_id = EXCLUDED.user_id
       RETURNING id),
     trip AS (
-      INSERT INTO user_visit_trips (visit_id, year, month, day)
-      SELECT visit.id, $3, $4, $5 FROM visit
+      INSERT INTO user_visit_trips (visit_id, year, month, day, first_day, last_day)
+      SELECT visit.id, $3, $4, $5, $7, $8 FROM visit
        WHERE (SELECT count(*) FROM user_visit_trips held WHERE held.visit_id = visit.id) < $6
       RETURNING id, year, month, day, created_at)
     SELECT EXISTS (SELECT 1 FROM visit) AS found, trip.* FROM (SELECT 1) one LEFT JOIN trip ON true
-  `, [caller.id, experienceId, body.year, body.month, body.day, TRIPS_PER_VISIT]);
+  `, [caller.id, experienceId, body.year, body.month, body.day, TRIPS_PER_VISIT, days.first_day, days.last_day]);
   const row = result.rows[0];
   if (!row.found) throw notFound('Experience not found');
   if (row.id === null) throw badRequest(TOO_MANY_TRIPS);
@@ -106,17 +109,18 @@ export async function addTrip(
 export async function addTrips(
   { body, caller }: { body: z.output<typeof addTripsBodySchema>; caller: Express.User },
 ): Promise<TripsDated> {
+  const days = tripDaysOf(body.date);
   const result = await pool.query<TripRow & { experience_id: number }>(`
     WITH v AS (${ownVisitsAtWriteSql('$1', '$2::int[]', 'ov.id, ov.experience_id')}),
     added AS (
-      INSERT INTO user_visit_trips (visit_id, year, month, day)
-      SELECT v.id, $3, $4, $5 FROM v
+      INSERT INTO user_visit_trips (visit_id, year, month, day, first_day, last_day)
+      SELECT v.id, $3, $4, $5, $7, $8 FROM v
        WHERE (SELECT count(*) FROM user_visit_trips held WHERE held.visit_id = v.id) < $6
       RETURNING id, visit_id, year, month, day, created_at)
     SELECT v.experience_id, added.id, added.year, added.month, added.day, added.created_at
       FROM added JOIN v ON v.id = added.visit_id
      ORDER BY v.experience_id
-  `, [caller.id, body.experienceIds, body.date.year, body.date.month, body.date.day, TRIPS_PER_VISIT]);
+  `, [caller.id, body.experienceIds, body.date.year, body.date.month, body.date.day, TRIPS_PER_VISIT, days.first_day, days.last_day]);
   return { success: true, trips: result.rows.map(row => ({ experienceId: row.experience_id, trip: tripOf(row) })) };
 }
 
@@ -135,12 +139,13 @@ export async function changeTrips(
   { body, caller }: { body: z.output<typeof changeTripsBodySchema>; caller: Express.User },
 ): Promise<TripsDated> {
   const dates = body.trips.map(({ id, date, from }) => ({
-    id, ...date, guarded: from !== undefined, from_year: from?.year, from_month: from?.month, from_day: from?.day,
+    id, ...date, ...tripDaysOf(date), guarded: from !== undefined, from_year: from?.year, from_month: from?.month, from_day: from?.day,
   }));
   const result = await pool.query<TripRow & { experience_id: number }>(`
-    UPDATE user_visit_trips t SET year = d.year, month = d.month, day = d.day
+    UPDATE user_visit_trips t SET year = d.year, month = d.month, day = d.day, first_day = d.first_day, last_day = d.last_day
       FROM jsonb_to_recordset($3::jsonb)
-             AS d(id int, year int, month int, day int, guarded boolean, from_year int, from_month int, from_day int),
+             AS d(id int, year int, month int, day int, first_day int, last_day int,
+                  guarded boolean, from_year int, from_month int, from_day int),
            (${ownTripAtWriteSql('$1', 'ANY($2::int[])', 'ot.id, ov.experience_id')}) own
      WHERE t.id = d.id AND own.id = d.id
        AND (NOT d.guarded OR (t.year, t.month, t.day) IS NOT DISTINCT FROM (d.from_year, d.from_month, d.from_day))
@@ -160,12 +165,13 @@ export async function changeTrip(
     caller: Express.User;
   },
 ): Promise<TripSaved> {
+  const days = tripDaysOf(body);
   const result = await pool.query<TripRow & { experience_id: number }>(`
-    UPDATE user_visit_trips t SET year = $3, month = $4, day = $5
+    UPDATE user_visit_trips t SET year = $3, month = $4, day = $5, first_day = $6, last_day = $7
       FROM (${ownTripAtWriteSql('$1', '$2', 'ot.id, ov.experience_id')}) own
      WHERE t.id = own.id
      RETURNING t.id, t.year, t.month, t.day, t.created_at, own.experience_id
-  `, [caller.id, tripId, body.year, body.month, body.day]);
+  `, [caller.id, tripId, body.year, body.month, body.day, days.first_day, days.last_day]);
   if (result.rows.length === 0) throw notFound('Trip not found');
   return { success: true, experienceId: result.rows[0].experience_id, trip: tripOf(result.rows[0]) };
 }
@@ -212,12 +218,14 @@ export async function restoreVisits(
           ON CONFLICT (user_id, experience_id) DO UPDATE SET user_id = EXCLUDED.user_id
           RETURNING id),
         trips AS (
-          INSERT INTO user_visit_trips (visit_id, year, month, day)
-          SELECT visit.id, t.year, t.month, t.day
-            FROM visit CROSS JOIN jsonb_to_recordset($6::jsonb) AS t(year int, month int, day int)
+          INSERT INTO user_visit_trips (visit_id, year, month, day, first_day, last_day)
+          SELECT visit.id, t.year, t.month, t.day, t.first_day, t.last_day
+            FROM visit CROSS JOIN jsonb_to_recordset($6::jsonb)
+                   AS t(year int, month int, day int, first_day int, last_day int)
           RETURNING 1)
         SELECT count(*)::int AS restored FROM visit
-      `, [caller.id, visit.experienceId, visit.markedAt, visit.notes, visit.rating, JSON.stringify(visit.trips)]);
+      `, [caller.id, visit.experienceId, visit.markedAt, visit.notes, visit.rating,
+         JSON.stringify(visit.trips.map(trip => ({ ...trip, ...tripDaysOf(trip) })))]);
       restored += result.rows[0].restored;
     }
     await client.query('COMMIT');

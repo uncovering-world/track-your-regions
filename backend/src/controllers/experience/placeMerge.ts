@@ -286,8 +286,8 @@ async function reconcileVisits(client: PoolClient, folded: number, survivor: num
   // above left the traveller with: two trips on one date stay two, since a
   // trip is a time they were there, not a date (#2120, ADR-0202).
   const trips = await client.query<{ id: number }>(
-    `INSERT INTO user_visit_trips (visit_id, year, month, day, created_at)
-     SELECT s.id, ft.year, ft.month, ft.day, ft.created_at
+    `INSERT INTO user_visit_trips (visit_id, year, month, day, first_day, last_day, created_at)
+     SELECT s.id, ft.year, ft.month, ft.day, ft.first_day, ft.last_day, ft.created_at
        FROM user_visited_experiences f
        JOIN user_visit_trips ft ON ft.visit_id = f.id
        JOIN user_visited_experiences s ON s.user_id = f.user_id AND s.experience_id = $2
