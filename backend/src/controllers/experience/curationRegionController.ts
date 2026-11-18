@@ -8,11 +8,15 @@
  * Each row records where the place stood in the region before the act
  * (`before`: how it was assigned there, if at all, and whether it was
  * rejected there), so a placement a curator corrects can be read against the
- * placement it corrected (#863).
+ * placement it corrected (#863). The region an act names is the log entry's
+ * region too: a curator rejecting a place from Lazio was working in Lazio.
+ * Each says why, but taking a rejection back, which returns the place to
+ * where its own points put it and so agrees with the placement rule.
  */
 
 import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
+import { CURATION_REASON_WORDS } from '@tyr/shared/curationLog';
 import type { RegionMembershipResult } from '../../api/responses/curation.js';
 import { inTransaction, pool } from '../../db/index.js';
 import { logCurationAct } from '../../db/curationLogWriter.js';
@@ -20,13 +24,24 @@ import { lockExperience } from '../../db/experienceWriter.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type {
   assignExperienceBodySchema, idAndRegionIdParamSchema, idParamSchema, rejectExperienceBodySchema,
-  regionActQuerySchema, unrejectExperienceBodySchema,
+  removeFromRegionQuerySchema, unassignQuerySchema, unrejectExperienceBodySchema,
 } from '../../types/index.js';
 import { checkCuratorScope } from '../../middleware/auth.js';
 
 type IdParams = z.output<typeof idParamSchema>;
 type IdAndRegionParams = z.output<typeof idAndRegionIdParamSchema>;
-type RegionActQuery = z.output<typeof regionActQuerySchema>;
+type RejectBody = z.output<typeof rejectExperienceBodySchema>;
+
+/**
+ * What a rejection keeps as its reason, which the region's list shows beside
+ * the rejected place: the curator's words, else the reason they picked in its
+ * screen words. "Other" alone says nothing a reader of the list could use.
+ */
+function rejectionReason({ reason, reasonCode }: Pick<RejectBody, 'reason' | 'reasonCode'>): string | null {
+  const words = reason?.trim();
+  if (words) return words;
+  return reasonCode === 'other' ? null : CURATION_REASON_WORDS[reasonCode];
+}
 
 /** Where a place stood in one region: how it was assigned there (`auto`, `manual` or none), and whether it was rejected. */
 interface RegionStanding {
@@ -58,12 +73,12 @@ async function standingIn(client: PoolClient, experienceId: number, regionId: nu
 /**
  * Reject an experience from a region
  * POST /api/experiences/:id/reject
- * Body: { regionId, reason? }
+ * Body: { regionId, reasonCode, reason? }
  */
 
 export async function rejectExperience(
   { params: { id: experienceId }, body: { regionId, reason, reasonCode }, caller }: {
-    params: IdParams; body: z.output<typeof rejectExperienceBodySchema>; caller: Express.User;
+    params: IdParams; body: RejectBody; caller: Express.User;
   },
 ): Promise<RegionMembershipResult> {
   const userId = caller.id;
@@ -88,11 +103,12 @@ export async function rejectExperience(
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (experience_id, region_id)
       DO UPDATE SET rejected_by = $3, reason = $4, created_at = NOW()
-    `, [experienceId, regionId, userId, reason || null]);
+    `, [experienceId, regionId, userId, rejectionReason({ reason, reasonCode })]);
 
+    // The log keeps the code and the curator's own words apart, so a query groups by the one and reads the other.
     await logCurationAct(client, {
       experienceId, curatorId: userId, action: 'rejected', regionId, reasonCode,
-      details: { ...(reason ? { reason } : {}), before },
+      details: { ...(reason?.trim() ? { reason: reason.trim() } : {}), before },
     });
   });
 
@@ -105,7 +121,7 @@ export async function rejectExperience(
  * Body: { regionId }
  */
 export async function unrejectExperience(
-  { params: { id: experienceId }, body: { regionId, reasonCode }, caller }: {
+  { params: { id: experienceId }, body: { regionId }, caller }: {
     params: IdParams; body: z.output<typeof unrejectExperienceBodySchema>; caller: Express.User;
   },
 ): Promise<RegionMembershipResult> {
@@ -138,7 +154,7 @@ export async function unrejectExperience(
     // The rejection taken back, as it stood: who made it, when and why.
     const [rejection] = result.rows;
     await logCurationAct(client, {
-      experienceId, curatorId: userId, action: 'unrejected', regionId, reasonCode,
+      experienceId, curatorId: userId, action: 'unrejected', regionId,
       details: {
         before,
         rejection: { reason: rejection.reason, rejectedBy: rejection.rejected_by, rejectedAt: rejection.created_at },
@@ -152,10 +168,10 @@ export async function unrejectExperience(
 /**
  * Manually assign an experience to a region
  * POST /api/experiences/:id/assign
- * Body: { regionId }
+ * Body: { regionId, reasonCode, note? }
  */
 export async function assignExperienceToRegion(
-  { params: { id: experienceId }, body: { regionId, reasonCode }, caller }: {
+  { params: { id: experienceId }, body: { regionId, reasonCode, note }, caller }: {
     params: IdParams; body: z.output<typeof assignExperienceBodySchema>; caller: Express.User;
   },
 ): Promise<RegionMembershipResult> {
@@ -199,7 +215,8 @@ export async function assignExperienceToRegion(
     );
 
     await logCurationAct(client, {
-      experienceId, curatorId: userId, action: 'added_to_region', regionId, reasonCode, details: { before },
+      experienceId, curatorId: userId, action: 'added_to_region', regionId, reasonCode,
+      details: { before, ...(note ? { note } : {}) },
     });
   });
 
@@ -212,7 +229,7 @@ export async function assignExperienceToRegion(
  */
 export async function unassignExperienceFromRegion(
   { params: { id: experienceId, regionId }, query: { reasonCode }, caller }: {
-    params: IdAndRegionParams; query: RegionActQuery; caller: Express.User;
+    params: IdAndRegionParams; query: z.output<typeof unassignQuerySchema>; caller: Express.User;
   },
 ): Promise<RegionMembershipResult> {
   const userId = caller.id;
@@ -276,8 +293,8 @@ export async function unassignExperienceFromRegion(
  * experience, it will automatically be hidden again.
  */
 export async function removeExperienceFromRegion(
-  { params: { id: experienceId, regionId }, query: { reasonCode }, caller }: {
-    params: IdAndRegionParams; query: RegionActQuery; caller: Express.User;
+  { params: { id: experienceId, regionId }, query: { reasonCode, note }, caller }: {
+    params: IdAndRegionParams; query: z.output<typeof removeFromRegionQuerySchema>; caller: Express.User;
   },
 ): Promise<RegionMembershipResult> {
   const userId = caller.id;
@@ -310,7 +327,8 @@ export async function removeExperienceFromRegion(
     // Keep rejection row — it acts as a guard if spatial recompute re-adds the experience.
 
     await logCurationAct(client, {
-      experienceId, curatorId: userId, action: 'removed_from_region', regionId, reasonCode, details: { before },
+      experienceId, curatorId: userId, action: 'removed_from_region', regionId, reasonCode,
+      details: { before, ...(note ? { note } : {}) },
     });
   });
 

@@ -152,7 +152,23 @@ export const REFUSAL_REASON_CODES = [
   'other',
 ] as const satisfies readonly CurationReasonCode[];
 
-/** The reasons a place put back into a kind, or added to one by hand, offers. */
+/**
+ * The reasons a place rejected from a region, or taken out of one, offers.
+ * A region act is about where a place stands, not what it is, so "not this
+ * kind" and "not one place" are a kind's questions and are not offered here.
+ */
+export const REGION_REFUSAL_REASON_CODES = [
+  'wrong-place',
+  'not-worth-a-visit',
+  'duplicate',
+  'gone',
+  'other',
+] as const satisfies readonly CurationReasonCode[];
+
+/**
+ * The reasons an addition offers: a place put back into a kind, added to one
+ * by hand, created by hand or placed in a region by hand.
+ */
 export const ADDITION_REASON_CODES = [
   'missing-from-rule',
   'other',

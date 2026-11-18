@@ -8,24 +8,34 @@
  * Each reason is a code from the list the act's surface offers
  * (`@tyr/shared/curationLog`), kept in the act's log entry
  * (`db/curationLogWriter.ts`). Required where every surface of the act asks
- * it: an arrival turned away and a place put back against its kind's rule.
- * Optional elsewhere, where an act sent without one is recorded without one.
+ * it: an arrival turned away, a place put back against its kind's rule, kept
+ * out of a kind, added to one, created by hand, and rejected from, placed in
+ * or removed from a region. Optional elsewhere, where an act sent without one
+ * is recorded without one.
  */
 
 import { z } from 'zod/v4';
 import {
-  ADDITION_REASON_CODES, CURATION_REASON_CODES, REFUSAL_REASON_CODES, SOURCE_ANSWER_REASON_CODES,
+  ADDITION_REASON_CODES, REFUSAL_REASON_CODES, REGION_REFUSAL_REASON_CODES, SOURCE_ANSWER_REASON_CODES,
 } from '@tyr/shared/curationLog';
 import { bodyRowIdSchema } from './rowId.js';
 
 const REASON_CODE = 'Why the curator acted, kept in the log entry the act writes.';
+const ALWAYS = `${REASON_CODE} Every screen that takes this act asks why.`;
 
-/** The reason a hand-made act on a place in a region gives: any reason fits. */
-const regionReasonSchema = z.enum(CURATION_REASON_CODES).optional().describe(REASON_CODE);
+/**
+ * The region the curator had open when acting (#863): the log entry names it
+ * as where they were working. It grants nothing: the act's scope is checked
+ * as it is without it. Absent, the entry names the region the scope check
+ * found, or none.
+ */
+export const openRegionSchema = bodyRowIdSchema.optional()
+  .describe('The region the curator had open when acting, recorded as where they were working; grants nothing.');
+
 /** The reason a refusal gives: an arrival turned away, a place kept out of a kind. */
 export const refusalReasonSchema = z.enum(REFUSAL_REASON_CODES).optional().describe(REASON_CODE);
-/** The reason a place added to a kind by hand gives. */
-export const additionReasonSchema = z.enum(ADDITION_REASON_CODES).optional().describe(REASON_CODE);
+/** The reason an addition by hand gives: a place added to a kind, created, or placed in a region. */
+export const additionReasonSchema = z.enum(ADDITION_REASON_CODES).describe(ALWAYS);
 /** The reason an answer to a source's value gives. */
 export const sourceAnswerReasonSchema = z.enum(SOURCE_ANSWER_REASON_CODES).optional().describe(REASON_CODE);
 
@@ -60,11 +70,13 @@ export const experienceAdmissionBodySchema = z.discriminatedUnion('decision', [
     note: NOTE,
     membershipId: answeredMembershipSchema,
     reasonCode: refusalReasonSchema,
+    regionId: openRegionSchema,
   }),
   z.object({
     decision: z.literal('override'),
     note: NOTE,
     membershipId: answeredMembershipSchema,
+    regionId: openRegionSchema,
     /**
      * Whether later runs keep the row while the rule refuses it for the same
      * reason (the pin, #1367). Absent, they do; false admits it for now and the
@@ -86,33 +98,56 @@ export const refuseArrivalBodySchema = z.object({
   reasonCode: z.enum(REFUSAL_REASON_CODES).describe(`${REASON_CODE} Turning an arrival away always says why.`),
 });
 
+/** The reason a place rejected from a region, or removed from one, gives. */
+const regionRefusalReasonSchema = z.enum(REGION_REFUSAL_REASON_CODES).describe(ALWAYS);
+
+/**
+ * A place rejected from a region: the region, which is also the log entry's,
+ * why, and the curator's words, which the rejection keeps as its reason.
+ */
 export const rejectExperienceBodySchema = z.object({
   regionId: bodyRowIdSchema,
-  reason: z.string().max(1000).optional(),
-  reasonCode: regionReasonSchema,
+  reason: NOTE.describe('The curator\'s words beside the reason, kept as the rejection\'s reason.'),
+  reasonCode: regionRefusalReasonSchema,
 });
 
+/**
+ * A rejection taken back: the place returns to where its own points put it,
+ * which agrees with the placement rule, so no reason is asked.
+ */
 export const unrejectExperienceBodySchema = z.object({
   regionId: bodyRowIdSchema,
-  reasonCode: regionReasonSchema,
 });
 
+/** A place placed in a region by hand: the region, why, and the curator's words. */
 export const assignExperienceBodySchema = z.object({
   regionId: bodyRowIdSchema,
-  reasonCode: regionReasonSchema,
+  reasonCode: additionReasonSchema,
+  note: NOTE,
 });
 
 /**
  * A curator takes a published place out of one of its kinds from the place's
- * card (#2022), with no question asked: the membership named, and why.
+ * card (#2022), with no question asked: the membership named, why, and the
+ * region the curator has open.
  */
 export const keepOutOfKindBodySchema = z.object({
   membershipId: bodyRowIdSchema,
-  note: z.string().max(1000).optional(),
-  reasonCode: refusalReasonSchema,
+  note: NOTE,
+  reasonCode: z.enum(REFUSAL_REASON_CODES).describe(ALWAYS),
+  regionId: openRegionSchema,
 });
 
-/** A place taken out of a region by hand: why, where the curator says. */
-export const regionActQuerySchema = z.object({
-  reasonCode: regionReasonSchema,
+/** A place removed from a region however it was placed: why, and the curator's words. */
+export const removeFromRegionQuerySchema = z.object({
+  reasonCode: regionRefusalReasonSchema,
+  note: NOTE,
+});
+
+/**
+ * A hand-made placement undone. No screen offers it, so a reason is taken
+ * where a caller gives one and never asked.
+ */
+export const unassignQuerySchema = z.object({
+  reasonCode: z.enum(REGION_REFUSAL_REASON_CODES).optional().describe(REASON_CODE),
 });

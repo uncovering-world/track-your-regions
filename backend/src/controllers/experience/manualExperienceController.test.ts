@@ -34,6 +34,9 @@ const BODY = {
   latitude: 50.5,
   regionId: REGION_ID,
   kindId: KIND_ID,
+  // Every screen that creates a place by hand asks why (#863).
+  reasonCode: 'other',
+  note: 'a lookout the rule has no class for',
 };
 
 function makeRes() {
@@ -146,5 +149,23 @@ describe('createManualExperience curation state', () => {
     expect(sql).toMatch(/'verified'/);
     expect(sql).not.toMatch(/requires_curation/);
     expect(sql).not.toMatch(/CASE/);
+  });
+
+  it('records the region it was created in, why, and the curator\'s words (#863)', async () => {
+    await callCreateManualExperience().done;
+
+    const [, params] = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO experience_curation_log'),
+    ) as [string, unknown[]];
+    expect(params[3]).toBe(REGION_ID);
+    expect(JSON.parse(params[4] as string)).toMatchObject({
+      reasonCode: 'other', note: 'a lookout the rule has no class for', membershipId: MEMBERSHIP_ID, kindId: KIND_ID,
+    });
+  });
+
+  it('is refused without a reason', async () => {
+    const res = makeRes();
+    const withoutReason = { ...BODY, reasonCode: undefined };
+    await expect(answerRoute(postRoot, { body: withoutReason, user: ADMIN } as never, res as never)).rejects.toThrow();
   });
 });

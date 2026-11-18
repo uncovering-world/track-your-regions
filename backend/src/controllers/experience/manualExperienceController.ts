@@ -37,6 +37,7 @@ interface CreateManualBody {
   websiteUrl?: unknown;
   wikipediaUrl?: unknown;
   reasonCode?: CurationReasonCode;
+  note?: string;
 }
 
 function validateCreateManualInput(body: CreateManualBody): string | null {
@@ -130,7 +131,7 @@ async function insertManualExperience(
   await logCurationAct(client, {
     experienceId, curatorId: userId, action: 'created', regionId: body.regionId as number,
     membership, reasonCode: body.reasonCode,
-    details: { name: body.name, type: body.type, sourceId },
+    details: { name: body.name, type: body.type, sourceId, ...(body.note ? { note: body.note } : {}) },
   });
 
   return { experienceId, externalId };

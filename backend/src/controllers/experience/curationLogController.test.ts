@@ -71,7 +71,9 @@ describe('getCurationLog scope', () => {
     // curator is unrestricted, the row names no region, or the row's region
     // falls under one of their assignments.
     expect(sql).toMatch(/curator_scoped_regions/);
-    expect(sql).toMatch(/\$3::boolean\s+OR\s+cl\.region_id IS NULL\s+OR\s+cl\.region_id IN \(SELECT id FROM curator_scoped_regions\)/);
+    expect(sql).toMatch(
+      /\$3::boolean\s+OR\s+cl\.region_id IS NULL\s+OR\s+cl\.region_id IN \(SELECT id FROM curator_scoped_regions\)/,
+    );
     expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, false]);
 
     expect(res.status).not.toHaveBeenCalledWith(403);

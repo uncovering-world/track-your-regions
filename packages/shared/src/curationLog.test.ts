@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  ADDITION_REASON_CODES, CURATION_REASON_CODES, CURATION_REASON_WORDS, REFUSAL_REASON_CODES, SOURCE_ANSWER_REASON_CODES,
+  ADDITION_REASON_CODES, CURATION_REASON_CODES, CURATION_REASON_WORDS, REFUSAL_REASON_CODES,
+  REGION_REFUSAL_REASON_CODES, SOURCE_ANSWER_REASON_CODES,
 } from './curationLog.js';
 
 describe('the reasons a curator gives (#863)', () => {
@@ -14,8 +15,16 @@ describe('the reasons a curator gives (#863)', () => {
   });
 
   it('offers other on every surface, so no act is left without an answer', () => {
-    for (const surface of [REFUSAL_REASON_CODES, ADDITION_REASON_CODES, SOURCE_ANSWER_REASON_CODES]) {
+    for (const surface of [
+      REFUSAL_REASON_CODES, REGION_REFUSAL_REASON_CODES, ADDITION_REASON_CODES, SOURCE_ANSWER_REASON_CODES,
+    ]) {
       expect(surface).toContain('other');
     }
+  });
+
+  it('offers a region act only the reasons about where a place stands', () => {
+    expect(REGION_REFUSAL_REASON_CODES).not.toContain('not-this-kind');
+    expect(REGION_REFUSAL_REASON_CODES).not.toContain('not-one-place');
+    expect(REGION_REFUSAL_REASON_CODES).toContain('wrong-place');
   });
 });

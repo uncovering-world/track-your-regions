@@ -1,9 +1,12 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pool } from './index.js';
 import { logCurationActs } from './curationLogWriter.js';
-import { keepOutUnderLock } from '../controllers/experience/keepOutController.js';
+import { answer, routeAt, type SpecRequest } from '../api/routeTesting.js';
+import { experienceCurationRoutes } from '../routes/experienceRoutes.js';
+import { addPlaceToKind } from '../controllers/experience/kindAddController.js';
+import { keepOutOfKind, keepOutUnderLock } from '../controllers/experience/keepOutController.js';
 import { publishUnderLock } from '../controllers/experience/publishController.js';
-import { answerAdmissionUnderLock } from '../controllers/experience/lifecycleController.js';
+import { answerAdmissionUnderLock, setExperienceAdmission } from '../controllers/experience/lifecycleController.js';
 import { answerRow } from '../controllers/experience/reviewAnswerDispatch.js';
 import {
   assignExperienceToRegion, rejectExperience, removeExperienceFromRegion, unassignExperienceFromRegion, unrejectExperience,
@@ -13,8 +16,8 @@ import {
  * What the curation log records about an act (#863), against PostgreSQL: the
  * membership and its kind on an act about one, the bulk mark on a publish one
  * click made over many places and on no other, the reason an act that must
- * give one gives, and where a place stood in a region before a curator moved
- * it.
+ * give one gives and the refusal of one sent without, where a place stood in
+ * a region before a curator moved it, and the region the curator had open.
  *
  * The fixture is the Capitoline Museums, shown as an art museum, and an
  * Archaeology arrival at Ostia Antica that a run brought, with a fixture world
@@ -27,6 +30,7 @@ const OSTIA = 86311;
 const WORLD_VIEW = 86310;
 const LAZIO = 863100;
 const ADMIN_UUID = '00000000-0000-4000-8000-000000008630';
+const CURATOR_UUID = '00000000-0000-4000-8000-000000008631';
 
 let admin = 0;
 let artMembership = 0;
@@ -40,7 +44,7 @@ const caller = () => ({ id: admin, role: 'admin' }) as Express.User;
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[CAPITOLINE, OSTIA]]);
   if (runId !== 0) await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [runId]);
-  await pool.query('DELETE FROM users WHERE uuid = $1', [ADMIN_UUID]);
+  await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[ADMIN_UUID, CURATOR_UUID]]);
   await pool.query('DELETE FROM regions WHERE world_view_id = $1', [WORLD_VIEW]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [WORLD_VIEW]);
 }
@@ -220,11 +224,14 @@ describe("a curator's hand on a place in a region", () => {
   const params = { id: CAPITOLINE, regionId: LAZIO };
 
   it('records where the place stood before it was placed there, and before it was taken out', async () => {
-    await assignExperienceToRegion({ params: { id: CAPITOLINE }, body: { regionId: LAZIO, reasonCode: 'wrong-place' }, caller: caller() });
+    await assignExperienceToRegion({
+      params: { id: CAPITOLINE }, body: { regionId: LAZIO, reasonCode: 'other', note: 'its Lazio branch' }, caller: caller(),
+    });
     await unassignExperienceFromRegion({ params, query: {}, caller: caller() });
 
     expect(await entry(CAPITOLINE, 'added_to_region')).toEqual({
-      region_id: LAZIO, details: { before: { assignment: null, rejected: false }, reasonCode: 'wrong-place' },
+      region_id: LAZIO,
+      details: { before: { assignment: null, rejected: false }, note: 'its Lazio branch', reasonCode: 'other' },
     });
     expect((await entry(CAPITOLINE, 'removed_from_region')).details).toEqual({
       before: { assignment: 'manual', rejected: false },
@@ -249,8 +256,22 @@ describe("a curator's hand on a place in a region", () => {
     });
   });
 
+  it('keeps the picked reason, in its words, as the reason of a rejection given no words', async () => {
+    await rejectExperience({ params: { id: CAPITOLINE }, body: { regionId: LAZIO, reasonCode: 'duplicate' }, caller: caller() });
+
+    const rejection = await pool.query<{ reason: string | null }>(
+      'SELECT reason FROM experience_rejections WHERE experience_id = $1 AND region_id = $2', [CAPITOLINE, LAZIO],
+    );
+    expect(rejection.rows[0].reason).toBe('Same as another');
+    expect(await entry(CAPITOLINE, 'rejected')).toEqual({
+      region_id: LAZIO, details: { reasonCode: 'duplicate', before: { assignment: null, rejected: false } },
+    });
+  });
+
   it('records the rejection a curator takes back: who made it and why', async () => {
-    await rejectExperience({ params: { id: CAPITOLINE }, body: { regionId: LAZIO, reason: 'not here' }, caller: caller() });
+    await rejectExperience({
+      params: { id: CAPITOLINE }, body: { regionId: LAZIO, reason: 'not here', reasonCode: 'wrong-place' }, caller: caller(),
+    });
     await unrejectExperience({ params: { id: CAPITOLINE }, body: { regionId: LAZIO }, caller: caller() });
 
     const { details } = await entry(CAPITOLINE, 'unrejected');
@@ -259,6 +280,138 @@ describe("a curator's hand on a place in a region", () => {
       rejection: { reason: 'not here', rejectedBy: admin },
     });
     expect(details.rejection).toHaveProperty('rejectedAt');
+  });
+});
+
+describe('the region the curator had open (#863)', () => {
+  const GONE_REGION = 863199;
+
+  it('is where a keep-out, a put-back and an add to a kind record the curator working', async () => {
+    await pool.query(
+      "INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'auto')", [CAPITOLINE, LAZIO],
+    );
+    await keepOutOfKind({
+      params: { id: CAPITOLINE }, caller: caller(),
+      body: { membershipId: artMembership, reasonCode: 'not-worth-a-visit', regionId: LAZIO },
+    });
+    await setExperienceAdmission({
+      params: { id: CAPITOLINE }, caller: caller(),
+      body: { decision: 'override', membershipId: artMembership, reasonCode: 'missing-from-rule', regionId: LAZIO },
+    });
+    await addPlaceToKind({
+      params: { id: CAPITOLINE }, caller: caller(),
+      body: { kindId: archaeologyKind, reasonCode: 'missing-from-rule', regionId: LAZIO },
+    });
+
+    expect((await entry(CAPITOLINE, 'kept_out')).region_id).toBe(LAZIO);
+    expect((await entry(CAPITOLINE, 'admission_overridden')).region_id).toBe(LAZIO);
+    expect(await entry(CAPITOLINE, 'kind_added')).toMatchObject({
+      region_id: LAZIO, details: { kindId: archaeologyKind, reasonCode: 'missing-from-rule' },
+    });
+  });
+
+  it('sent none, leaves the region the scope check found: none, for an admin', async () => {
+    await keepOutOfKind({
+      params: { id: CAPITOLINE }, caller: caller(), body: { membershipId: artMembership, reasonCode: 'gone' },
+    });
+
+    expect((await entry(CAPITOLINE, 'kept_out')).region_id).toBeNull();
+  });
+
+  it('is recorded as none where the region no longer exists, and the act stands', async () => {
+    await keepOutOfKind({
+      params: { id: CAPITOLINE }, caller: caller(),
+      body: { membershipId: artMembership, reasonCode: 'gone', regionId: GONE_REGION },
+    });
+
+    expect((await entry(CAPITOLINE, 'kept_out')).region_id).toBeNull();
+    const membership = await pool.query('SELECT admission FROM source_records WHERE id = $1', [artMembership]);
+    expect(membership.rows[0].admission).toBe('refused');
+  });
+
+  it('grants nothing: a curator whose scope does not reach the place is refused with it', async () => {
+    const curator = (await pool.query<{ id: number }>(
+      "INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id", [CURATOR_UUID],
+    )).rows[0].id;
+
+    await expect(keepOutOfKind({
+      params: { id: CAPITOLINE }, caller: { id: curator, role: 'curator' } as Express.User,
+      body: { membershipId: artMembership, reasonCode: 'gone', regionId: LAZIO },
+    })).rejects.toMatchObject({ statusCode: 403 });
+    const log = await pool.query('SELECT 1 FROM experience_curation_log WHERE experience_id = $1', [CAPITOLINE]);
+    expect(log.rows).toHaveLength(0);
+  });
+
+  it("gives way to the scope check's region where the place is not in it", async () => {
+    // Lazio exists, but the Capitoline is placed in no region of this world view.
+    await keepOutOfKind({
+      params: { id: CAPITOLINE }, caller: caller(),
+      body: { membershipId: artMembership, reasonCode: 'gone', regionId: LAZIO },
+    });
+
+    expect((await entry(CAPITOLINE, 'kept_out')).region_id).toBeNull();
+  });
+
+  it("gives way to the scope check's region where it lies outside the curator's own scope", async () => {
+    const ITALIA = 863101;
+    await pool.query("INSERT INTO regions (id, world_view_id, name) VALUES ($1, $2, 'Italia (log fixture)')", [ITALIA, WORLD_VIEW]);
+    await pool.query('UPDATE regions SET parent_region_id = $1 WHERE id = $2', [ITALIA, LAZIO]);
+    await pool.query(
+      "INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'auto')", [CAPITOLINE, LAZIO],
+    );
+    const curator = (await pool.query<{ id: number }>(
+      "INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id", [CURATOR_UUID],
+    )).rows[0].id;
+    await pool.query(
+      "INSERT INTO curator_assignments (user_id, scope_type, region_id, assigned_by) VALUES ($1, 'region', $2, $3)",
+      // Assigned by the curator themself, so the fixture's users delete in any order.
+      [curator, LAZIO, curator],
+    );
+
+    // Scoped to Lazio, acting with Italia open: logged under Lazio, where Lazio's curators read it.
+    await keepOutOfKind({
+      params: { id: CAPITOLINE }, caller: { id: curator, role: 'curator' } as Express.User,
+      body: { membershipId: artMembership, reasonCode: 'gone', regionId: ITALIA },
+    });
+
+    expect((await entry(CAPITOLINE, 'kept_out')).region_id).toBe(LAZIO);
+  });
+});
+
+describe('an act every screen asks why, sent without a reason (#863)', () => {
+  const res = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn(), send: vi.fn(), end: vi.fn() });
+  const send = (method: 'post' | 'delete', path: string, request: SpecRequest) =>
+    answer(routeAt(experienceCurationRoutes, path, method), { user: caller(), ...request }, res());
+
+  it('is refused before anything is written', async () => {
+    await pool.query(
+      "INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'auto')", [CAPITOLINE, LAZIO],
+    );
+    const id = String(CAPITOLINE);
+
+    await expect(send('post', '/:id/reject', { params: { id }, body: { regionId: LAZIO } })).rejects.toThrow();
+    await expect(send('post', '/:id/assign', { params: { id }, body: { regionId: LAZIO } })).rejects.toThrow();
+    await expect(send('delete', '/:id/remove-from-region/:regionId', { params: { id, regionId: String(LAZIO) } }))
+      .rejects.toThrow();
+    await expect(send('post', '/:id/keep-out', { params: { id }, body: { membershipId: artMembership } })).rejects.toThrow();
+    await expect(send('post', '/:id/kinds', { params: { id }, body: { kindId: archaeologyKind } })).rejects.toThrow();
+
+    const log = await pool.query('SELECT 1 FROM experience_curation_log WHERE experience_id = $1', [CAPITOLINE]);
+    expect(log.rows).toHaveLength(0);
+    const placed = await pool.query(
+      'SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2', [CAPITOLINE, LAZIO],
+    );
+    expect(placed.rows).toHaveLength(1);
+    const rejected = await pool.query('SELECT 1 FROM experience_rejections WHERE experience_id = $1', [CAPITOLINE]);
+    expect(rejected.rows).toHaveLength(0);
+  });
+
+  it('is taken with one', async () => {
+    await send('post', '/:id/reject', {
+      params: { id: String(CAPITOLINE) }, body: { regionId: LAZIO, reasonCode: 'wrong-place' },
+    });
+
+    expect((await entry(CAPITOLINE, 'rejected')).details).toMatchObject({ reasonCode: 'wrong-place' });
   });
 });
 

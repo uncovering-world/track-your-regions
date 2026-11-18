@@ -46,6 +46,15 @@ describe('the curation log writer (#863)', () => {
     expect(sent[0].params).toEqual([5, null, 'merged', null, null]);
   });
 
+  it('records the region through the regions table, so one deleted since reads as none', async () => {
+    const { client, sent } = fakeClient();
+    await logCurationAct(client, { experienceId: 5, curatorId: 7, action: 'kept_out', regionId: 12 });
+    await logCurationActs(client, [{ experienceId: 5, curatorId: 7, action: 'kept_out', regionId: 12 }]);
+
+    expect(sent[0].sql).toContain('(SELECT r.id FROM regions r WHERE r.id = $4::int)');
+    expect(sent[1].sql).toContain('(SELECT r.id FROM regions r WHERE r.id = t.region_id)');
+  });
+
   it('writes several acts in one statement, and nothing for none', async () => {
     const { client, sent } = fakeClient();
     await logCurationActs(client, []);

@@ -3,7 +3,11 @@
  * where each kind stands, and taking a published place out of one of them.
  *
  * GET  /api/experiences/:id/kinds
- * POST /api/experiences/:id/keep-out   { membershipId, note? }
+ * POST /api/experiences/:id/keep-out   { membershipId, reasonCode, note?, regionId? }
+ *
+ * The log entry names the region the curator had open (`regionId`) as where
+ * they were working, where the place lies in it and their scope covers it
+ * (`loggedRegion`); otherwise, or sent none, the region the scope check found (#863).
  *
  * The review queue answers only what a run asked about. The Theatre of Pompey
  * is published under Archaeology and no run raised a question about it, so a
@@ -28,7 +32,7 @@ import { lockExperience, type UnderLock } from '../../db/experienceWriter.js';
 import {
   KINDS, MEMBERSHIPS, admissionPinnedSql, membershipAdmittedSql, membershipOfferedSql,
 } from '../../db/membership.js';
-import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
+import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists, loggedRegion } from '../../middleware/auth.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, keepOutOfKindBodySchema } from '../../types/index.js';
 import { CURATOR_REFUSAL_REASON } from './membershipWriter.js';
@@ -42,6 +46,8 @@ import { queueScopeSql } from './reviewQueueKeys.js';
 import { ADDED_BY, ADDED_BY_CURATOR, PINNED_BY } from './reviewQueuePinQuestions.js';
 
 type KeepOut = z.output<typeof keepOutOfKindBodySchema>;
+/** A keep-out as its writer takes it: a crowded city's "Don't take" gives no reason of its own. */
+type KeepOutAct = Pick<KeepOut, 'membershipId' | 'note'> & Partial<Pick<KeepOut, 'reasonCode'>>;
 
 export async function keepOutOfKind(
   { params: { id: experienceId }, body, caller }: {
@@ -54,7 +60,9 @@ export async function keepOutOfKind(
   const { permitted, logRegionId } = await resolveExperienceScope(caller.id, caller.role, experienceId, sourceId);
   if (!permitted) throw createError('You do not have curator permissions for this experience', 403);
 
-  const outcome = await keepOutUnderLock(experienceId, caller.id, logRegionId, body);
+  // The log names the region the curator has open where their scope covers it (#863).
+  const regionId = await loggedRegion(caller, experienceId, body.regionId, logRegionId);
+  const outcome = await keepOutUnderLock(experienceId, caller.id, regionId, body);
   if (outcome.refusal) {
     const { status, ...refusal } = outcome.refusal;
     throw new Refusal(status, refusal);
@@ -71,7 +79,7 @@ export async function keepOutUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { membershipId, note, reasonCode }: KeepOut,
+  { membershipId, note, reasonCode }: KeepOutAct,
   alsoUnderLock?: UnderLock,
 ): Promise<{ result?: KeptOutOfKind; refusal?: AnswerRefusal }> {
   const client = await pool.connect();

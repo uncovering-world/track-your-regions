@@ -105,6 +105,8 @@ export async function getCurationLog(
 
   // A row survives when the curator is unrestricted, when it names no region
   // (it identifies no region to leak), or when its region is one they cover.
+  // An act is logged under an open region only where its actor's scope covers
+  // it (`loggedRegion`), so a curator's own acts pass this test too.
   const result = await pool.query<CurationLogRow>(`${CURATOR_SCOPED_REGIONS_CTE}, ${LOG_PLACES_CTE}
     SELECT
       cl.id,

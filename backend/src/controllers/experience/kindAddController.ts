@@ -2,7 +2,7 @@
  * A curator puts a place into a kind no run offers it in, from the place's own
  * card (#2035).
  *
- * POST /api/experiences/:id/kinds   { kindId, type?, note? }
+ * POST /api/experiences/:id/kinds   { kindId, reasonCode, type?, note?, regionId? }
  *
  * A run finds a place only through its kind's rule, and a place no rule reads
  * sits in no kind a traveller browses: Haus Schwarzenberg in Berlin, a
@@ -10,7 +10,7 @@
  * genre, is one no run of Public art finds. The curator's add is the way in: a membership admitted, published and pinned
  * (`insertCuratorKindMembership`), so the place joins that kind's lists, counts
  * and map at once and every later run leaves it there. The way back is the
- * card's own Take out… (`keepOutController.ts`).
+ * card's own *Take out* (`keepOutController.ts`).
  *
  * The kind is one the place has no membership in, in any state: a waiting
  * arrival, a rule's refusal or a kept-out place already has its answer on its
@@ -25,7 +25,7 @@ import type { KindAddedToPlace } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
-import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
+import { CURATOR_SCOPED_REGIONS_CTE, loggedRegion } from '../../middleware/auth.js';
 import { badRequest, createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { addToKindBodySchema, idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -63,7 +63,9 @@ export async function addPlaceToKind(
   const { permitted, logRegionId } = await resolveExperienceScope(caller.id, caller.role, experienceId, sourceId);
   if (!permitted) throw createError('You do not have curator permissions for this experience', 403);
 
-  const outcome = await addUnderLock(experienceId, caller.id, logRegionId, sourceId, body);
+  // The log names the region the curator has open where their scope covers it (#863).
+  const regionId = await loggedRegion(caller, experienceId, body.regionId, logRegionId);
+  const outcome = await addUnderLock(experienceId, caller.id, regionId, sourceId, body);
   if (outcome.refusal) {
     const { status, ...refusal } = outcome.refusal;
     throw new Refusal(status, refusal);
