@@ -43,6 +43,7 @@ decided. § Where things live says what goes where.
 | [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
+| [model-transition.md](tech/model-transition.md) | Temporary — transition regime, removed by #2646: how the catalogue moves onto its clean model — the end goal, the method, what a model pull request carries, the review, the CI job and the keeper's duties |
 | [gates.md](tech/gates.md) | Which gates a change asks for — the map from each gate to its inputs, how to read a run of it, how CI applies it, and what it does not reach |
 | [data-assertions.md](tech/data-assertions.md) | Catalogue Checks — invariants over the live catalogue's rows, and the debt it carries |
 | [catalogue-coverage.md](tech/catalogue-coverage.md) | Catalogue coverage — the register of kinds of experience, live and proposed, the lists of what a traveller expects in each surveyed region, each kind's calibration list (a proposed kind's before its first run) of the tops a traveller expects of it, their file formats and what the reader refuses, the tables they load into, and the report of what the catalogue holds of them, which proposed kind they ask for most and how each kind stands to its own list (ADR-0081, #1864) |
