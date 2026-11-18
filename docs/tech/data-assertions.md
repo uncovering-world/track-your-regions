@@ -469,8 +469,9 @@ index lookup, so that is what is asked — about a second for the pair, measured
 `db/migrations/034-unnamed-gadm-rows.sql` is the repair, and both rules name it.
 
 **The danger rule** is about one fact stored twice. A World Heritage site in
-danger is written as the place's `in_danger` tag and as the `inDanger` flag
-the badge keys on, among its World Heritage membership's facts (#2068), and
+danger is written as the place's `in_danger` tag and as the open stay on the
+List of World Heritage in Danger the badge keys on, which its World Heritage
+membership holds (`record_danger_periods`, #2068, #2127), and
 the two disagreed on every row
 for four years while every sync run reported success — a run compares what it
 fetched against what it stored, and both halves were stored exactly as the

@@ -75,7 +75,14 @@ the policy page is the authority.
   Every query in the process takes one turn, and the next starts after the last one's duration
   (#1307). A curator's image suggestion (`geocodeController.ts`) has its own short client and skips
   the layer on a 429.
-- *Route:* bulk questions read the local subset (ADR-0101, ADR-0119); live is the fallback.
+- *Route:* bulk questions read the local subset (ADR-0101, ADR-0119); live is the fallback. The
+  UNESCO run asks its few small questions live: each site's items (`unescoWikidata.ts`
+  `fetchWorldHeritageFacts`), and two about a site's history on the lists
+  (`sync/heritageHistory.ts` `fetchHeritageStatements`, #2127) — every stay on the List of World
+  Heritage in Danger (`P793` = `Q222384`, 113 statements on 2026-11-18, a site's own items' and
+  its components' alike) and every World Heritage
+  designation that ended (`P1435` = `Q9259` with a `P582`, 7), one after the other, about 2 s each,
+  since the two as one `UNION` passed the 60 s deadline.
 - *Complies.* The hold a 429 puts on other runs is capped at three minutes
   (`SPARQL_BACKOFF_CEILING_MS`).
 
