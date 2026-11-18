@@ -1,7 +1,7 @@
 # ADR-0053: A curator's no is a verdict on an arrival and a mark on a part
 
 **Date:** 2026-09-09
-**Status:** Accepted — decision 2 narrowed by [ADR-0083](0083-a-no-to-a-moved-point-keeps-the-stored-pin.md), decision 3 narrowed by [ADR-0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md)
+**Status:** Accepted — decision 2 narrowed by [ADR-0083](0083-a-no-to-a-moved-point-keeps-the-stored-pin.md), decision 3 narrowed by [ADR-0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md); decisions 1 and 2 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): a reason code and no badge; a part's refusal is on its part record
 **Issue:** [#852](https://github.com/uncovering-world/track-your-regions/issues/852)
 
 ---

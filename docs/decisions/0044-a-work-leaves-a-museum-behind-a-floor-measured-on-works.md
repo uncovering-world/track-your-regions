@@ -1,7 +1,7 @@
 # ADR-0044: A work leaves a museum by a mark, behind a floor measured on works
 
 **Date:** 2026-09-02
-**Status:** Accepted — decision 2 narrowed by [ADR-0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md)
+**Status:** Accepted — decision 2 narrowed by [ADR-0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md); decision 1 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): a reader of works also reads `here_today`
 
 ---
 

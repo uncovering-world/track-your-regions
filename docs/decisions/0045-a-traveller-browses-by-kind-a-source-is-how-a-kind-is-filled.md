@@ -11,7 +11,7 @@ tier's is per unit — and a kind's sources are at least one per tier, each tier
 own kind of source; decision 4 narrowed again by
 [ADR-0084](0084-a-place-belongs-to-no-source-and-no-kind.md): the type within a kind, the id a
 source knows a place by and whether it still lists it are the membership's, and a place belongs
-to no source and no kind; the rest of those decisions and every other decision stand
+to no source and no kind; the rest of those decisions and every other decision stand; decisions 4 and 5 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): a visit is on a record; the badge is on works only
 
 ---
 

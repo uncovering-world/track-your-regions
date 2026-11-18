@@ -1,7 +1,7 @@
 # ADR-0067: Accepting a refusal keeps it, and a batch answer pins nothing
 
 **Date:** 2026-09-24
-**Status:** Accepted — its consequence on the 119 batch pins narrowed by ADR-0096; decision 2 narrowed by ADR-0097
+**Status:** Accepted — its consequence on the 119 batch pins narrowed by ADR-0096; decision 2 narrowed by ADR-0097; decisions 2 and 3 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `admission_decided_at` and `_by`
 **Issue:** [#906](https://github.com/uncovering-world/track-your-regions/issues/906)
 **Narrows:** [ADR-0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) decision 3
 

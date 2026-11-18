@@ -1,7 +1,7 @@
 # ADR-0190: A place field only some sources read is kept by the others while one of them stands
 
 **Date:** 2026-11-09
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): what a monument commemorates is held in subject lines
 **Issue:** [#2144](https://github.com/uncovering-world/track-your-regions/issues/2144)
 **Narrows:** [ADR-0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) decision 1 (a family decides who writes a field), and [ADR-0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) decision 1 (ADR-0109's families still decide who writes a field of the place)
 

@@ -1,7 +1,7 @@
 # ADR-0029: What an object is made of can be curated, and a correction outlives the run
 
 **Date:** 2026-08-20
-**Status:** Accepted
+**Status:** Accepted — decisions 1, 3 and 5 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the points retire; a claim is read with `= ANY` over a list of words
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0140: A short move passes the gate
 
 **Date:** 2026-10-23
-**Status:** Accepted
+**Status:** Accepted — decision 3 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `moved_to_location_id` goes with the points
 **Issue:** [#1837](https://github.com/uncovering-world/track-your-regions/issues/1837)
 **Narrows:** [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) decision 1
 

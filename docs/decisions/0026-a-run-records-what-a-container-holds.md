@@ -4,7 +4,7 @@
 **Status:** Accepted — decisions 1 and 2 narrowed by ADR-0029; the floor decision 5 names as the
 gate on producing a withdrawal is landed by
 [ADR-0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md), and the shape it
-carries is now produced
+carries is now produced; decisions 6 and 7 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `existence` and the points retire
 
 ---
 

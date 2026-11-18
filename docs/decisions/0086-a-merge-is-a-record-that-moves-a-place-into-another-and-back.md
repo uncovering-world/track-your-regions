@@ -1,7 +1,7 @@
 # ADR-0086: A merge is a record that moves one place into another, and can move it back
 
 **Date:** 2026-10-07
-**Status:** Accepted — decision 3 narrowed by ADR-0088 and ADR-0100; decision 5 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): the equal-item merge is retired, so a merge that names no curator is found only in the records of the merges already made; decision 6 narrowed by [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md): two places are locked a whole before its parts, then by id; decision 2 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): in a "same group" answer the serial object stays, whichever id is lower
+**Status:** Accepted — decision 3 narrowed by ADR-0088 and ADR-0100; decision 5 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): the equal-item merge is retired, so a merge that names no curator is found only in the records of the merges already made; decision 6 narrowed by [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md): two places are locked a whole before its parts, then by id; decision 2 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): in a "same group" answer the serial object stays, whichever id is lower; decisions 3 and 5 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): the points retire; a curator's id on any log row is set null with the account
 
 ---
 

@@ -1,6 +1,6 @@
 # ADR-0039: A run records facts, not columns
 
-**Status**: Accepted — decision 2 narrowed by [ADR-0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md)
+**Status**: Accepted — decision 2 narrowed by [ADR-0077](0077-the-curation-gate-keeps-its-tables-and-a-claims-reach-is-decided-once.md); decision 1 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `metadata` keeps the picture credit and UNESCO's mark only; facts are columns and tables
 **Date**: 2026-08-31
 **Issue**: [#725](https://github.com/uncovering-world/track-your-regions/issues/725)
 **Narrows**: ADR-0038 decisions 1 and 1a — a key inside the source's data is no longer

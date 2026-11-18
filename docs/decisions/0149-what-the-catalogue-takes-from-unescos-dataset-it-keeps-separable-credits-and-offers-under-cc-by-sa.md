@@ -1,7 +1,7 @@
 # ADR-0149: What the catalogue takes from UNESCO's dataset it keeps separable, credits, and offers under CC BY-SA
 
 **Date:** 2026-10-25
-**Status:** Accepted
+**Status:** Accepted — decision 4 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): whose description it is is `description_source`
 
 ---
 

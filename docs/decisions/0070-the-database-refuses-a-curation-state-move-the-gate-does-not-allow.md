@@ -1,7 +1,7 @@
 # ADR-0070: The database refuses a curation-state move the gate does not allow
 
 **Date:** 2026-09-26
-**Status:** Accepted
+**Status:** Accepted — narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `existence` is gone; `source_membership` is derived from the listing periods
 **Issue:** [#794](https://github.com/uncovering-world/track-your-regions/issues/794)
 
 ---

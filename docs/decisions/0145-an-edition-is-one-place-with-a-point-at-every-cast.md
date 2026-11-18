@@ -1,7 +1,7 @@
 # ADR-0145: An edition is one place with a point at every cast
 
 **Date:** 2026-10-23
-**Status:** Accepted — decision 2(b) narrowed by [ADR-0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md); decision 5 narrowed by [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md): a serial site is visited after one of its places too, so an edition and a serial site differ only in the count, which an edition does not show
+**Status:** Accepted — decision 2(b) narrowed by [ADR-0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md); decision 5 narrowed by [ADR-0206](0206-one-visited-place-visits-the-whole-which-reads-k-of-n-over-its-offered-leaves.md): a serial site is visited after one of its places too, so an edition and a serial site differ only in the count, which an edition does not show; decisions 1, 3 and 4 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): a cast group is a whole whose casts are parts of the role `copy`
 **Issue:** [#880](https://github.com/uncovering-world/track-your-regions/issues/880)
 **Narrows:** [ADR-0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md), the coordinate fold, for an edition's qualified coordinates
 

@@ -1,7 +1,7 @@
 # ADR-0210: A dispersed whole holds no point, and every line of a serial site is a part
 
 **Date:** 2026-11-15
-**Status:** Accepted — decisions 1, 2 and 5 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): "whole" is read as a record with parts; `whole_shape` gives way to the record's own shape, a row constraint holds that shape to the point, and a reader asks the shape and the pin, never a missing coordinate
+**Status:** Accepted — decisions 1, 2 and 5 narrowed by [ADR-0218](0218-a-record-states-its-shape-and-its-pin-is-derived-from-what-it-holds.md): "whole" is read as a record with parts; `whole_shape` gives way to the record's own shape, a row constraint holds that shape to the point, and a reader asks the shape and the pin, never a missing coordinate; decision 3 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): an edition's casts are parts
 **Issue:** [#2122](https://github.com/uncovering-world/track-your-regions/issues/2122), Epic #2115
 **Supersedes:** [ADR-0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) decision 1
 **Narrows:** [ADR-0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) decision 2,

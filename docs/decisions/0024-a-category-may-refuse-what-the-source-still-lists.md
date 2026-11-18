@@ -6,7 +6,7 @@
 becomes the withdrawal of one membership in a kind, proposed by the run and confirmed by a
 curator rather than applied by the machine; decision 5 narrowed by
 [ADR-0222](0222-a-curator-in-scope-reads-a-refused-place-by-id.md): a curator or admin in scope
-reads a refused place by id, readers still get 404; decisions 1 and 3 stand
+reads a refused place by id, readers still get 404; decisions 1 and 3 stand; decisions 1 and 5 narrowed by [ADR-0225](0225-the-catalogue-has-one-model-of-records-sources-time-relations-works-regions-and-visits.md): `admission_reason` is a code with its evidence; no place badge; `curated_fields` is a list of words
 
 ---
 
