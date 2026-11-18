@@ -90,6 +90,92 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 -- =============================================================================
+-- Helper: approximate dates, the days they may be, and the period block
+-- =============================================================================
+-- Time in the catalogue is held as periods (ADR-0217; "Time is held as
+-- periods" below says how). These are the arithmetic every period of every
+-- table reads, and a traveller's trip too, so they come before the first table
+-- that stores one.
+
+-- Whether five columns are one approximate date: a month only within a year, a
+-- day only within a month, a span only on a year with no month, circa only on
+-- a year. No year at all is a date that is not known.
+CREATE OR REPLACE FUNCTION approx_date_ok(y INTEGER, m SMALLINT, d SMALLINT, span TEXT, circa BOOLEAN) RETURNS BOOLEAN
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT (y IS NULL OR y <> 0)
+       AND (m IS NULL OR (y IS NOT NULL AND m BETWEEN 1 AND 12))
+       AND (d IS NULL OR (m IS NOT NULL AND d BETWEEN 1 AND 31))
+       AND (span IS NULL OR (y IS NOT NULL AND m IS NULL))
+       AND (circa IS NOT TRUE OR y IS NOT NULL);
+$$;
+
+-- The day index periodOf orders days by (@tyr/shared/lifetime dayIndex):
+-- (year * 12 + month - 1) * 31 + day - 1.
+CREATE OR REPLACE FUNCTION day_index(y INTEGER, m INTEGER, d INTEGER) RETURNS INTEGER
+LANGUAGE sql IMMUTABLE AS $$ SELECT (y * 12 + m - 1) * 31 + d - 1 $$;
+
+-- The first and the last day a date may be: periodOf's twins (@tyr/shared/lifetime),
+-- held to it by backend/src/db/lifetimeTwin.db.test.ts. A day is itself, a month all its
+-- days (day 31 for every month, as dayIndex counts), a year all its days, a span every
+-- year within its width either side ("1960s" stored as 1960 'decade' covers 1951 to
+-- 1969, as periodOf reads it). NULL with no year.
+CREATE OR REPLACE FUNCTION date_first(y INTEGER, m SMALLINT, d SMALLINT, span TEXT) RETURNS INTEGER
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN y IS NULL THEN NULL
+                WHEN span IS NOT NULL THEN day_index(y - (CASE span WHEN 'decade' THEN 10 WHEN 'century' THEN 100 ELSE 1000 END) + 1, 1, 1)
+                WHEN m IS NULL THEN day_index(y, 1, 1)
+                WHEN d IS NULL THEN day_index(y, m, 1)
+                ELSE day_index(y, m, d) END
+$$;
+
+CREATE OR REPLACE FUNCTION date_last(y INTEGER, m SMALLINT, d SMALLINT, span TEXT) RETURNS INTEGER
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN y IS NULL THEN NULL
+                WHEN span IS NOT NULL THEN day_index(y + (CASE span WHEN 'decade' THEN 10 WHEN 'century' THEN 100 ELSE 1000 END) - 1, 12, 31)
+                WHEN m IS NULL THEN day_index(y, 12, 31)
+                WHEN d IS NULL THEN day_index(y, m, 31)
+                ELSE day_index(y, m, d) END
+$$;
+
+-- Today as the latest calendar day on Earth (UTC+14, latestDayOnEarth): a place that opens
+-- on 1 June stands from the first moment it is 1 June anywhere.
+CREATE OR REPLACE FUNCTION current_day_index() RETURNS INTEGER LANGUAGE sql STABLE AS $$
+    SELECT day_index(EXTRACT(year FROM t)::int, EXTRACT(month FROM t)::int, EXTRACT(day FROM t)::int)
+      FROM (SELECT (now() AT TIME ZONE 'Etc/GMT-14')::date AS t) x
+$$;
+
+-- Whether the columns of a period are one period: each end a date, an end date
+-- only on a period that has ended, and each outer day the day its end's date
+-- gives (date_first of the start, date_last of the end; NULL exactly where that
+-- end has no year), so a read as of a date compares what the dates say. The
+-- start's first day is never after the end's last. One function holds the
+-- block on every table that stores one.
+CREATE OR REPLACE FUNCTION period_ok(
+    from_year INTEGER, from_month SMALLINT, from_day SMALLINT, from_span TEXT, from_circa BOOLEAN,
+    ended BOOLEAN,
+    until_year INTEGER, until_month SMALLINT, until_day SMALLINT, until_span TEXT, until_circa BOOLEAN,
+    from_first INTEGER, until_last INTEGER
+) RETURNS BOOLEAN
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT approx_date_ok(from_year, from_month, from_day, from_span, from_circa)
+       AND approx_date_ok(until_year, until_month, until_day, until_span, until_circa)
+       AND (ended OR until_year IS NULL)
+       AND from_first IS NOT DISTINCT FROM date_first(from_year, from_month, from_day, from_span)
+       AND until_last IS NOT DISTINCT FROM date_last(until_year, until_month, until_day, until_span)
+       AND (from_first IS NULL OR until_last IS NULL OR from_first <= until_last);
+$$;
+
+-- Whether a period may cover any day of [first_day, last_day]: a date that does not settle the
+-- question counts as covered (ADR-0217 d6). An unknown start may be any day; an end with no date
+-- may be any day after the start.
+CREATE OR REPLACE FUNCTION period_meets(p_from_first INTEGER, p_ended BOOLEAN, p_until_last INTEGER,
+                                        first_day INTEGER, last_day INTEGER) RETURNS BOOLEAN
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT (p_from_first IS NULL OR p_from_first <= last_day)
+       AND (NOT p_ended OR p_until_last IS NULL OR p_until_last >= first_day);
+$$;
+
+-- =============================================================================
 -- Schema Migrations (which files in db/migrations/ this database has seen)
 -- =============================================================================
 -- This file is the canonical schema and is re-applied by hand as it grows; the
@@ -2894,14 +2980,24 @@ CREATE TABLE IF NOT EXISTS user_visit_trips (
     year SMALLINT CHECK (year >= 1900),
     month SMALLINT CHECK (month BETWEEN 1 AND 12),
     day SMALLINT CHECK (day BETWEEN 1 AND 31),
+    -- The outer days of the date, by periodOf (@tyr/shared/lifetime): March 2022
+    -- is 1 to 31 March, 2022 the whole year, no date none. Written by the trip
+    -- writers beside the date, and held to it below.
+    first_day INTEGER,
+    last_day INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (month IS NULL OR year IS NOT NULL),
-    CHECK (day IS NULL OR month IS NOT NULL),
+    CONSTRAINT user_visit_trips_month_in_year CHECK (month IS NULL OR year IS NOT NULL),
+    CONSTRAINT user_visit_trips_day_in_month CHECK (day IS NULL OR month IS NOT NULL),
     -- A day the month has: make_date refuses 29 February 2023.
-    CHECK (day IS NULL OR make_date(year, month, day) IS NOT NULL)
+    CONSTRAINT user_visit_trips_real_day CHECK (day IS NULL OR make_date(year, month, day) IS NOT NULL),
+    CONSTRAINT user_visit_trips_outer_days CHECK (
+        first_day IS NOT DISTINCT FROM date_first(year::integer, month, day, NULL)
+        AND last_day IS NOT DISTINCT FROM date_last(year::integer, month, day, NULL))
 );
 CREATE INDEX IF NOT EXISTS idx_user_visit_trips_visit ON user_visit_trips(visit_id);
 COMMENT ON TABLE user_visit_trips IS 'A traveller''s trips to a place they visited, each with an approximate date: year, month and day each optional, a month only within a year and a day only within a month; all three empty is a trip they do not remember the date of (#2120, ADR-0202). Owner-only.';
+COMMENT ON COLUMN user_visit_trips.first_day IS 'The first day the trip''s date may be, in the count periodOf (@tyr/shared/lifetime) orders days by; NULL on a trip with no date. Held to date_first() by user_visit_trips_outer_days.';
+COMMENT ON COLUMN user_visit_trips.last_day IS 'The last day the trip''s date may be, counted as first_day; NULL on a trip with no date. Held to date_last() by user_visit_trips_outer_days.';
 
 -- Sync audit log for tracking sync operations
 CREATE TABLE IF NOT EXISTS experience_sync_logs (
@@ -3297,18 +3393,6 @@ CREATE INDEX IF NOT EXISTS idx_source_records_iconic ON source_records(kind_id) 
 CREATE INDEX IF NOT EXISTS idx_source_records_label ON source_records(reported_label);
 CREATE INDEX IF NOT EXISTS idx_source_records_missing ON source_records(source_id) WHERE missing_since IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_source_records_first_seen ON source_records(first_seen_sync_log_id);
--- The memberships a reader may be shown: admitted and passed, the predicate
--- membershipAdmittedSql and membershipVisibleSql spell (db/membership.ts), so
--- every reader-facing read finds a place's shown memberships here without
--- reading the arrivals that wait for a curator (#2283). A gated pass adds those
--- by the thousand, and a read that filtered them out after a scan grew with
--- each one. Partial on the two terms a predicate can imply, never on the kind
--- or the crowding, which are asked of other tables; id is carried so a read's
--- crowding check stays inside the index.
-CREATE INDEX IF NOT EXISTS idx_source_records_reader
-    ON source_records(experience_id, kind_id) INCLUDE (id)
-    WHERE admission <> 'refused' AND curation_state <> 'pending';
-
 -- The place's own missing_since and source_membership, derived from its
 -- memberships (ADR-0084, #1251): missing only once every membership's source
 -- has stopped listing it, the latest flag standing for when; former only once
@@ -3419,89 +3503,89 @@ CREATE TRIGGER trg_source_record_fits_scheme
 -- Beside its ends a period keeps the outer days it may cover: the first day
 -- its start may be (from_first) and the last day its end may be (until_last),
 -- as the count of days @tyr/shared/lifetime orders dates by (periodOf). The
--- writer writes them from that rule, which has no twin in SQL, and a read as
--- of a date compares them. One function holds the shape of a period wherever
--- one is stored (period_ok).
+-- writer writes them from that rule, period_ok() holds them to its SQL twins
+-- (date_first, date_last), and a read as of a date compares them.
 --
--- A place is gone when it has standing periods and none is open. That is
--- experiences.stands_today, derived below and written by nothing else.
+-- A stood or a closed period may name a kind (kind_id): it then holds for the
+-- place's membership in that kind only. Frick Madison was an art museum from
+-- 2021 until 3 March 2024 while the building stands: its Art Museums
+-- membership ended, the place did not.
+--
+-- A place stands today when its stood periods that name no kind are none, or
+-- one is open and has begun: experiences.stands_today. A membership stands
+-- when its place does and its kind's own stood periods say the same:
+-- source_records.stands_today. Both are derived below and written by nothing
+-- else; a period that begins on a day still ahead moves them on that day.
 --
 -- What a period says, the spans and the endings are the vocabularies
 -- @tyr/shared/lifetime declares; curationLogActions.test.ts holds the two to
 -- each other. Both tables are written by db/placePeriodsWriter.ts alone
 -- (ADR-0069).
 
--- Whether five columns are one approximate date: a month only within a year, a
--- day only within a month, a span only on a year with no month, circa only on
--- a year. No year at all is a date that is not known.
-CREATE OR REPLACE FUNCTION approx_date_ok(y INTEGER, m SMALLINT, d SMALLINT, span TEXT, circa BOOLEAN) RETURNS BOOLEAN
-LANGUAGE sql IMMUTABLE AS $$
-    SELECT (y IS NULL OR y <> 0)
-       AND (m IS NULL OR (y IS NOT NULL AND m BETWEEN 1 AND 12))
-       AND (d IS NULL OR (m IS NOT NULL AND d BETWEEN 1 AND 31))
-       AND (span IS NULL OR (y IS NOT NULL AND m IS NULL))
-       AND (circa IS NOT TRUE OR y IS NOT NULL);
-$$;
-
--- Whether the columns of a period are one period: each end a date, an end date
--- only on a period that has ended, an outer day exactly where its end has a
--- year, and the start's first day never after the end's last.
-CREATE OR REPLACE FUNCTION period_ok(
-    from_year INTEGER, from_month SMALLINT, from_day SMALLINT, from_span TEXT, from_circa BOOLEAN,
-    ended BOOLEAN,
-    until_year INTEGER, until_month SMALLINT, until_day SMALLINT, until_span TEXT, until_circa BOOLEAN,
-    from_first INTEGER, until_last INTEGER
-) RETURNS BOOLEAN
-LANGUAGE sql IMMUTABLE AS $$
-    SELECT approx_date_ok(from_year, from_month, from_day, from_span, from_circa)
-       AND approx_date_ok(until_year, until_month, until_day, until_span, until_circa)
-       AND (ended OR until_year IS NULL)
-       AND (from_first IS NULL) = (from_year IS NULL)
-       AND (until_last IS NULL) = (until_year IS NULL)
-       AND (from_first IS NULL OR until_last IS NULL OR from_first <= until_last);
-$$;
-
 CREATE TABLE IF NOT EXISTS place_periods (
-    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    says VARCHAR(8) NOT NULL CHECK (says IN ('stood', 'used', 'closed', 'held')),
-    ordinal SMALLINT NOT NULL CHECK (ordinal > 0),
+    id SERIAL CONSTRAINT place_periods_pkey PRIMARY KEY,
+    experience_id INTEGER NOT NULL CONSTRAINT place_periods_experience_id_fkey REFERENCES experiences(id) ON DELETE CASCADE,
+    kind_id INTEGER CONSTRAINT place_periods_kind_id_fkey REFERENCES experience_kinds(id),
+    says VARCHAR(8) NOT NULL CONSTRAINT place_periods_says_check CHECK (says IN ('stood', 'used', 'closed', 'held')),
+    ordinal SMALLINT NOT NULL CONSTRAINT place_periods_ordinal_check CHECK (ordinal > 0),
     from_year INTEGER,
     from_month SMALLINT,
     from_day SMALLINT,
-    from_span VARCHAR(10) CHECK (from_span IN ('decade', 'century', 'millennium')),
+    from_span VARCHAR(10) CONSTRAINT place_periods_from_span_check CHECK (from_span IN ('decade', 'century', 'millennium')),
     from_circa BOOLEAN NOT NULL DEFAULT false,
-    from_property VARCHAR(12) CHECK (from_property ~ '^P[1-9][0-9]*$'),
-    from_statement TEXT CHECK (source_id_fits_scheme('wikidata-statement', from_statement)),
+    from_property VARCHAR(12) CONSTRAINT place_periods_from_property_check CHECK (from_property ~ '^P[1-9][0-9]*$'),
+    from_statement TEXT CONSTRAINT place_periods_from_statement_check CHECK (source_id_fits_scheme('wikidata-statement', from_statement)),
     ended BOOLEAN NOT NULL DEFAULT false,
     until_year INTEGER,
     until_month SMALLINT,
     until_day SMALLINT,
-    until_span VARCHAR(10) CHECK (until_span IN ('decade', 'century', 'millennium')),
+    until_span VARCHAR(10) CONSTRAINT place_periods_until_span_check CHECK (until_span IN ('decade', 'century', 'millennium')),
     until_circa BOOLEAN NOT NULL DEFAULT false,
-    until_property VARCHAR(12) CHECK (until_property ~ '^P[1-9][0-9]*$'),
-    until_statement TEXT CHECK (source_id_fits_scheme('wikidata-statement', until_statement)),
-    ending VARCHAR(12) CHECK (ending IN ('destroyed', 'demolished', 'removed', 'collapsed')),
+    until_property VARCHAR(12) CONSTRAINT place_periods_until_property_check CHECK (until_property ~ '^P[1-9][0-9]*$'),
+    until_statement TEXT CONSTRAINT place_periods_until_statement_check CHECK (source_id_fits_scheme('wikidata-statement', until_statement)),
+    ending VARCHAR(12) CONSTRAINT place_periods_ending_check CHECK (ending IN ('destroyed', 'demolished', 'removed', 'collapsed')),
+    use_item TEXT CONSTRAINT place_periods_use_item_check CHECK (source_id_fits_scheme('wikidata', use_item)),
     what TEXT,
     from_first INTEGER,
     until_last INTEGER,
-    source_id INTEGER NOT NULL REFERENCES experience_sources(id),
-    decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    source_id INTEGER NOT NULL CONSTRAINT place_periods_source_id_fkey REFERENCES experience_sources(id),
+    decided_by INTEGER CONSTRAINT place_periods_decided_by_fkey REFERENCES users(id) ON DELETE SET NULL,
+    decided_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (experience_id, says, ordinal),
     CONSTRAINT place_periods_period CHECK (period_ok(
         from_year, from_month, from_day, from_span, from_circa, ended,
         until_year, until_month, until_day, until_span, until_circa, from_first, until_last)),
     CONSTRAINT place_periods_ending_of_standing CHECK (ending IS NULL OR (says = 'stood' AND ended)),
-    CONSTRAINT place_periods_what_of_use CHECK (what IS NULL OR (says IN ('used', 'closed') AND btrim(what) <> ''))
+    CONSTRAINT place_periods_what_of_use CHECK (what IS NULL OR (says IN ('used', 'closed') AND btrim(what) <> '')),
+    CONSTRAINT place_periods_use_item_of_use CHECK (use_item IS NULL OR says = 'used'),
+    CONSTRAINT place_periods_kind_of_standing CHECK (kind_id IS NULL OR says IN ('stood', 'closed')),
+    -- A named use is never a fill (ADR-0217 decision 3): only an answered row names one.
+    CONSTRAINT place_periods_use_is_answered CHECK (says <> 'used' OR (use_item IS NULL AND what IS NULL) OR decided_at IS NOT NULL),
+    -- A curator's own row is a decided one; the act outlives the account (decided_by set null).
+    CONSTRAINT place_periods_curator_decides CHECK (source_id <> 11 OR decided_at IS NOT NULL),
+    CONSTRAINT place_periods_decided_pair CHECK (decided_by IS NULL OR decided_at IS NOT NULL),
+    -- A period of a kind belongs to the place's membership in it: when the
+    -- membership moves (a merge, a separation) its periods move with it, and
+    -- when it goes they go. MATCH SIMPLE skips the rows that name no kind.
+    CONSTRAINT place_periods_of_membership FOREIGN KEY (experience_id, kind_id)
+        REFERENCES source_records (experience_id, kind_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
--- A place stands in one open period at most, and the derivation of
--- stands_today finds it here.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_place_periods_standing ON place_periods(experience_id) WHERE says = 'stood' AND NOT ended;
+-- Time order per place, kind (or none) and what a period says.
+CREATE UNIQUE INDEX IF NOT EXISTS place_periods_order ON place_periods (experience_id, kind_id, says, ordinal) NULLS NOT DISTINCT;
+-- One open standing period per place, and per membership (ADR-0217 decisions 2 and 5).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_place_periods_open_standing ON place_periods (experience_id, kind_id) NULLS NOT DISTINCT
+    WHERE says = 'stood' AND NOT ended;
+DROP INDEX IF EXISTS idx_place_periods_standing;
+-- The standing sweep finds the open standing periods that have begun.
+CREATE INDEX IF NOT EXISTS idx_place_periods_begins ON place_periods (from_first) WHERE says = 'stood' AND NOT ended AND from_first IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_place_periods_closures ON place_periods (experience_id) WHERE says = 'closed';
 CREATE INDEX IF NOT EXISTS idx_place_periods_decided_by ON place_periods(decided_by) WHERE decided_by IS NOT NULL;
 
-COMMENT ON TABLE place_periods IS 'A place''s periods (#2578, ADR-0217): one row per period, saying that the place stood, was used, was closed or was held from one date until another, numbered in time order within what it says. A place is gone when it has stood periods and none is open (experiences.stands_today). Written by db/placePeriodsWriter.ts alone (ADR-0069).';
-COMMENT ON COLUMN place_periods.says IS 'What was so in the period: stood (the place itself stood), used (what it housed or was used for), closed (it could not be visited), held (an event took place there). The vocabulary is PERIOD_SAYS in @tyr/shared/lifetime. Only a stood period that ends takes the place off today''s lists.';
-COMMENT ON COLUMN place_periods.ordinal IS 'The period''s place in time order among the place''s periods that say the same, from 1, numbered by the writer.';
+COMMENT ON TABLE place_periods IS 'A place''s periods (#2578, ADR-0217): one row per period, saying that the place stood, was used, was closed or was held from one date until another, numbered in time order within the place, its kind (or none) and what it says. A place stands today when its stood periods that name no kind are none or one is open and has begun (experiences.stands_today); a membership when its kind''s own say the same (source_records.stands_today). Written by db/placePeriodsWriter.ts alone (ADR-0069).';
+COMMENT ON COLUMN place_periods.kind_id IS 'NULL: the period holds for the place in every kind. Set: for its membership in that kind only (Frick Madison in Art Museums, 2021 until 3 March 2024). Only on stood and closed periods; moves and goes with the membership (place_periods_of_membership).';
+COMMENT ON COLUMN place_periods.says IS 'What was so in the period: stood (the place itself stood), used (what it housed or was used for), closed (it could not be visited), held (an event took place there). The vocabulary is PERIOD_SAYS in @tyr/shared/lifetime. Only a stood period that ends takes the place, or its membership in the period''s kind, off today''s lists.';
+COMMENT ON COLUMN place_periods.ordinal IS 'The period''s place in time order among the place''s periods of the same kind (or none) that say the same, from 1, numbered by the writer.';
 COMMENT ON COLUMN place_periods.from_year IS 'The year the period began, signed as the Wikidata subset gives it from Wikidata''s JSON: 250 BC is -250, and there is no year zero. A day is a day of the proleptic Gregorian calendar. NULL where the start is not known.';
 COMMENT ON COLUMN place_periods.from_span IS 'How coarsely the year is known, where coarser than a year: decade, century or millennium; month and day are then NULL.';
 COMMENT ON COLUMN place_periods.from_circa IS 'The source dates the start approximately (Wikidata''s circa qualifier, or a curator''s about).';
@@ -3510,109 +3594,249 @@ COMMENT ON COLUMN place_periods.from_statement IS 'The Wikidata statement the st
 COMMENT ON COLUMN place_periods.ended IS 'Whether the period has an end. false: it still holds with no end in sight, and the until columns are NULL. true with a NULL until_year: it ended, and when is not known. A standing period or a use that has an end ended in the past; a closure or an occurrence may end on a day still ahead.';
 COMMENT ON COLUMN place_periods.until_year IS 'The year the period ended, numbered as from_year; NULL on an open period and on one that ended at a date not known.';
 COMMENT ON COLUMN place_periods.ending IS 'On a stood period that ended, how the place stopped standing, where the source says: destroyed, demolished, removed or collapsed.';
+COMMENT ON COLUMN place_periods.use_item IS 'The class or use a used period names, as its Wikidata item (Q32815, mosque, for Hagia Sophia 1453 to 1931); only on an answered row.';
 COMMENT ON COLUMN place_periods.what IS 'A curator''s words for a use (mosque, capital) or for why the place is closed; NULL on a period a run wrote.';
-COMMENT ON COLUMN place_periods.from_first IS 'The first day the start may be, as the count of days periodOf (@tyr/shared/lifetime) orders dates by; NULL where the start is not known. Written by the writer from that rule; a read as of a date compares it.';
-COMMENT ON COLUMN place_periods.until_last IS 'The last day the end may be, counted as from_first; NULL on an open period and on an end with no date.';
+COMMENT ON COLUMN place_periods.from_first IS 'The first day the start may be, as the count of days periodOf (@tyr/shared/lifetime) orders dates by; NULL where the start is not known. Held to date_first() by period_ok(); a read as of a date compares it.';
+COMMENT ON COLUMN place_periods.until_last IS 'The last day the end may be, counted as from_first; NULL on an open period and on an end with no date. Held to date_last() by period_ok().';
 COMMENT ON COLUMN place_periods.source_id IS 'The source whose view of the place the period was taken from; Curators (11) for a period a curator set.';
-COMMENT ON COLUMN place_periods.decided_by IS 'The curator who set the period; NULL for a period a run wrote.';
+COMMENT ON COLUMN place_periods.decided_by IS 'The curator who set the period; NULL for a period a run wrote, and once the account is gone.';
+COMMENT ON COLUMN place_periods.decided_at IS 'When a curator set the period; NULL where a run wrote it. Required on a curator''s row and on a use that names what it was.';
 
 CREATE TABLE IF NOT EXISTS record_periods (
-    record_id INTEGER NOT NULL REFERENCES source_records(id) ON DELETE CASCADE,
-    says VARCHAR(8) NOT NULL CHECK (says IN ('stood', 'used', 'closed', 'held')),
-    ordinal SMALLINT NOT NULL CHECK (ordinal > 0),
+    record_id INTEGER NOT NULL CONSTRAINT record_periods_record_id_fkey REFERENCES source_records(id) ON DELETE CASCADE,
+    of_membership BOOLEAN NOT NULL DEFAULT false,
+    says VARCHAR(8) NOT NULL CONSTRAINT record_periods_says_check CHECK (says IN ('stood', 'used', 'closed', 'held')),
+    ordinal SMALLINT NOT NULL CONSTRAINT record_periods_ordinal_check CHECK (ordinal > 0),
     from_year INTEGER,
     from_month SMALLINT,
     from_day SMALLINT,
-    from_span VARCHAR(10) CHECK (from_span IN ('decade', 'century', 'millennium')),
+    from_span VARCHAR(10) CONSTRAINT record_periods_from_span_check CHECK (from_span IN ('decade', 'century', 'millennium')),
     from_circa BOOLEAN NOT NULL DEFAULT false,
-    from_property VARCHAR(12) CHECK (from_property ~ '^P[1-9][0-9]*$'),
-    from_statement TEXT CHECK (source_id_fits_scheme('wikidata-statement', from_statement)),
+    from_property VARCHAR(12) CONSTRAINT record_periods_from_property_check CHECK (from_property ~ '^P[1-9][0-9]*$'),
+    from_statement TEXT CONSTRAINT record_periods_from_statement_check CHECK (source_id_fits_scheme('wikidata-statement', from_statement)),
     ended BOOLEAN NOT NULL DEFAULT false,
     until_year INTEGER,
     until_month SMALLINT,
     until_day SMALLINT,
-    until_span VARCHAR(10) CHECK (until_span IN ('decade', 'century', 'millennium')),
+    until_span VARCHAR(10) CONSTRAINT record_periods_until_span_check CHECK (until_span IN ('decade', 'century', 'millennium')),
     until_circa BOOLEAN NOT NULL DEFAULT false,
-    until_property VARCHAR(12) CHECK (until_property ~ '^P[1-9][0-9]*$'),
-    until_statement TEXT CHECK (source_id_fits_scheme('wikidata-statement', until_statement)),
-    ending VARCHAR(12) CHECK (ending IN ('destroyed', 'demolished', 'removed', 'collapsed')),
+    until_property VARCHAR(12) CONSTRAINT record_periods_until_property_check CHECK (until_property ~ '^P[1-9][0-9]*$'),
+    until_statement TEXT CONSTRAINT record_periods_until_statement_check CHECK (source_id_fits_scheme('wikidata-statement', until_statement)),
+    ending VARCHAR(12) CONSTRAINT record_periods_ending_check CHECK (ending IN ('destroyed', 'demolished', 'removed', 'collapsed')),
+    use_item TEXT CONSTRAINT record_periods_use_item_check CHECK (source_id_fits_scheme('wikidata', use_item)),
     what TEXT,
     from_first INTEGER,
     until_last INTEGER,
-    PRIMARY KEY (record_id, says, ordinal),
+    refused_by INTEGER CONSTRAINT record_periods_refused_by_fkey REFERENCES users(id) ON DELETE SET NULL,
+    refused_at TIMESTAMPTZ,
+    read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT record_periods_pkey PRIMARY KEY (record_id, of_membership, says, ordinal),
     CONSTRAINT record_periods_period CHECK (period_ok(
         from_year, from_month, from_day, from_span, from_circa, ended,
         until_year, until_month, until_day, until_span, until_circa, from_first, until_last)),
     CONSTRAINT record_periods_ending_of_standing CHECK (ending IS NULL OR (says = 'stood' AND ended)),
-    CONSTRAINT record_periods_what_of_use CHECK (what IS NULL OR (says IN ('used', 'closed') AND btrim(what) <> ''))
+    CONSTRAINT record_periods_what_of_use CHECK (what IS NULL OR (says IN ('used', 'closed') AND btrim(what) <> '')),
+    CONSTRAINT record_periods_use_item_of_use CHECK (use_item IS NULL OR says = 'used'),
+    CONSTRAINT record_periods_membership_of_standing CHECK (NOT of_membership OR says IN ('stood', 'closed')),
+    CONSTRAINT record_periods_refused_pair CHECK (refused_by IS NULL OR refused_at IS NOT NULL)
 );
+CREATE INDEX IF NOT EXISTS idx_record_periods_refused ON record_periods (record_id) WHERE refused_at IS NOT NULL;
 
 COMMENT ON TABLE record_periods IS 'Each source''s view of a place''s periods (#2578, ADR-0217 decision 3, ADR-0084): the periods the record''s source last reported, in the shape of place_periods, written whole by the run beside the record''s reported_* columns. Written by db/placePeriodsWriter.ts alone (ADR-0069).';
-
--- Whether a place stands today: it holds no standing period, or one that is
--- open. A standing period never ends in the future (the writer refuses one),
--- so the answer does not go stale with the calendar. PL/pgSQL, so the two
--- probes keep their plans across the calls of a run.
-CREATE OR REPLACE FUNCTION place_stands(place_id INTEGER) RETURNS BOOLEAN AS $$
-BEGIN
-    RETURN NOT EXISTS (SELECT 1 FROM place_periods p WHERE p.experience_id = place_id AND p.says = 'stood')
-        OR EXISTS (SELECT 1 FROM place_periods p WHERE p.experience_id = place_id AND p.says = 'stood' AND NOT p.ended);
-END;
-$$ LANGUAGE plpgsql STABLE;
+COMMENT ON COLUMN record_periods.of_membership IS 'true: the period is the membership''s own standing in the record''s kind (the Art Museums record of Frick Madison reporting the museum closed on 3 March 2024); false: the place''s standing as a thing. Only on stood and closed periods.';
 
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS stands_today BOOLEAN NOT NULL DEFAULT true;
 CREATE INDEX IF NOT EXISTS idx_experiences_gone ON experiences(id) WHERE NOT stands_today;
-COMMENT ON COLUMN experiences.stands_today IS 'Derived from the place''s standing periods by derive_stands_today(): false once the place has stood periods and none is open, true otherwise. Written only by that trigger, and stands_today_is_derived() refuses any other value (ADR-0217 decision 5). No reader reads it yet: existence still hides a lost place.';
+COMMENT ON COLUMN experiences.stands_today IS 'Whether the place stands today: its stood periods that name no kind are none, or one is open and has begun (ADR-0217 decisions 2 and 5). Derived from place_periods by refresh_standing() and the standing sweep, and stands_today_is_derived() refuses any other value. A reader asks it through hideLostSql (db/readerPredicates.ts).';
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS stands_today BOOLEAN NOT NULL DEFAULT true;
+COMMENT ON COLUMN source_records.stands_today IS 'Whether the membership stands today: its place does, and its kind''s own stood periods are none or one is open and has begun (Frick Madison''s Art Museums membership, ended 3 March 2024: false). True on a record in a whole. Derived like experiences.stands_today and guarded by record_stands_is_derived(); a reader asks it through membershipStandsSql (db/membership.ts).';
 
--- Keep experiences.stands_today equal to what the place's standing periods
--- say, after every write to them. Only a stood period counts, and only its
--- being there and its being open, so a write to a use or a closure touches no
--- place. The row triggers of one statement all fire after it, so a list
--- written in one statement moves the column once at most.
-CREATE OR REPLACE FUNCTION derive_stands_today() RETURNS trigger AS $$
-DECLARE
-    was INTEGER;
-    now_of INTEGER;
-    stands BOOLEAN;
+-- The memberships a reader may be shown: admitted and passed, the predicate
+-- membershipAdmittedSql and membershipVisibleSql spell (db/membership.ts), so
+-- every reader-facing read finds a place's shown memberships here without
+-- reading the arrivals that wait for a curator (#2283). A gated pass adds those
+-- by the thousand, and a read that filtered them out after a scan grew with
+-- each one. Partial on the two terms a predicate can imply, never on the kind
+-- or the crowding, which are asked of other tables, nor on the standing, which
+-- a card and search do not ask; id is carried so a read's crowding check stays
+-- inside the index, and stands_today so a list's, a count's and the map's
+-- (membershipStandsSql) does too: without it every probe fetched the
+-- membership from the heap. Declared after stands_today, which it carries.
+CREATE INDEX IF NOT EXISTS idx_source_records_reader
+    ON source_records(experience_id, kind_id) INCLUDE (id, stands_today)
+    WHERE admission <> 'refused' AND curation_state <> 'pending';
+
+-- Whether a place stands on a day (ADR-0217 decisions 2 and 5): its stood rows
+-- that name no kind are none, or one of them is open and has begun on or
+-- before the day; and, where a kind is given, the same of that kind's own
+-- stood rows. Only 'stood' is read: a use (Göbekli Tepe, abandoned about
+-- 7000 BC), a closure or an occurrence never moves it. PL/pgSQL, so its probes
+-- keep their plans across the calls of a run.
+CREATE OR REPLACE FUNCTION stands_on_day(rec INTEGER, kind INTEGER, day INTEGER) RETURNS BOOLEAN AS $$
 BEGIN
-    IF TG_OP <> 'INSERT' THEN
-        IF OLD.says = 'stood' THEN
-            was := OLD.experience_id;
-        END IF;
+    RETURN (NOT EXISTS (SELECT 1 FROM place_periods p WHERE p.experience_id = rec AND p.kind_id IS NULL AND p.says = 'stood')
+            OR EXISTS (SELECT 1 FROM place_periods p WHERE p.experience_id = rec AND p.kind_id IS NULL AND p.says = 'stood'
+                         AND NOT p.ended AND (p.from_first IS NULL OR p.from_first <= day)))
+       AND (kind IS NULL
+            OR NOT EXISTS (SELECT 1 FROM place_periods p WHERE p.experience_id = rec AND p.kind_id = kind AND p.says = 'stood')
+            OR EXISTS (SELECT 1 FROM place_periods p WHERE p.experience_id = rec AND p.kind_id = kind AND p.says = 'stood'
+                         AND NOT p.ended AND (p.from_first IS NULL OR p.from_first <= day)));
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Rewrites the two derived standing columns of these places, only where they
+-- differ: experiences.stands_today from the stood rows that name no kind
+-- (Nelson's Pillar, stood until 8 March 1966: false), and each membership's
+-- source_records.stands_today from those and its kind's own (Frick Madison's
+-- Art Museums membership, ended 3 March 2024: false, while the building
+-- stands). A record in a whole (no kind) is true: standing is its place's own.
+CREATE OR REPLACE FUNCTION refresh_standing(recs INTEGER[]) RETURNS void AS $$
+DECLARE
+    today INTEGER := current_day_index();
+BEGIN
+    UPDATE experiences e
+       SET stands_today = x.stands
+      FROM (SELECT r AS id, stands_on_day(r, NULL, today) AS stands
+              FROM unnest(recs) AS r WHERE r IS NOT NULL) x
+     WHERE e.id = x.id AND e.stands_today IS DISTINCT FROM x.stands;
+
+    UPDATE source_records s
+       SET stands_today = x.stands
+      FROM (SELECT sr.id, CASE WHEN sr.kind_id IS NULL THEN true
+                               ELSE stands_on_day(sr.experience_id, sr.kind_id, today) END AS stands
+              FROM source_records sr
+             WHERE sr.experience_id = ANY (recs)) x
+     WHERE s.id = x.id AND s.stands_today IS DISTINCT FROM x.stands;
+END;
+$$ LANGUAGE plpgsql;
+
+-- After every write to place_periods, re-derives standing for the places whose
+-- stood rows changed. One trigger per event, since PostgreSQL refuses
+-- transition tables on a trigger with several events or a column list; the
+-- update keeps the rows whose place, kind, what they say, end or outer days
+-- changed, so a write of a use's words costs one join and no refresh. A merge
+-- moving a membership carries its kind's rows (ON UPDATE CASCADE from
+-- source_records) and re-derives both places.
+CREATE OR REPLACE FUNCTION place_periods_follow() RETURNS trigger AS $$
+DECLARE
+    stood_recs INTEGER[];
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        SELECT array_agg(DISTINCT experience_id) FILTER (WHERE says = 'stood') INTO stood_recs FROM new_periods;
+    ELSIF TG_OP = 'DELETE' THEN
+        SELECT array_agg(DISTINCT experience_id) FILTER (WHERE says = 'stood') INTO stood_recs FROM old_periods;
+    ELSE
+        WITH changed AS (
+            SELECT o.experience_id AS rec, o.says AS was, n.experience_id AS rec_now, n.says AS now_says
+              FROM old_periods o JOIN new_periods n ON n.id = o.id
+             WHERE (o.experience_id, o.kind_id, o.says, o.ended, o.from_first, o.until_last)
+                   IS DISTINCT FROM (n.experience_id, n.kind_id, n.says, n.ended, n.from_first, n.until_last))
+        SELECT array_agg(DISTINCT rec) INTO stood_recs
+          FROM (SELECT rec FROM changed WHERE was = 'stood'
+                UNION ALL
+                SELECT rec_now FROM changed WHERE now_says = 'stood') x;
     END IF;
-    IF TG_OP <> 'DELETE' THEN
-        IF NEW.says = 'stood' AND NEW.experience_id IS DISTINCT FROM was THEN
-            now_of := NEW.experience_id;
-        END IF;
-    END IF;
-    IF was IS NOT NULL THEN
-        stands := place_stands(was);
-        UPDATE experiences SET stands_today = stands WHERE id = was AND stands_today <> stands;
-    END IF;
-    IF now_of IS NOT NULL THEN
-        stands := place_stands(now_of);
-        UPDATE experiences SET stands_today = stands WHERE id = now_of AND stands_today <> stands;
+    IF stood_recs IS NOT NULL THEN
+        PERFORM refresh_standing(stood_recs);
     END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_derive_stands_today ON place_periods;
-CREATE TRIGGER trg_derive_stands_today
-    AFTER INSERT OR DELETE OR UPDATE OF ended, says, experience_id
-    ON place_periods
-    FOR EACH ROW EXECUTE FUNCTION derive_stands_today();
+DROP TRIGGER IF EXISTS trg_derive_standing_insert ON place_periods;
+CREATE TRIGGER trg_derive_standing_insert
+    AFTER INSERT ON place_periods
+    REFERENCING NEW TABLE AS new_periods
+    FOR EACH STATEMENT EXECUTE FUNCTION place_periods_follow();
+DROP TRIGGER IF EXISTS trg_derive_standing_update ON place_periods;
+CREATE TRIGGER trg_derive_standing_update
+    AFTER UPDATE ON place_periods
+    REFERENCING OLD TABLE AS old_periods NEW TABLE AS new_periods
+    FOR EACH STATEMENT EXECUTE FUNCTION place_periods_follow();
+DROP TRIGGER IF EXISTS trg_derive_standing_delete ON place_periods;
+CREATE TRIGGER trg_derive_standing_delete
+    AFTER DELETE ON place_periods
+    REFERENCING OLD TABLE AS old_periods
+    FOR EACH STATEMENT EXECUTE FUNCTION place_periods_follow();
+DROP FUNCTION IF EXISTS derive_stands_today();
 
--- stands_today is derived and never set: a new place holds no period and so
--- stands, and an update may only write what the periods say, which is what
--- derive_stands_today() writes. The two triggers fire after the row is
--- written, as every trigger on experiences does, and only for a statement that
--- names a value other than the one the row would hold anyway.
-CREATE OR REPLACE FUNCTION stands_today_is_derived() RETURNS trigger AS $$
+-- The writer stamps updated_at (db/placePeriodsWriter.ts, ADR-0069); a write
+-- that changes a row and leaves it unstamped is refused, so a period's last
+-- change is always dated. A membership moved by a merge or a separation
+-- carries its kind's rows by ON UPDATE CASCADE, which changes experience_id
+-- (and kind_id) alone: that is the move's, not a period's change, and passes.
+-- So does the deletion of the account that decided a period, whose
+-- ON DELETE SET NULL clears decided_by alone: the act outlives the account,
+-- and decided_at still dates it.
+CREATE OR REPLACE FUNCTION place_periods_stamped() RETURNS trigger AS $$
 BEGIN
-    IF NEW.stands_today IS DISTINCT FROM place_stands(NEW.id) THEN
+    IF (to_jsonb(NEW) - 'experience_id' - 'kind_id' - 'decided_by') IS DISTINCT FROM (to_jsonb(OLD) - 'experience_id' - 'kind_id' - 'decided_by')
+       OR (NEW.decided_by IS NOT NULL AND NEW.decided_by IS DISTINCT FROM OLD.decided_by) THEN
+        RAISE EXCEPTION 'place_periods row % changed without a new updated_at: the writer stamps it (placePeriodsWriter)',
+            NEW.id USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_place_periods_stamp ON place_periods;
+CREATE TRIGGER trg_place_periods_stamp
+    BEFORE UPDATE ON place_periods
+    FOR EACH ROW WHEN (OLD.updated_at = NEW.updated_at)
+    EXECUTE FUNCTION place_periods_stamped();
+
+-- A membership takes its standing when it is written or moved: Nelson's
+-- Pillar, gone since 1966, gaining a Monuments & memorials membership has it
+-- written false at once, not at the next period write. A record in a whole is
+-- true (standing is its place's own).
+CREATE OR REPLACE FUNCTION source_record_stands() RETURNS trigger AS $$
+BEGIN
+    NEW.stands_today := CASE WHEN NEW.kind_id IS NULL THEN true
+                             ELSE stands_on_day(NEW.experience_id, NEW.kind_id, current_day_index()) END;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_source_record_stands ON source_records;
+CREATE TRIGGER trg_source_record_stands
+    BEFORE INSERT OR UPDATE OF experience_id, kind_id ON source_records
+    FOR EACH ROW EXECUTE FUNCTION source_record_stands();
+
+-- source_records.stands_today is derived and never set (ADR-0217 decision 5):
+-- an update may write only what the periods say, which is what
+-- refresh_standing() and trg_source_record_stands write.
+CREATE OR REPLACE FUNCTION record_stands_is_derived() RETURNS trigger AS $$
+DECLARE
+    derived BOOLEAN := CASE WHEN NEW.kind_id IS NULL THEN true
+                            ELSE stands_on_day(NEW.experience_id, NEW.kind_id, current_day_index()) END;
+BEGIN
+    IF NEW.stands_today IS DISTINCT FROM derived THEN
+        RAISE EXCEPTION 'source_records.stands_today is derived from place_periods: record % says %',
+            NEW.id, derived USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_record_stands_is_derived ON source_records;
+CREATE TRIGGER trg_record_stands_is_derived
+    AFTER UPDATE OF stands_today ON source_records
+    FOR EACH ROW WHEN (OLD.stands_today IS DISTINCT FROM NEW.stands_today)
+    EXECUTE FUNCTION record_stands_is_derived();
+
+-- experiences.stands_today is derived and never set: a new place holds no
+-- period and so stands, and an update may only write what the periods say,
+-- which is what refresh_standing() writes. The two triggers fire after the row
+-- is written, as every trigger on experiences does, and only for a statement
+-- that names a value other than the one the row would hold anyway.
+CREATE OR REPLACE FUNCTION stands_today_is_derived() RETURNS trigger AS $$
+DECLARE
+    derived BOOLEAN := stands_on_day(NEW.id, NULL, current_day_index());
+BEGIN
+    IF NEW.stands_today IS DISTINCT FROM derived THEN
         RAISE EXCEPTION 'experiences.stands_today is derived from place_periods: the periods of place % say %',
-            NEW.id, place_stands(NEW.id) USING ERRCODE = 'check_violation';
+            NEW.id, derived USING ERRCODE = 'check_violation';
     END IF;
     RETURN NULL;
 END;
@@ -3629,6 +3853,34 @@ CREATE TRIGGER trg_stands_today_is_derived
     AFTER UPDATE OF stands_today
     ON experiences
     FOR EACH ROW WHEN (OLD.stands_today IS DISTINCT FROM NEW.stands_today) EXECUTE FUNCTION stands_today_is_derived();
+DROP FUNCTION IF EXISTS place_stands(INTEGER);
+
+-- A standing period may begin on a day still ahead (ADR-0217 decision 2: a
+-- place opens on its opening day), so the derived columns move on that day
+-- with no write to the periods. Run every hour by the backend's standing sweep
+-- (services/standingSweep.ts): re-derives every place with an open stood row
+-- that has begun (idx_place_periods_begins) while the place, or its
+-- membership in the row's kind, is still stored as not standing, only where a
+-- column differs. Read from what is stored rather than from a window of days,
+-- so an opening is caught however long ago its day passed: a sweep that
+-- missed an hour, a day or a year opens it at the next.
+CREATE OR REPLACE FUNCTION refresh_standing_due() RETURNS void AS $$
+DECLARE
+    today INTEGER := current_day_index();
+    due INTEGER[];
+BEGIN
+    SELECT array_agg(DISTINCT p.experience_id) INTO due
+      FROM place_periods p
+     WHERE p.says = 'stood' AND NOT p.ended AND p.from_first IS NOT NULL AND p.from_first <= today
+       AND CASE WHEN p.kind_id IS NULL
+                THEN EXISTS (SELECT 1 FROM experiences e WHERE e.id = p.experience_id AND NOT e.stands_today)
+                ELSE EXISTS (SELECT 1 FROM source_records s
+                              WHERE s.experience_id = p.experience_id AND s.kind_id = p.kind_id AND NOT s.stands_today) END;
+    IF due IS NOT NULL THEN
+        PERFORM refresh_standing(due);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.
@@ -8088,7 +8340,7 @@ CREATE TABLE IF NOT EXISTS membership_fame (
     measured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE membership_fame IS 'How well known a membership''s place is, for a kind that declares crowding_limit (ADR-0172): the readership year''s readers, the Wikivoyage editions that use its item and its Wikipedia editions, read from the workbench by the run''s after-step, so no reader touches the workbench.';
-COMMENT ON COLUMN membership_fame.score IS 'The mean of three percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(): readers a year, whether a Wikivoyage edition uses the item (a presence, not a count, ADR-0177), and Wikipedia editions. Null for a membership that is no candidate (refused, its place lost, or of a type its kind exempts, ADR-0179), or one measured since the last refresh.';
+COMMENT ON COLUMN membership_fame.score IS 'The mean of three percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(): readers a year, whether a Wikivoyage edition uses the item (a presence, not a count, ADR-0177), and Wikipedia editions. Null for a membership that is no candidate (refused, its place lost, it or its place not standing today, or of a type its kind exempts, ADR-0179), or one measured since the last refresh.';
 
 -- When each signal was last read, so the zero a membership is given before
 -- its first reading is never read as a measurement: the place run admits by
@@ -8195,7 +8447,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
    WHERE d.kind_id = of_kind AND d.type IS NOT DISTINCT FROM of_type AND d.id <> of_member
      AND de.location && crowding_box(at_point, within_km)
      AND ST_DWithin(de.location::geography, at_point::geography, within_km * 1000)
-     AND d.admission <> 'refused' AND de.existence <> 'lost'
+     AND d.admission <> 'refused' AND de.existence <> 'lost' AND de.stands_today AND d.stands_today
      AND d.crowding_pin IS DISTINCT FROM 'shadow'
      AND (d.crowding_pin = 'list' OR df.score > above_score)
      AND NOT place_shows_works(de.id)
@@ -8228,9 +8480,12 @@ $$;
 
 -- Recount the crowded-out memberships of every place within its kind's radius
 -- of `near`, or of the whole catalogue when `near` is null. A candidate is an
--- admitted membership of a kind that declares the rule, on a place that is
--- not lost and has a point, of a type the kind does not exempt;
--- db/membership.ts states the same set (membershipAdmittedSql, hideLostSql).
+-- admitted membership of a kind that declares the rule, standing in it today,
+-- on a place that is not lost, stands today and has a point, of a type the
+-- kind does not exempt; db/membership.ts states the same set
+-- (membershipAdmittedSql, membershipStandsSql, hideLostSql). Nelson's Pillar,
+-- gone since 1966, and Frick Madison in Art Museums, ended in 2024, take no
+-- slot of a standing neighbour.
 -- It is crowded out when a curator keeps it in the shadow, or when it has a
 -- score and crowding_better() reaches the limit, unless a curator keeps it in
 -- the list (ADR-0180).
@@ -8259,7 +8514,8 @@ BEGIN
     JOIN experiences ce ON ce.id = c.experience_id
     LEFT JOIN membership_fame cf ON cf.membership_id = c.id
     CROSS JOIN LATERAL crowding_better(c.kind_id, c.type, c.id, ce.location, k.crowding_radius_km, cf.score) n
-   WHERE c.admission <> 'refused' AND ce.existence <> 'lost' AND ce.location IS NOT NULL
+   WHERE c.admission <> 'refused' AND ce.existence <> 'lost' AND ce.stands_today AND c.stands_today
+     AND ce.location IS NOT NULL
      AND (c.type IS NULL OR c.type <> ALL(k.crowding_exempt_types))
      AND (near IS NULL
           OR (ce.location && crowding_box(near, k.crowding_radius_km)
@@ -8284,7 +8540,8 @@ BEGIN
       JOIN source_records m ON m.id = f.membership_id
       JOIN experience_kinds k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
       JOIN experiences e ON e.id = m.experience_id
-     WHERE m.admission <> 'refused' AND e.existence <> 'lost' AND e.location IS NOT NULL
+     WHERE m.admission <> 'refused' AND e.existence <> 'lost' AND e.stands_today AND m.stands_today
+       AND e.location IS NOT NULL
        AND (m.type IS NULL OR m.type <> ALL(k.crowding_exempt_types))
   ), scored AS (
     SELECT membership_id,
@@ -8303,7 +8560,9 @@ BEGIN
 END $$;
 
 -- A membership's candidacy or a curator's pin on it changes: recount around
--- its place. An insert changes nothing, since a membership has no score until
+-- its place. Its standing is among its candidacy, and refresh_standing()
+-- writes a place's standing into every membership of it in the same
+-- statement, so a place's opening or end is recounted here. An insert changes nothing, since a membership has no score until
 -- the next refresh and no pin until a curator answers.
 -- Separate functions per table, so neither reads a field the other's row lacks.
 -- The triggers are deferred to the commit: the recount's lock is then held for
@@ -8331,12 +8590,12 @@ END $$;
 
 DROP TRIGGER IF EXISTS crowding_follows_membership_change ON source_records;
 CREATE CONSTRAINT TRIGGER crowding_follows_membership_change
-  AFTER UPDATE OF admission, type, kind_id, experience_id, crowding_pin ON source_records
+  AFTER UPDATE OF admission, type, kind_id, experience_id, crowding_pin, stands_today ON source_records
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
   WHEN (OLD.admission IS DISTINCT FROM NEW.admission OR OLD.type IS DISTINCT FROM NEW.type
         OR OLD.kind_id IS DISTINCT FROM NEW.kind_id OR OLD.experience_id IS DISTINCT FROM NEW.experience_id
-        OR OLD.crowding_pin IS DISTINCT FROM NEW.crowding_pin)
+        OR OLD.crowding_pin IS DISTINCT FROM NEW.crowding_pin OR OLD.stands_today IS DISTINCT FROM NEW.stands_today)
   EXECUTE FUNCTION crowding_follows_membership();
 
 DROP TRIGGER IF EXISTS crowding_follows_membership_delete ON source_records;
@@ -8440,60 +8699,16 @@ CREATE CONSTRAINT TRIGGER crowding_follows_work_change
 -- The clean catalogue model, its additive half (#2634; ADR-0217, ADR-0218,
 -- ADR-0219, ADR-0224)
 -- =============================================================================
--- What arrives before the code that reads it: the day arithmetic, every new
+-- What arrives before the code that reads it: every new
 -- column a table of today gains that today's code neither reads nor has to
 -- write, and the new tables that hang only on tables of today, with the
 -- triggers that guard their own rows. db/migrations/263 to 266 bring a
 -- database that holds the catalogue here and fill what today's rows already
 -- state. What renames, retypes, tightens or drops a column today's code reads
 -- or writes lands with that code, slice by slice, and moves its declaration
--- into its table's own section as it does.
-
--- The day arithmetic (263) ---------------------------------------------------
-
--- The day index periodOf orders days by (@tyr/shared/lifetime dayIndex):
--- (year * 12 + month - 1) * 31 + day - 1.
-CREATE OR REPLACE FUNCTION day_index(y INTEGER, m INTEGER, d INTEGER) RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT (y * 12 + m - 1) * 31 + d - 1 $$;
-
--- The first and the last day a date may be: periodOf's twins (@tyr/shared/lifetime).
--- A day is itself, a month all its days (day 31 for every month, as dayIndex counts), a
--- year all its days, a span every year within its width either side ("1960s" stored as 1960 'decade' covers
--- 1951 → 1969, as periodOf reads it). NULL with no year.
-CREATE OR REPLACE FUNCTION date_first(y INTEGER, m SMALLINT, d SMALLINT, span TEXT) RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$
-    SELECT CASE WHEN y IS NULL THEN NULL
-                WHEN span IS NOT NULL THEN day_index(y - (CASE span WHEN 'decade' THEN 10 WHEN 'century' THEN 100 ELSE 1000 END) + 1, 1, 1)
-                WHEN m IS NULL THEN day_index(y, 1, 1)
-                WHEN d IS NULL THEN day_index(y, m, 1)
-                ELSE day_index(y, m, d) END
-$$;
-
-CREATE OR REPLACE FUNCTION date_last(y INTEGER, m SMALLINT, d SMALLINT, span TEXT) RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$
-    SELECT CASE WHEN y IS NULL THEN NULL
-                WHEN span IS NOT NULL THEN day_index(y + (CASE span WHEN 'decade' THEN 10 WHEN 'century' THEN 100 ELSE 1000 END) - 1, 12, 31)
-                WHEN m IS NULL THEN day_index(y, 12, 31)
-                WHEN d IS NULL THEN day_index(y, m, 31)
-                ELSE day_index(y, m, d) END
-$$;
-
--- Today as the latest calendar day on Earth (UTC+14, latestDayOnEarth): a place that opens
--- on 1 June stands from the first moment it is 1 June anywhere.
-CREATE OR REPLACE FUNCTION current_day_index() RETURNS INTEGER LANGUAGE sql STABLE AS $$
-    SELECT day_index(EXTRACT(year FROM t)::int, EXTRACT(month FROM t)::int, EXTRACT(day FROM t)::int)
-      FROM (SELECT (now() AT TIME ZONE 'Etc/GMT-14')::date AS t) x
-$$;
-
--- Whether a period may cover any day of [first_day, last_day]: a date that does not settle the
--- question counts as covered (ADR-0217 d6). An unknown start may be any day; an end with no date
--- may be any day after the start.
-CREATE OR REPLACE FUNCTION period_meets(p_from_first INTEGER, p_ended BOOLEAN, p_until_last INTEGER,
-                                        first_day INTEGER, last_day INTEGER) RETURNS BOOLEAN
-LANGUAGE sql IMMUTABLE AS $$
-    SELECT (p_from_first IS NULL OR p_from_first <= last_day)
-       AND (NOT p_ended OR p_until_last IS NULL OR p_until_last >= first_day);
-$$;
+-- into its table's own section as it does: the day arithmetic and the period
+-- block are in "Helper: approximate dates" at the top, and the periods' own
+-- columns in "Time is held as periods" (#1719).
 
 -- The new columns of today's tables (264) -------------------------------------
 
@@ -8591,18 +8806,6 @@ ALTER TABLE experiences ADD COLUMN IF NOT EXISTS wikipedia_url character varying
 
 ALTER TABLE membership_fame ADD COLUMN IF NOT EXISTS atlas_obscura boolean;
 
-ALTER TABLE place_periods ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now() NOT NULL;
-ALTER TABLE place_periods ADD COLUMN IF NOT EXISTS decided_at timestamp with time zone;
-ALTER TABLE place_periods ADD COLUMN IF NOT EXISTS id serial;
-ALTER TABLE place_periods ADD COLUMN IF NOT EXISTS kind_id integer;
-ALTER TABLE place_periods ADD COLUMN IF NOT EXISTS use_item text;
-
-ALTER TABLE record_periods ADD COLUMN IF NOT EXISTS of_membership boolean DEFAULT false NOT NULL;
-ALTER TABLE record_periods ADD COLUMN IF NOT EXISTS read_at timestamp with time zone DEFAULT now() NOT NULL;
-ALTER TABLE record_periods ADD COLUMN IF NOT EXISTS refused_at timestamp with time zone;
-ALTER TABLE record_periods ADD COLUMN IF NOT EXISTS refused_by integer;
-ALTER TABLE record_periods ADD COLUMN IF NOT EXISTS use_item text;
-
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS counts boolean DEFAULT false NOT NULL;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS ended boolean DEFAULT false NOT NULL;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS from_circa boolean DEFAULT false NOT NULL;
@@ -8636,7 +8839,6 @@ ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_makers jsonb;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_region_codes character(3)[];
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_region_items character varying(20)[];
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_region_labels text[];
-ALTER TABLE source_records ADD COLUMN IF NOT EXISTS stands_today boolean DEFAULT true NOT NULL;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS tier character varying(12);
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS visitor_finds character varying(10) DEFAULT 'unknown'::character varying NOT NULL;
 ALTER TABLE source_records ADD COLUMN IF NOT EXISTS visitor_finds_decided_at timestamp with time zone;
@@ -8665,8 +8867,6 @@ ALTER TABLE treasures ADD COLUMN IF NOT EXISTS shown_nowhere_by integer;
 ALTER TABLE treasures ADD COLUMN IF NOT EXISTS version_of_item character varying(20);
 
 ALTER TABLE user_visit_trips ADD COLUMN IF NOT EXISTS at_link_id integer;
-ALTER TABLE user_visit_trips ADD COLUMN IF NOT EXISTS first_day integer;
-ALTER TABLE user_visit_trips ADD COLUMN IF NOT EXISTS last_day integer;
 ALTER TABLE user_visit_trips ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now() NOT NULL;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at timestamp with time zone;
@@ -8844,15 +9044,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_sync_logs_quota_remaining_check' AND conrelid = 'experience_sync_logs'::regclass) THEN
     ALTER TABLE experience_sync_logs ADD CONSTRAINT experience_sync_logs_quota_remaining_check CHECK ((quota_remaining >= 0));
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'place_periods_use_item_check' AND conrelid = 'place_periods'::regclass) THEN
-    ALTER TABLE place_periods ADD CONSTRAINT place_periods_use_item_check CHECK (source_id_fits_scheme('wikidata'::text, use_item));
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'record_periods_use_item_check' AND conrelid = 'record_periods'::regclass) THEN
-    ALTER TABLE record_periods ADD CONSTRAINT record_periods_use_item_check CHECK (source_id_fits_scheme('wikidata'::text, use_item));
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'record_periods_refused_pair' AND conrelid = 'record_periods'::regclass) THEN
-    ALTER TABLE record_periods ADD CONSTRAINT record_periods_refused_pair CHECK (((refused_by IS NULL) OR (refused_at IS NOT NULL)));
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_curation_log_reason_text_reason_code_check' AND conrelid = 'experience_curation_log'::regclass) THEN
     ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_reason_text_reason_code_check CHECK (((reason_text IS NULL) OR (reason_code IS NOT NULL)));
   END IF;
@@ -8943,18 +9134,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_visit_trips_id_visit_id_key' AND conrelid = 'user_visit_trips'::regclass) THEN
     ALTER TABLE user_visit_trips ADD CONSTRAINT user_visit_trips_id_visit_id_key UNIQUE (id, visit_id);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'place_periods_use_item_of_use' AND conrelid = 'place_periods'::regclass) THEN
-    ALTER TABLE place_periods ADD CONSTRAINT place_periods_use_item_of_use CHECK (((use_item IS NULL) OR ((says)::text = 'used'::text)));
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'place_periods_kind_of_standing' AND conrelid = 'place_periods'::regclass) THEN
-    ALTER TABLE place_periods ADD CONSTRAINT place_periods_kind_of_standing CHECK (((kind_id IS NULL) OR (says IN ('stood', 'closed'))));
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'record_periods_use_item_of_use' AND conrelid = 'record_periods'::regclass) THEN
-    ALTER TABLE record_periods ADD CONSTRAINT record_periods_use_item_of_use CHECK (((use_item IS NULL) OR ((says)::text = 'used'::text)));
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'record_periods_membership_of_standing' AND conrelid = 'record_periods'::regclass) THEN
-    ALTER TABLE record_periods ADD CONSTRAINT record_periods_membership_of_standing CHECK (((NOT of_membership) OR (says IN ('stood', 'closed'))));
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'source_records_visitor_finds_source_id_fkey' AND conrelid = 'source_records'::regclass) THEN
     ALTER TABLE source_records ADD CONSTRAINT source_records_visitor_finds_source_id_fkey FOREIGN KEY (visitor_finds_source_id) REFERENCES experience_sources(id);
   END IF;
@@ -8981,12 +9160,6 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_curation_log_kind_id_fkey' AND conrelid = 'experience_curation_log'::regclass) THEN
     ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_kind_id_fkey FOREIGN KEY (kind_id) REFERENCES experience_kinds(id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'record_periods_refused_by_fkey' AND conrelid = 'record_periods'::regclass) THEN
-    ALTER TABLE record_periods ADD CONSTRAINT record_periods_refused_by_fkey FOREIGN KEY (refused_by) REFERENCES users(id) ON DELETE SET NULL;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'place_periods_kind_id_fkey' AND conrelid = 'place_periods'::regclass) THEN
-    ALTER TABLE place_periods ADD CONSTRAINT place_periods_kind_id_fkey FOREIGN KEY (kind_id) REFERENCES experience_kinds(id);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_curation_log_sync_log_id_fkey' AND conrelid = 'experience_curation_log'::regclass) THEN
     ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_sync_log_id_fkey FOREIGN KEY (sync_log_id) REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
@@ -9061,11 +9234,6 @@ CREATE INDEX IF NOT EXISTS idx_experiences_path ON experiences USING gist (path)
 CREATE INDEX IF NOT EXISTS idx_experiences_pin ON experiences USING gist (pin) WHERE (pin IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_experiences_shape_pinned_by ON experiences USING btree (shape_pinned_by) WHERE (shape_pinned_by IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_experiences_shown_by_parts ON experiences USING btree (id) WHERE ((shape)::text = 'none'::text);
-CREATE INDEX IF NOT EXISTS idx_place_periods_begins ON place_periods USING btree (from_first) WHERE (((says)::text = 'stood'::text) AND (NOT ended) AND (from_first IS NOT NULL));
-CREATE INDEX IF NOT EXISTS idx_place_periods_closures ON place_periods USING btree (experience_id) WHERE ((says)::text = 'closed'::text);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_place_periods_open_standing ON place_periods USING btree (experience_id, kind_id) NULLS NOT DISTINCT WHERE (((says)::text = 'stood'::text) AND (NOT ended));
-CREATE UNIQUE INDEX IF NOT EXISTS place_periods_order ON place_periods USING btree (experience_id, kind_id, says, ordinal) NULLS NOT DISTINCT;
-CREATE INDEX IF NOT EXISTS idx_record_periods_refused ON record_periods USING btree (record_id) WHERE (refused_at IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_ris_source_url ON region_import_state USING btree (source_url) WHERE (source_url IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_regions_counts ON regions USING btree (world_view_id) WHERE counts;
 CREATE INDEX IF NOT EXISTS idx_regions_name_trgm ON regions USING gin (name gin_trgm_ops);

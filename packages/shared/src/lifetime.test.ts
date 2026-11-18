@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compareApproximate } from './approximateDates.js';
 import {
-  comparePlaceDates, isValidPlaceDate, julianToGregorian, latestDayOnEarth, outerDaysOf, periodOf, periodsFault, samePlaceDate, standsBy,
+  comparePlaceDates, FURTHEST_YEARS_AHEAD, isValidPlaceDate, julianToGregorian, latestDayOnEarth, outerDaysOf, periodOf, periodsFault, samePlaceDate, standsBy,
   type PlaceDate, type PlacePeriod,
 } from './lifetime.js';
 
@@ -121,11 +121,17 @@ describe('a period of a place (#2578, ADR-0217)', () => {
   // Nelson's Pillar in Dublin: 1809 to 8 March 1966.
   const PILLAR = [ended(date(1809), date(1966, { month: 3, day: 8 }))];
 
-  it('stands with no standing period or an open one, and not with only ended ones', () => {
-    expect(standsBy([])).toBe(true);
-    expect(standsBy(CATHEDRAL)).toBe(true);
-    expect(standsBy(PILLAR)).toBe(false);
-    expect(standsBy([ended(null, null)])).toBe(false);
+  it('stands with no standing period or an open one that has begun, and not with only ended ones', () => {
+    expect(standsBy([], TODAY)).toBe(true);
+    expect(standsBy(CATHEDRAL, TODAY)).toBe(true);
+    expect(standsBy(PILLAR, TODAY)).toBe(false);
+    expect(standsBy([ended(null, null)], TODAY)).toBe(false);
+    expect(standsBy([open(null)], TODAY)).toBe(true);
+    // A museum opening on 1 May 2027 does not stand yet, and stands from that day.
+    const opening = [open(date(2027, { month: 5, day: 1 }))];
+    expect(standsBy(opening, TODAY)).toBe(false);
+    expect(standsBy(opening, { year: 2027, month: 4, day: 30 })).toBe(false);
+    expect(standsBy(opening, { year: 2027, month: 5, day: 1 })).toBe(true);
   });
 
   it('keeps the first day its start may be and the last day its end may be', () => {
@@ -187,7 +193,7 @@ describe('a period of a place (#2578, ADR-0217)', () => {
     expect(periodsFault('used', [ended(null, date(0))], TODAY)).toBe('its end is not a date');
   });
 
-  it('refuses a standing period or a use in the future, and lets a closure and an occurrence lie ahead', () => {
+  it('refuses a standing period that ends ahead or a use in the future, and lets a closure and an occurrence lie ahead', () => {
     expect(periodsFault('stood', [ended(date(1809), date(2026, { month: 12, day: 25 }))], TODAY)).toBe('it lies in the future');
     expect(periodsFault('stood', [ended(date(1809), date(2026))], TODAY)).toBeNull();
     expect(periodsFault('used', [open(date(2027))], TODAY)).toBe('its start is not a date');
@@ -196,5 +202,16 @@ describe('a period of a place (#2578, ADR-0217)', () => {
     // Holy Week in Seville, 2027.
     expect(periodsFault('held', [ended(date(2027, { month: 3, day: 21 }), date(2027, { month: 3, day: 28 }))], TODAY)).toBeNull();
     expect(periodsFault('closed', [ended(date(2023), date(20227))], TODAY)).toBe('its end is not a date');
+  });
+
+  it('lets a standing period begin on a day still ahead, open, and refuses one that has ended or begins too far ahead (ADR-0217 decision 2)', () => {
+    // A place whose opening day is known stands from that day: tomorrow, or a tower opening in 2030.
+    expect(periodsFault('stood', [open(date(2026, { month: 11, day: 17 }))], TODAY)).toBeNull();
+    expect(periodsFault('stood', [open(date(2030))], TODAY)).toBeNull();
+    // The Cathedral of Christ the Saviour, had its rebuilding been dated ahead: the gap ends on that day.
+    expect(periodsFault('stood', [ended(date(1883), date(1931, { month: 12, day: 5 })), open(date(2030))], TODAY)).toBeNull();
+    expect(periodsFault('stood', [ended(date(2030), null)], TODAY)).toBe('it begins on a day still ahead and has ended');
+    expect(periodsFault('stood', [open(date(2026 + FURTHEST_YEARS_AHEAD + 1))], TODAY)).toBe('its start is not a date');
+    expect(periodsFault('used', [open(date(2026, { month: 11, day: 17 }))], TODAY)).toBe('it lies in the future');
   });
 });

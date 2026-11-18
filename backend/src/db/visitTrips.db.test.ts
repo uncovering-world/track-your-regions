@@ -147,7 +147,9 @@ describe("a visit's trips (#2120)", () => {
   it('takes a trip up to the 365th, and refuses the next in words', async () => {
     const { trip } = await add(travellerId, date(2000));
     await pool.query(
-      `INSERT INTO user_visit_trips (visit_id, year) SELECT visit_id, 2001 FROM user_visit_trips, generate_series(1, $2::int)
+      `INSERT INTO user_visit_trips (visit_id, year, first_day, last_day)
+       SELECT visit_id, 2001, date_first(2001, NULL, NULL, NULL), date_last(2001, NULL, NULL, NULL)
+         FROM user_visit_trips, generate_series(1, $2::int)
         WHERE id = $1`,
       [trip.id, TRIPS_PER_VISIT - 2],
     );
@@ -159,7 +161,37 @@ describe("a visit's trips (#2120)", () => {
 
   it('refuses a day the month does not have', async () => {
     const { trip } = await add(travellerId, date(2023, 2));
-    await expect(pool.query('UPDATE user_visit_trips SET day = 29 WHERE id = $1', [trip.id])).rejects.toThrow();
+    await expect(pool.query(
+      'UPDATE user_visit_trips SET day = 29, first_day = date_first(2023, 2::smallint, 29::smallint, NULL), last_day = date_last(2023, 2::smallint, 29::smallint, NULL) WHERE id = $1',
+      [trip.id],
+    )).rejects.toThrow(/date field value out of range/);
+  });
+
+  it('writes beside every date the days it may be, and the schema holds them to it (#1719)', async () => {
+    const days = async () => (await pool.query<{ year: number | null; month: number | null; day: number | null; first: number | null; last: number | null }>(
+      `SELECT t.year, t.month, t.day, t.first_day - day_index(t.year, COALESCE(t.month, 1), COALESCE(t.day, 1)) AS first,
+              t.last_day - day_index(t.year, COALESCE(t.month, 12), COALESCE(t.day, 31)) AS last
+         FROM user_visit_trips t JOIN user_visited_experiences v ON v.id = t.visit_id
+        WHERE v.experience_id = $1 ORDER BY t.id`, [UFFIZI],
+    )).rows;
+    // March 2022 is 1 to 31 March, 2015 the whole year, 14 November 2026 that day; a trip with no date has none.
+    const march = await add(travellerId, date(2022, 3));
+    await add(travellerId, date(2015));
+    await add(travellerId, date(2026, 11, 14));
+    const undated = await add(travellerId, date(null));
+    expect(await days()).toEqual([
+      { year: 2022, month: 3, day: null, first: 0, last: 0 },
+      { year: 2015, month: null, day: null, first: 0, last: 0 },
+      { year: 2026, month: 11, day: 14, first: 0, last: 0 },
+      { year: null, month: null, day: null, first: null, last: null },
+    ]);
+    // A change of date moves them, one trip or several at once.
+    await changeTrip({ params: { tripId: march.trip.id }, body: date(2022, 3, 8), caller: caller(travellerId) });
+    await changeTrips({ body: { trips: [{ id: undated.trip.id, date: date(1999) }] }, caller: caller(travellerId) });
+    expect((await days()).map(({ first, last }) => [first, last])).toEqual([[0, 0], [0, 0], [0, 0], [0, 0]]);
+    // A date written without its days, or with another's, is refused.
+    await expect(pool.query('UPDATE user_visit_trips SET year = 1998 WHERE id = $1', [undated.trip.id]))
+      .rejects.toThrow(/user_visit_trips_outer_days/);
   });
 
   it('gives the untick its trips back, and its Undo restores the visit with them', async () => {

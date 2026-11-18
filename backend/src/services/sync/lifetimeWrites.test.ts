@@ -195,6 +195,20 @@ describe('the gate over a place\'s periods (#2578)', () => {
     });
   });
 
+  it('asks an opening on a day still ahead, which takes the place off today\'s lists until that day (#1719)', () => {
+    // A catalogued museum with no standing period whose item gains P1619, official opening, 1 May 2027.
+    const TODAY = { year: 2026, month: 11, day: 16 };
+    const opening = [open(on(2027, { month: 5, day: 1, property: 'P1619' }))];
+    expect(decideLifetime({}, { stood: opening }, gate(), TODAY)).toEqual({ write: {}, heldBack: ['stood'], changes: [] });
+    // On a place no reader sees yet it is written, as a change and not as a fill.
+    expect(decideLifetime({}, { stood: opening }, gate({ held: false }), TODAY).changes)
+      .toMatchObject([{ field: 'stood', new: opening }]);
+    expect(decideLifetime({}, { stood: opening }, gate({ held: false }), TODAY).changes[0]).not.toHaveProperty('passedTheGate');
+    // From its opening day the same view is a fill.
+    expect(decideLifetime({}, { stood: opening }, gate(), { year: 2027, month: 5, day: 1 }).changes)
+      .toMatchObject([{ field: 'stood', passedTheGate: 'first-date' }]);
+  });
+
   it('counts an object whose only write is a period as updated', () => {
     const unchanged = { changeType: 'unchanged' as const, changedFields: [], significance: null, curatedConflicts: [], heldFields: [] };
     const decision = decideLifetime({}, { stood: SINCE_1883 }, gate());

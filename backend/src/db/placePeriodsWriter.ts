@@ -16,12 +16,26 @@
  * `@tyr/shared/lifetime`) is asked before anything is written: the schema's
  * CHECK holds the shape of one period, and the rule adds what a CHECK cannot
  * say plainly, the days a month has, the order of a list, that standing
- * periods do not overlap and that none lies in the future. The outer days
+ * periods do not overlap and that none ends in the future (one may begin
+ * there, open: a place opens on its opening day). The outer days
  * beside each period (`from_first`, `until_last`) are written here from
  * `outerDaysOf`, the one statement of that rule.
  *
- * `experiences.stands_today` is not written here or anywhere: a trigger
- * derives it from the standing periods this module writes.
+ * A list may hold for the place in every kind, or for its membership in one
+ * kind only (`kindId`): Frick Madison was an art museum from 2021 until
+ * 3 March 2024 while the building stands, so the period that ended is its Art
+ * Museums membership's. Only a standing period or a closure names a kind, and
+ * the kind must be one the place holds a membership in (the schema's
+ * `place_periods_of_membership`).
+ *
+ * A curator's list is a decided one: it carries `decided_at` beside
+ * `decided_by`, as the schema requires of every row of the Curators source.
+ * Every write that changes a row stamps `updated_at`, which the schema
+ * requires too (`trg_place_periods_stamp`).
+ *
+ * `experiences.stands_today` and `source_records.stands_today` are not written
+ * here or anywhere: triggers derive them from the standing periods this module
+ * writes.
  */
 
 import type { PoolClient } from 'pg';
@@ -30,6 +44,7 @@ import {
   type PeriodSays, type PlaceDate, type PlaceEnding,
 } from '@tyr/shared/lifetime';
 import type { LockedExperience } from './experienceWriter.js';
+import { CURATOR_SOURCE_ID } from './membership.js';
 
 /** One end of a period as a source states it: the date, and the statement it was read from. */
 export interface SourcedDate extends PlaceDate {
@@ -59,6 +74,9 @@ export interface PeriodsBy {
   /** The curator who set them, or null for a run's. */
   decidedBy: number | null;
 }
+
+/** What may name a kind: a standing period and a closure (the schema's `place_periods_kind_of_standing`). */
+const OF_A_KIND: readonly PeriodSays[] = ['stood', 'closed'];
 
 /** A source's whole view of a place's periods: each list it reports, by what it says. */
 export type RecordPeriods = Partial<Record<PeriodSays, readonly SourcedPeriod[]>>;
@@ -119,11 +137,12 @@ function rowsOf(says: PeriodSays, periods: readonly SourcedPeriod[]): Record<str
 }
 
 /**
- * Write the place's periods that say `says`, replacing every one it held of
- * them: an empty list takes them off the place. The periods past the new
- * list's length go first and the rest are written in order, so the one open
- * standing period a place may hold (`idx_place_periods_standing`) is never
- * two on the way. A period written as it stands is not rewritten.
+ * Write the place's periods that say `says`, for every kind or for its
+ * membership in `kindId`, replacing every one it held of them: an empty list
+ * takes them off. The periods past the new list's length go first and the rest
+ * are written in order, so the one open standing period a place may hold per
+ * kind (`idx_place_periods_open_standing`) is never two on the way. A period
+ * written as it stands is not rewritten.
  */
 export async function writePlacePeriods(
   client: PoolClient,
@@ -131,55 +150,71 @@ export async function writePlacePeriods(
   says: PeriodSays,
   periods: readonly SourcedPeriod[],
   by: PeriodsBy,
+  kindId: number | null = null,
 ): Promise<void> {
+  if (kindId !== null && !OF_A_KIND.includes(says)) {
+    throw new RangeError(`placePeriodsWriter: only a standing period or a closure holds for one kind, not one a place ${says}`);
+  }
   const rows = rowsOf(says, checked(says, periods));
-  await client.query('DELETE FROM place_periods WHERE experience_id = $1 AND says = $2 AND ordinal > $3', [lock.id, says, rows.length]);
-  if (rows.length === 0) return;
   await client.query(
-    `INSERT INTO place_periods (experience_id, says, ordinal, ${COLUMN_NAMES.join(', ')}, source_id, decided_by)
-     SELECT $1, p.says, p.ordinal, ${columnsOf('p')}, $3, $4
+    'DELETE FROM place_periods WHERE experience_id = $1 AND kind_id IS NOT DISTINCT FROM $2 AND says = $3 AND ordinal > $4',
+    [lock.id, kindId, says, rows.length],
+  );
+  if (rows.length === 0) return;
+  const decided = by.decidedBy !== null || by.sourceId === CURATOR_SOURCE_ID;
+  await client.query(
+    `INSERT INTO place_periods (experience_id, kind_id, says, ordinal, ${COLUMN_NAMES.join(', ')}, source_id, decided_by, decided_at)
+     SELECT $1, $5::int, p.says, p.ordinal, ${columnsOf('p')}, $3, $4, CASE WHEN $6::boolean THEN clock_timestamp() END
        FROM ${recordset('$2')}
       ORDER BY p.ordinal
-     ON CONFLICT (experience_id, says, ordinal) DO UPDATE
+     ON CONFLICT (experience_id, kind_id, says, ordinal) DO UPDATE
         SET ${SET_FROM_EXCLUDED},
-            source_id = EXCLUDED.source_id, decided_by = EXCLUDED.decided_by, updated_at = NOW()
+            source_id = EXCLUDED.source_id, decided_by = EXCLUDED.decided_by, decided_at = EXCLUDED.decided_at,
+            updated_at = clock_timestamp()
       WHERE ${differs('place_periods')}
          OR (place_periods.source_id, place_periods.decided_by) IS DISTINCT FROM (EXCLUDED.source_id, EXCLUDED.decided_by)`,
-    [lock.id, JSON.stringify(rows), by.sourceId, by.decidedBy],
+    [lock.id, JSON.stringify(rows), by.sourceId, by.decidedBy, kindId, decided],
   );
 }
 
 /**
  * Write a record's whole view of the place's periods, as the run writes its
  * `reported_*` columns: every list it reports, and nothing of what it reports
- * none for. The record must be one of the locked place's. Every list is
- * checked before anything is written, so a view with one list the rule
- * refuses leaves the record's old view as it stood; a view written as it
- * stands rewrites no row, as on every run that reads what the last one read.
+ * none for. `ofMembership` says whose standing the view is: the place's as a
+ * thing, or the membership's own in the record's kind (the Art Museums record
+ * of Frick Madison reporting the museum closed), each written whole on its
+ * own. The record must be one of the locked place's. Every list is checked
+ * before anything is written, so a view with one list the rule refuses leaves
+ * the record's old view as it stood; a view written as it stands rewrites no
+ * row, as on every run that reads what the last one read.
  */
 export async function writeRecordPeriods(
   client: PoolClient,
   lock: LockedExperience,
   recordId: number,
   view: RecordPeriods,
+  ofMembership = false,
 ): Promise<void> {
   const owned = await client.query('SELECT 1 FROM source_records WHERE id = $1 AND experience_id = $2', [recordId, lock.id]);
   if (owned.rowCount === 0) throw new RangeError(`placePeriodsWriter: record ${recordId} is not a record of place ${lock.id}`);
+  if (ofMembership && PERIOD_SAYS.some((says) => !OF_A_KIND.includes(says) && (view[says]?.length ?? 0) > 0)) {
+    throw new RangeError('placePeriodsWriter: a membership\'s own view holds only standing periods and closures');
+  }
   const lists = PERIOD_SAYS.map((says) => ({ says, rows: rowsOf(says, checked(says, view[says] ?? [])) }));
   await client.query(
     `DELETE FROM record_periods r
-      WHERE r.record_id = $1 AND r.ordinal > COALESCE(($2::jsonb ->> r.says)::int, 0)`,
-    [recordId, JSON.stringify(Object.fromEntries(lists.map(({ says, rows }) => [says, rows.length])))],
+      WHERE r.record_id = $1 AND r.of_membership = $3 AND r.ordinal > COALESCE(($2::jsonb ->> r.says)::int, 0)`,
+    [recordId, JSON.stringify(Object.fromEntries(lists.map(({ says, rows }) => [says, rows.length]))), ofMembership],
   );
   const rows = lists.flatMap((list) => list.rows);
   if (rows.length === 0) return;
   await client.query(
-    `INSERT INTO record_periods (record_id, says, ordinal, ${COLUMN_NAMES.join(', ')})
-     SELECT $1, p.says, p.ordinal, ${columnsOf('p')}
+    `INSERT INTO record_periods (record_id, of_membership, says, ordinal, ${COLUMN_NAMES.join(', ')})
+     SELECT $1, $3, p.says, p.ordinal, ${columnsOf('p')}
        FROM ${recordset('$2')}
-     ON CONFLICT (record_id, says, ordinal) DO UPDATE
-        SET ${SET_FROM_EXCLUDED}
+     ON CONFLICT (record_id, of_membership, says, ordinal) DO UPDATE
+        SET ${SET_FROM_EXCLUDED}, read_at = NOW()
       WHERE ${differs('record_periods')}`,
-    [recordId, JSON.stringify(rows)],
+    [recordId, JSON.stringify(rows), ofMembership],
   );
 }

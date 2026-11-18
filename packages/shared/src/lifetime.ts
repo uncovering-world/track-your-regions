@@ -204,10 +204,13 @@ export const PLACE_STOOD: PeriodSays = 'stood';
  */
 export const REPORTED_SAYS: readonly PeriodSays[] = ['stood', 'used'];
 
-/** What may lie ahead of today: a closure announced until 2027, next year's Holy Week. A place never stood in the future. */
+/** What may lie ahead of today: a closure announced until 2027, next year's Holy Week. */
 const MAY_LIE_AHEAD: readonly PeriodSays[] = ['closed', 'held'];
 
-/** How far ahead of this year such a period may be dated; a year mistyped with a digit too many is refused. */
+/**
+ * How far ahead of this year such a period may be dated, and a standing period
+ * may begin; a year mistyped with a digit too many is refused.
+ */
 export const FURTHEST_YEARS_AHEAD = 50;
 
 /**
@@ -256,24 +259,41 @@ export function outerDaysOf(period: PlacePeriod): { fromFirst: number | null; un
   };
 }
 
-/** Whether a place with these standing periods stands: it holds none, or one that is open. */
-export function standsBy(stood: readonly PlacePeriod[]): boolean {
-  return stood.length === 0 || stood.some((period) => !period.ended);
+/**
+ * Whether a place with these standing periods stands on `today`: it holds
+ * none, or one that is open and has begun. A place whose only standing period
+ * opens on a day still ahead does not stand yet, as the schema's
+ * `stands_on_day` reads it on the same day (`latestDayOnEarth`).
+ */
+export function standsBy(stood: readonly PlacePeriod[], today: CalendarDay): boolean {
+  const now = dayIndex(today.year, today.month, today.day);
+  return stood.length === 0 || stood.some((period) => !period.ended && (!period.from || periodOf(period.from).first <= now));
+}
+
+/**
+ * What is wrong with a period that may not lie ahead, measured against today,
+ * or null. A standing period alone may begin ahead, and is then open: the
+ * place's opening day.
+ */
+function futureFault(period: PlacePeriod, opens: boolean, today: CalendarDay): string | null {
+  const now = dayIndex(today.year, today.month, today.day);
+  if (period.until && periodOf(period.until).first > now) return 'it lies in the future';
+  if (!period.from || periodOf(period.from).first <= now) return null;
+  if (!opens) return 'it lies in the future';
+  return period.ended ? 'it begins on a day still ahead and has ended' : null;
 }
 
 /** What is wrong with one period saying `says`, or null. */
 function periodFault(period: PlacePeriod, says: PeriodSays, today: CalendarDay): string | null {
   const ahead = MAY_LIE_AHEAD.includes(says);
-  const latestYear = ahead ? today.year + FURTHEST_YEARS_AHEAD : today.year;
+  const opens = says === PLACE_STOOD;
+  const latestYear = today.year + FURTHEST_YEARS_AHEAD;
   const { from, until } = period;
-  if (from && !isValidPlaceDate(from, latestYear)) return 'its start is not a date';
+  if (from && !isValidPlaceDate(from, ahead || opens ? latestYear : today.year)) return 'its start is not a date';
   if (until && !period.ended) return 'it has an end date and has not ended';
-  if (until && !isValidPlaceDate(until, latestYear)) return 'its end is not a date';
+  if (until && !isValidPlaceDate(until, ahead ? latestYear : today.year)) return 'its end is not a date';
   if (from && until && statedAfter(from, until)) return 'it ends before it starts';
-  if (ahead) return null;
-  const now = dayIndex(today.year, today.month, today.day);
-  if ((from && periodOf(from).first > now) || (until && periodOf(until).first > now)) return 'it lies in the future';
-  return null;
+  return ahead ? null : futureFault(period, opens, today);
 }
 
 /**
@@ -289,8 +309,11 @@ function periodFault(period: PlacePeriod, says: PeriodSays, today: CalendarDay):
  *   does not start before that end.
  * - Later and before are as the dates are stated (`statedAfter`): wholly
  *   after, or under a later year, whatever span either is known to. Uses and closures may overlap.
- * - A standing period or a use lies wholly in the past or holds today; a
- *   closure and an occurrence may lie ahead (ADR-0217 decision 2).
+ * - A standing period may begin on a day still ahead, and is then open: a
+ *   place opens on its opening day, and is offered from that day on (the
+ *   schema's `stands_on_day`). It never ends ahead. A use lies wholly in the
+ *   past or holds today; a closure and an occurrence may lie ahead (ADR-0217
+ *   decision 2).
  */
 export function periodsFault(says: PeriodSays, periods: readonly PlacePeriod[], today: CalendarDay): string | null {
   for (const [index, period] of periods.entries()) {

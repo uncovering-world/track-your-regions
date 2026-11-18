@@ -1274,7 +1274,9 @@ export interface PlacePastPositionsRow {
 
 /** The table `place_periods`. */
 export interface PlacePeriodsRow {
+  id: number;
   experience_id: number;
+  kind_id: number | null;
   says: string;
   ordinal: number;
   from_year: number | null;
@@ -1293,17 +1295,15 @@ export interface PlacePeriodsRow {
   until_property: string | null;
   until_statement: string | null;
   ending: string | null;
+  use_item: string | null;
   what: string | null;
   from_first: number | null;
   until_last: number | null;
   source_id: number;
   decided_by: number | null;
-  updated_at: Date;
-  created_at: Date;
   decided_at: Date | null;
-  id: number;
-  kind_id: number | null;
-  use_item: string | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 /** The table `place_seasons`. */
@@ -1467,6 +1467,7 @@ export interface RecordListingsRow {
 /** The table `record_periods`. */
 export interface RecordPeriodsRow {
   record_id: number;
+  of_membership: boolean;
   says: string;
   ordinal: number;
   from_year: number | null;
@@ -1485,14 +1486,13 @@ export interface RecordPeriodsRow {
   until_property: string | null;
   until_statement: string | null;
   ending: string | null;
+  use_item: string | null;
   what: string | null;
   from_first: number | null;
   until_last: number | null;
-  of_membership: boolean;
-  read_at: Date;
-  refused_at: Date | null;
   refused_by: number | null;
-  use_item: string | null;
+  refused_at: Date | null;
+  read_at: Date;
 }
 
 /** The table `record_rule_reads`. */
@@ -1768,6 +1768,7 @@ export interface SourceRecordsRow {
   updated_at: Date;
   reported_location_rough: string | null;
   listing_ordinal: number | null;
+  stands_today: boolean;
   crowding_pin: string | null;
   admission_decided_at: Date | null;
   admission_decided_by: number | null;
@@ -1783,7 +1784,6 @@ export interface SourceRecordsRow {
   reported_region_codes: string[] | null;
   reported_region_items: string[] | null;
   reported_region_labels: string[] | null;
-  stands_today: boolean;
   tier: string | null;
   visitor_finds: string;
   visitor_finds_decided_at: Date | null;
@@ -1866,10 +1866,10 @@ export interface UserVisitTripsRow {
   year: number | null;
   month: number | null;
   day: number | null;
-  created_at: Date;
-  at_link_id: number | null;
   first_day: number | null;
   last_day: number | null;
+  created_at: Date;
+  at_link_id: number | null;
   updated_at: Date;
 }
 
