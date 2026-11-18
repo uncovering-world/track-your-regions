@@ -594,7 +594,7 @@ puts it in front of a curator.
 the place and its membership in a kind came apart (#822, ADR-0045 decision 4).
 Every reader-facing read asks `admission` and `curation_state` of a place
 through its memberships (`db/membership.ts`; of the other two lifecycle
-questions, `existence` stays on the row itself and `missing_since` is asked of
+questions, whether the place stands is read off its own standing periods and `missing_since` is asked of
 each point, on `experience_locations`), so a row of `experiences` with no
 membership at all is on no list, map, count or search and in no queue — not
 refused, not unread, simply never asked — and nothing on any screen says why.
