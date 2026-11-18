@@ -12,6 +12,10 @@ Judge every change — triage, design, review, data checks — from three chairs
 
 The first two are habits of any good repo; the third is this project's own: the data has real-world semantics, and technical correctness that misdescribes the world is still a bug.
 
+## The catalogue model transition
+
+**Temporary — transition regime, removed by #2646.** The catalogue is moving onto its clean model (#2634): a clean schema with clean code, with no legacy tables, no intermediate formats and no workarounds the model makes unnecessary, one owner-writer per fact, on a database rebuilt fresh from the schema and refilled by the runs. A task that touches the catalogue model (its tables, migrations, writers or readers) is built only under the regime in `docs/tech/model-transition.md`: one area per pull request, end to end, the old deleted in the same pull request, reviewed by `/transition-review`. A session outside queue #2458 asks that queue's owner first.
+
 ## Commands
 
 ```bash

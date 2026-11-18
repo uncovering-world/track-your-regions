@@ -77,6 +77,12 @@ Without a subcommand, run `status`.
   Status back (`scripts/board.sh status <n> Backlog`). A queue whose owner
   never released it is taken over only as `resume` § 2 allows.
 
+- **Temporary — transition regime, removed by #2646.** Queue #2458 runs under the regime in
+  `docs/tech/model-transition.md`. Each of its items that touches the catalogue model is built
+  as its area's slice, and after a slice merges the keeper refills that area (§ The keeper's
+  duties there). A session of another queue whose item would change the catalogue's tables,
+  migrations or writers asks #2458's owner first, as it would for a claim.
+
 ## The body
 
 The headings are fixed, since `status` and `check` read them:

@@ -36,6 +36,10 @@ gh api repos/{owner}/{repo}/issues/{number}/comments --paginate
 
 Extract the owner/repo from `gh repo view --json nameWithOwner`.
 
+### 2.5 Run the transition review on a model PR
+
+**Temporary — transition regime, removed by #2646 (`docs/tech/model-transition.md`).** When the PR changes the catalogue model (`/transition-review` § 2 decides it), run `/transition-review <number>`. Each finding it reports is an item of this analysis, like a reviewer's comment without a comment id: a blocking one is **Must fix**, the rest **Should fix**, each with its disposition (§ 3). The review bot's `Transition` heading in its summary comment is read the same way, and a finding both report is one item.
+
 ### 3. Analyze and categorize
 
 For each comment or review (including comments from review bots):

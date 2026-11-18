@@ -185,6 +185,15 @@ When the branch shows a reader a new field of a place (a line, a chip, a link or
 
 When the branch touches an ADR (§ 2.7), the Description lists the issues found in disagreement with it and how each was settled: the issue, the two sentences in short, which side changed and why ("#2009 asked for a virtual kind; ADR-0217 decision 7 makes it a section of each list; the maintainer kept the ADR, body corrected"). It then names the issues that only gained their `**Built to:**` line. "None in disagreement" is written only after every issue in the field was read.
 
+**Temporary — transition regime, removed by #2646 (`docs/tech/model-transition.md` § What every model pull request carries).** When the branch is a model change (§ 4.5), the body fills the template's `Model transition` section:
+- **Area review** — each construct of the area shaped by the old model, its verdict (DELETE, SIMPLIFY or KEEP) and its outcome on this branch;
+- **Owners touched** — each table and column of `db/target/owners.json` the branch writes or reads, its owner, and whether the code now matches it;
+- **Retires** — the no-legacy ledger entries the branch moves from `pending` to `retired`;
+- **Removed and added lines** — under the area's paths, with the command that counted them;
+- **Compared on the catalogue** — what was compared, the command, the result and the named places.
+
+On any other branch the section is deleted from the body.
+
 #### Related Issues
 - If commit messages reference issues, include them with `Closes #N` / `Fixes #N` (the merge closes the issue) or `Part of #N` (partial progress — the issue stays open). Use `Relates to #N` only for a loose association that should not drive the issue's board status.
 - Also search open issues for matches: `gh issue list --state open --limit 500 --json number,title` (the default `--limit` is 30, far below this repo's open count) — look for issues related to the branch's changes by title/keyword
@@ -204,6 +213,10 @@ Fill in the checklist based on actual state:
 
 #### Additional Comments
 Add any notable context: migration notes, deployment considerations, or things the reviewer should pay attention to. Leave empty if nothing special.
+
+### 4.5 A model change passes `/transition-review`
+
+**Temporary — transition regime, removed by #2646 (`docs/tech/model-transition.md`).** Skip this when the branch is not a model change: `git diff --name-only main...<branch> -- db/ backend/src/ frontend/src/ packages/` prints nothing, or nothing it prints touches a table, column, writer or reader of the catalogue model. Otherwise run `/transition-review <branch>` with the body drafted in § 4. The PR is not opened while a blocking finding stands: fix it on the branch, folded into the commit it belongs to, or tell the user why it cannot be fixed there. A finding that is not blocking goes into **Additional Comments** with the slice issue that owns it.
 
 ### 5. Create the PR
 

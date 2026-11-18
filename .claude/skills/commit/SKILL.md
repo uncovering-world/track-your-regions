@@ -117,6 +117,8 @@ Analyze the staged-worthy changes and group them by purpose. Each commit should 
 
 **Each branch/PR must be single-purpose.** A branch exists to deliver ONE feature, fix, or improvement. Don't sneak in unrelated changes — no matter how small — into a branch that serves a different purpose. Inbox notes, unrelated doc edits, minor refactors, or "while I'm here" fixes must go on their own branch or be left uncommitted. A PR reviewer should never see a diff that makes them ask "why is this here?"
 
+**Temporary — transition regime, removed by #2646 (`docs/tech/model-transition.md`).** No commit adds to the catalogue model an intermediate format (an old shape rebuilt from the model's tables, a JSON value carrying a fact the model gives a table or column, a view or column kept for compatibility), a second owner of a fact (a write by a module `db/target/owners.json` does not name as the owner), or a trigger `db/target/owners.json` does not allow. Code that seems to need one shows that the model is wrong: the model is changed first, in its ADR and in `db/target/`.
+
 ### 6. Create commits
 
 For each atomic group, stage the specific files and commit. Always pass `-s` and always use a HEREDOC so the body keeps its line breaks:

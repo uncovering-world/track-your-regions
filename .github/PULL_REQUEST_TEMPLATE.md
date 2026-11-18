@@ -14,4 +14,22 @@ Before submitting your PR, please review the following:
 - [ ] Related issues are mentioned in the description above.
 - [ ] Linter checks have been passed.
 
+## Model transition (only if the PR changes the catalogue model)
+<!-- Temporary — transition regime, removed by #2646. What each part holds: docs/tech/model-transition.md § What every model pull request carries. Delete this section when the PR does not change the catalogue model. -->
+
+### Area review
+Each construct of the area shaped by the old model: DELETE, SIMPLIFY or KEEP with its reason, and its outcome in this PR.
+
+### Owners touched
+Each table and column of `db/target/owners.json` this PR writes or reads, its owner, and whether the code now matches it.
+
+### Retires
+The no-legacy ledger entries this PR moves from `pending` to `retired`.
+
+### Removed and added lines
+Lines removed and added under the area's paths, with the command that counted them.
+
+### Compared on the catalogue
+What was compared between the old and the new answers, the command, the result and the named places.
+
 ## Additional Comments (if any):

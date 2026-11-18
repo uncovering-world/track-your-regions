@@ -23,3 +23,5 @@ The full PR review workflow, in order:
 5. `/pr-comments-reply` — Post replies to each comment explaining what was done, declined or filed
 6. The round comment on the PR — `Review round <n> — dispositions`, listing what was fixed, filed (with its number) and dropped, so the maintainer sees where review scope ended. The push and steps 5–6 run in the order `/pr-create` § 8 "The next round" states for the PR's label state
 7. A `/review` comment on the PR (`gh pr comment <number> --body '/review'`) — once the replies and the round comment are posted and any fixes pushed, this is what brings the next round; a push alone does not, and a reply-only wave gets one too (`claude-review.yml`, #796). When and when not — a PR labelled `review-on-push` is reviewed by its push — is `/pr-create` § 8 "The next round"
+
+**Temporary — transition regime, removed by #2646 (`docs/tech/model-transition.md`).** On a PR that changes the catalogue model, step 1 also runs `/transition-review <PR>` (`/pr-comments-analyze` § 2.5), and step 2 sorts its findings like any other: a blocking one is fixed on the branch, and a finding that is debt of another area names that area's slice issue.
