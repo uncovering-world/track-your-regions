@@ -1035,10 +1035,6 @@ export interface ExperiencesRow {
   path_updated_at: Date | null;
   missing_since: Date | null;
   source_membership: string;
-  existence: string;
-  state_decided_by: number | null;
-  state_decided_at: Date | null;
-  state_note: string | null;
   stands_today: boolean;
   merged_into_id: number | null;
   shape: string;
@@ -2547,7 +2543,6 @@ export const COLUMN_WIDTHS = {
     image_url: 1000,
     status: 20,
     source_membership: 10,
-    existence: 10,
     shape: 5,
     access: 10,
     access_from_span: 10,
@@ -2769,7 +2764,7 @@ export const CHECK_VALUES = {
   },
   experience_curation_log: {
     action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled", "separated", "kept_out", "merge_proposal_taken_back", "kind_added", "find_site_answered", "crowding_answered", "part_added", "part_taken_out", "part_put_back", "part_replaced"],
-    reason_code: ["not-this-kind", "not-worth-a-visit", "wrong-place", "duplicate", "gone", "source-text", "missing-from-rule", "not-one-place", "other"],
+    reason_code: ["not-this-kind", "not-worth-a-visit", "not-one-place", "wrong-place", "duplicate", "gone", "source-text", "missing-from-rule", "never-gone", "rebuilt", "other"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
@@ -2902,7 +2897,6 @@ export const CHECK_VALUES = {
   experiences: {
     access: ["open", "restricted", "none"],
     access_reason: ["men_only", "permit", "guided_only", "outside_only"],
-    existence: ["extant", "lost"],
     shape: ["point", "area", "line", "none"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
